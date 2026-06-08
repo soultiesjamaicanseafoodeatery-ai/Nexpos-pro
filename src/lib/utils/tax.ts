@@ -73,5 +73,5 @@ export function calcOrder(
 }
 
 export function fmt(n: number, symbol = 'J$'): string {
-  return `${symbol}${n.toFixed(2)}`
+  return `${symbol}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }

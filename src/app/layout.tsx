@@ -5,7 +5,6 @@ import { AppProvider } from '@/lib/hooks/useAppStore'
 export const metadata: Metadata = {
   title: 'NexPOS Pro',
   description: 'Multi-module Point of Sale system',
-  themeColor: '#0c0e14',
   other: {
     'mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-capable': 'yes',

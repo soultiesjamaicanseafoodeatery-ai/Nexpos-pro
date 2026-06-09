@@ -35,12 +35,39 @@ export default function POSPage() {
     hasFetched.current = true
 
     // ── Step 1: Load from localStorage immediately (works offline) ──
-    const cachedMenu    = storage.get<MenuItem[]>('menu_items')
-    const cachedCarwash = storage.get<MenuItem[]>('carwash_services')
-    const cachedAddons  = storage.get<Addon[]>('carwash_addons')
-    if (cachedMenu    && cachedMenu.length > 0)    setLiveMenuItems(cachedMenu)
-    if (cachedCarwash && cachedCarwash.length > 0) setLiveCarwashItems(cachedCarwash)
-    if (cachedAddons  && cachedAddons.length > 0)  setLiveAddons(cachedAddons)
+    // Normalize handles both raw Supabase format (description/category) and mapped format (desc/cat)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const normMenuItem = (r: any): MenuItem => ({
+      id: r.id, name: r.name,
+      desc: r.desc ?? r.description ?? '',
+      price: Number(r.price),
+      cat: r.cat ?? r.category ?? 'All',
+      emoji: r.emoji ?? '🍽️',
+      active: r.active ?? true,
+      duration: r.duration ?? undefined,
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const normAddon = (r: any): Addon => ({
+      id: r.id, name: r.name,
+      desc: r.desc ?? r.description ?? '',
+      price: Number(r.price),
+      icon: r.icon ?? '✨',
+      active: r.active ?? true,
+    })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cachedMenuRaw    = storage.get<any[]>('menu_items')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cachedCarwashRaw = storage.get<any[]>('carwash_services')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cachedAddonsRaw  = storage.get<any[]>('carwash_addons')
+
+    if (cachedMenuRaw    && cachedMenuRaw.length > 0)
+      setLiveMenuItems(cachedMenuRaw.map(normMenuItem).filter(i => i.active))
+    if (cachedCarwashRaw && cachedCarwashRaw.length > 0)
+      setLiveCarwashItems(cachedCarwashRaw.map(normMenuItem).filter(i => i.active))
+    if (cachedAddonsRaw  && cachedAddonsRaw.length > 0)
+      setLiveAddons(cachedAddonsRaw.map(normAddon).filter(i => i.active))
 
     // ── Step 2: Background sync with Supabase ──
     async function syncFromSupabase() {

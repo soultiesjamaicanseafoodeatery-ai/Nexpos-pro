@@ -24,6 +24,20 @@ export default function POSPage() {
   const [cwTab,        setCwTab]        = useState<'pos' | 'orders'>('pos')
   const [pendingCount, setPendingCount] = useState(0)
 
+  // Modal state
+  const [modalItem,   setModalItem]   = useState<MenuItem | null>(null)
+  const [modalAddons, setModalAddons] = useState<Addon[]>([])
+  const [modalQty,    setModalQty]    = useState(1)
+  const [modalNote,   setModalNote]   = useState('')
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  // Focus modal when it opens so Escape key works
+  useEffect(() => {
+    if (modalItem && modalRef.current) {
+      modalRef.current.focus()
+    }
+  }, [modalItem])
+
   // Live data — loaded from localStorage immediately, refreshed from Supabase in background
   const [liveMenuItems,    setLiveMenuItems]    = useState<MenuItem[] | null>(null)
   const [liveCarwashItems, setLiveCarwashItems] = useState<MenuItem[] | null>(null)
@@ -164,33 +178,68 @@ export default function POSPage() {
   const setPOS = (patch: Partial<typeof ps>) =>
     dispatch({ type: 'SET_POS_STATE', mod: activeModule, patch })
 
-  const toggleItem = (item: MenuItem) => {
-    if (ps.selItem?.id === item.id) { setPOS({ selItem: null, selAddons: [] }) }
-    else { setPOS({ selItem: item, selAddons: [], qty: 1 }) }
+  // Toggle addon in modal
+  const toggleModalAddon = (addon: Addon) => {
+    setModalAddons(prev => {
+      const exists = prev.find(a => a.id === addon.id)
+      return exists ? prev.filter(a => a.id !== addon.id) : [...prev, addon]
+    })
   }
 
-  const toggleAddon = (addon: Addon) => {
-    const exists = ps.selAddons.find(a => a.id === addon.id)
-    setPOS({ selAddons: exists ? ps.selAddons.filter(a => a.id !== addon.id) : [...ps.selAddons, addon] })
+  // Close modal and reset state
+  const closeModal = () => {
+    setModalItem(null)
+    setModalAddons([])
+    setModalQty(1)
+    setModalNote('')
   }
 
+  // Add to cart from modal (item with add-ons)
   const addToCart = () => {
-    if (!ps.selItem) { toast('Select an item first', 'warn'); return }
-
+    if (!modalItem) return
     const cartItem: CartItem = {
       id: crypto.randomUUID(),
-      itemId: ps.selItem.id,
-      name: ps.selItem.name,
-      price: ps.selItem.price,
-      qty: ps.qty,
-      addons: [...ps.selAddons],
+      itemId: modalItem.id,
+      name: modalItem.name,
+      price: modalItem.price,
+      qty: modalQty,
+      addons: [...modalAddons],
       module: activeModule,
-      note: ps.note || undefined,
+      note: modalNote || undefined,
       plate: activeModule === 'carwash' ? (ps.plate || undefined) : undefined,
     }
     dispatch({ type: 'ADD_TO_CART', item: cartItem })
-    toast(`Added: ${ps.selItem.name}`, 'success')
-    setPOS({ selItem: null, selAddons: [], qty: 1, note: '' })
+    toast(`Added: ${modalItem.name}`, 'success')
+    closeModal()
+  }
+
+  // Add to cart directly (item with no active add-ons)
+  const addToCartDirect = (item: MenuItem) => {
+    const cartItem: CartItem = {
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      name: item.name,
+      price: item.price,
+      qty: 1,
+      addons: [],
+      module: activeModule,
+      plate: activeModule === 'carwash' ? (ps.plate || undefined) : undefined,
+    }
+    dispatch({ type: 'ADD_TO_CART', item: cartItem })
+    toast(`Added: ${item.name}`, 'success')
+  }
+
+  // Handle item click — open modal if addons exist, else add directly
+  const handleItemClick = (item: MenuItem) => {
+    const activeAddons = mod.addons.filter((a: Addon) => a.active)
+    if (activeAddons.length > 0) {
+      setModalItem(item)
+      setModalAddons([])
+      setModalQty(1)
+      setModalNote('')
+    } else {
+      addToCartDirect(item)
+    }
   }
 
   const checkout = () => {
@@ -244,6 +293,9 @@ export default function POSPage() {
   // Cart totals
   const hasRestaurantItems = cart.some(ci => ci.module === 'restaurant')
   const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null })
+
+  // Active add-ons for modal display
+  const activeAddons = mod.addons.filter((a: Addon) => a.active)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -299,8 +351,8 @@ export default function POSPage() {
         <OutsideOrders onCountChange={setPendingCount} />
       ) : (
 
-        /* ── Main POS grid ── */
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 268px 324px', flex: 1, overflow: 'hidden' }}>
+        /* ── Main POS grid (2-column) ── */
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', flex: 1, overflow: 'hidden' }}>
 
           {/* Col 1 — Item browser */}
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--bdr)' }}>
@@ -316,109 +368,37 @@ export default function POSPage() {
               ))}
             </div>
 
-            {/* Item grid */}
+            {/* Item grid — 3 columns */}
             <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {filteredItems.map((item: MenuItem) => {
-                  const selected = ps.selItem?.id === item.id
-                  return (
-                    <div key={item.id} onClick={() => toggleItem(item)} style={{
-                      background: item.gradient ?? 'var(--surf)',
-                      border: `2px solid ${selected ? mod.color : 'var(--bdr)'}`,
-                      borderRadius: 'var(--r3)', cursor: 'pointer', position: 'relative',
-                      overflow: 'hidden', transition: 'all .18s', minHeight: 160,
-                      display: 'flex', flexDirection: 'column',
-                      boxShadow: selected ? `0 0 0 3px ${mod.color}40` : undefined,
-                    }}>
-                      <div style={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0, overflow: 'hidden' }}>
-                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,transparent 40%,rgba(0,0,0,.5))', zIndex: 1 }} />
-                        <span style={{ fontSize: 44, zIndex: 2, filter: 'drop-shadow(0 2px 8px rgba(0,0,0,.5))' }}>{item.emoji}</span>
-                        {selected && (
-                          <div style={{ position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: '50%', background: mod.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', zIndex: 10 }}>✓</div>
-                        )}
-                        {item.duration && (
-                          <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, zIndex: 2 }}>{item.duration}</div>
-                        )}
-                      </div>
-                      <div style={{ padding: '10px 11px 11px', flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', lineHeight: 1.2 }}>{item.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--txt3)', lineHeight: 1.35, flex: 1 }}>{item.desc}</div>
-                        <div style={{ marginTop: 6 }}>
-                          <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--mono)', letterSpacing: '-.5px', color: item.accent ?? mod.color }}>{fmt(item.price, sym)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Col 2 — Add-ons + Add to Cart */}
-          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--bdr)' }}>
-            <div style={{ padding: '10px 13px', borderBottom: '1px solid var(--bdr)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>Add-ons</span>
-              {ps.selItem && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11, color: 'var(--txt3)' }}>Qty</span>
-                  <button onClick={() => setPOS({ qty: Math.max(1, ps.qty - 1) })} style={{ width: 24, height: 24, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>−</button>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{ps.qty}</span>
-                  <button onClick={() => setPOS({ qty: ps.qty + 1 })} style={{ width: 24, height: 24, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>+</button>
-                </div>
-              )}
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-              {mod.addons.filter((a: Addon) => a.active).map((addon: Addon) => {
-                const sel = ps.selAddons.find(a => a.id === addon.id)
-                return (
-                  <div key={addon.id} onClick={() => ps.selItem && toggleAddon(addon)} style={{
-                    background: sel ? 'var(--surf2)' : 'var(--surf)',
-                    border: `2px solid ${sel ? mod.color : 'var(--bdr)'}`,
-                    borderRadius: 'var(--r)', padding: '12px 13px', cursor: ps.selItem ? 'pointer' : 'not-allowed',
-                    display: 'flex', alignItems: 'center', gap: 11, marginBottom: 8, transition: 'all .14s',
-                    opacity: ps.selItem ? 1 : .5, minHeight: 58,
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                {filteredItems.map((item: MenuItem) => (
+                  <div key={item.id} onClick={() => handleItemClick(item)} style={{
+                    background: item.gradient ?? 'var(--surf)',
+                    border: '2px solid var(--bdr)',
+                    borderRadius: 'var(--r3)', cursor: 'pointer', position: 'relative',
+                    overflow: 'hidden', transition: 'all .18s', minHeight: 150,
+                    display: 'flex', flexDirection: 'column',
                   }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--surf2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{addon.icon}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{addon.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{addon.desc}</div>
+                    <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0, overflow: 'hidden' }}>
+                      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,transparent 40%,rgba(0,0,0,.5))', zIndex: 1 }} />
+                      <span style={{ fontSize: 38, zIndex: 2, filter: 'drop-shadow(0 2px 8px rgba(0,0,0,.5))' }}>{item.emoji}</span>
+                      {item.duration && (
+                        <div style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 20, zIndex: 2 }}>{item.duration}</div>
+                      )}
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: addon.price === 0 ? 'var(--grn)' : 'var(--txt)' }}>
-                      {addon.price === 0 ? 'Free' : `+${fmt(addon.price, sym)}`}
+                    <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', lineHeight: 1.2 }}>{item.name}</div>
+                      <div style={{ marginTop: 4 }}>
+                        <span style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--mono)', letterSpacing: '-.5px', color: item.accent ?? mod.color }}>{fmt(item.price, sym)}</span>
+                      </div>
                     </div>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${sel ? mod.color : 'var(--bdr2)'}`, background: sel ? mod.color : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: '#fff' }}>{sel ? '✓' : ''}</div>
                   </div>
-                )
-              })}
-              <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--txt3)', marginBottom: 5 }}>Order Note</div>
-                <textarea value={ps.note} onChange={e => setPOS({ note: e.target.value })}
-                  placeholder="Special instructions..."
-                  style={{ width: '100%', background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '8px 10px', fontSize: 12, color: 'var(--txt)', resize: 'none', minHeight: 60 }} />
+                ))}
               </div>
-            </div>
-
-            {/* Add to Cart + Clear Selection */}
-            <div style={{ padding: '12px 13px', borderTop: '1px solid var(--bdr)', flexShrink: 0 }}>
-              <button onClick={addToCart} disabled={!ps.selItem} style={{
-                width: '100%', padding: 14, borderRadius: 'var(--r)', fontSize: 14, fontWeight: 800,
-                color: mod.cobText, background: ps.selItem ? mod.color : 'var(--surf3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                cursor: ps.selItem ? 'pointer' : 'not-allowed', border: 'none', transition: 'all .15s', minHeight: 50,
-              }}>
-                + Add to Cart{ps.selItem ? ` (×${ps.qty})` : ''}
-              </button>
-              <button onClick={() => setPOS({ selItem: null, selAddons: [], qty: 1, note: '' })} style={{
-                width: '100%', padding: 9, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700,
-                background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', marginTop: 7,
-                cursor: 'pointer', transition: 'all .12s', minHeight: 38,
-              }}>
-                Clear Selection
-              </button>
             </div>
           </div>
 
-          {/* Col 3 — Global Cart */}
+          {/* Col 2 — Global Cart (340px, unchanged) */}
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
             {/* Cart header */}
@@ -563,6 +543,121 @@ export default function POSPage() {
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* ── Add-ons Modal ── */}
+      {modalItem && (
+        <div
+          onClick={closeModal}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 500,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+        >
+          <div
+            ref={modalRef}
+            tabIndex={-1}
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => { if (e.key === 'Escape') closeModal() }}
+            style={{
+              background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)',
+              width: '100%', maxWidth: 420, boxShadow: '0 24px 60px rgba(0,0,0,.5)',
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              outline: 'none',
+            }}
+          >
+            {/* Modal header — item name + price */}
+            <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 28 }}>{modalItem.emoji}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{modalItem.name}</div>
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--mono)', color: mod.color }}>{fmt(modalItem.price, sym)}</div>
+            </div>
+
+            {/* Add-ons list */}
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)', maxHeight: 260, overflowY: 'auto' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Add-ons (optional)</div>
+              {activeAddons.map((addon: Addon) => {
+                const checked = modalAddons.some(a => a.id === addon.id)
+                return (
+                  <div
+                    key={addon.id}
+                    onClick={() => toggleModalAddon(addon)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                      borderRadius: 'var(--r)', marginBottom: 6, cursor: 'pointer',
+                      background: checked ? 'var(--surf2)' : 'var(--surf)',
+                      border: `2px solid ${checked ? mod.color : 'var(--bdr)'}`,
+                      transition: 'all .14s',
+                    }}
+                  >
+                    {/* Checkbox */}
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? mod.color : 'var(--bdr2)'}`,
+                      background: checked ? mod.color : 'transparent', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, fontWeight: 800, color: '#fff', transition: 'all .14s',
+                    }}>{checked ? '✓' : ''}</div>
+                    <span style={{ fontSize: 17 }}>{addon.icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{addon.name}</div>
+                      {addon.desc && <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{addon.desc}</div>}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: addon.price === 0 ? 'var(--grn)' : 'var(--txt)', flexShrink: 0 }}>
+                      {addon.price === 0 ? 'Free' : `+${fmt(addon.price, sym)}`}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Qty + Note */}
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)' }}>
+              {/* Qty row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', flex: 1 }}>Qty</span>
+                <button onClick={() => setModalQty(q => Math.max(1, q - 1))} style={{
+                  width: 32, height: 32, borderRadius: 8, background: 'var(--surf2)', border: '1px solid var(--bdr)',
+                  color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, fontWeight: 800,
+                }}>−</button>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 16, fontWeight: 800, minWidth: 28, textAlign: 'center' }}>{modalQty}</span>
+                <button onClick={() => setModalQty(q => q + 1)} style={{
+                  width: 32, height: 32, borderRadius: 8, background: 'var(--surf2)', border: '1px solid var(--bdr)',
+                  color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, fontWeight: 800,
+                }}>+</button>
+              </div>
+              {/* Note */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', marginBottom: 5 }}>Note</div>
+              <textarea
+                value={modalNote}
+                onChange={e => setModalNote(e.target.value)}
+                placeholder="Special instructions..."
+                rows={2}
+                style={{
+                  width: '100%', background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)',
+                  padding: '8px 10px', fontSize: 12, color: 'var(--txt)', resize: 'none', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Footer — Cancel + Add to Cart */}
+            <div style={{ padding: '14px 18px', display: 'flex', gap: 10 }}>
+              <button onClick={closeModal} style={{
+                flex: 1, padding: '12px 8px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700,
+                background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)',
+                cursor: 'pointer', transition: 'all .12s',
+              }}>Cancel</button>
+              <button onClick={addToCart} style={{
+                flex: 2, padding: '12px 8px', borderRadius: 'var(--r)', fontSize: 14, fontWeight: 800,
+                background: mod.color, color: mod.cobText, border: 'none',
+                cursor: 'pointer', transition: 'all .15s',
+              }}>Add to Cart ×{modalQty}</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

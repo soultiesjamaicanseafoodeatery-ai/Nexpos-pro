@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { User, Shift } from '@/types'
 import { ROLES } from '@/lib/data/seed'
@@ -87,6 +87,21 @@ export default function AuthScreen() {
     setError('')
     setPinState('idle')
   }, [])
+
+  // Keyboard support — digits, Backspace, Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') {
+        pressKey(e.key)
+      } else if (e.key === 'Backspace') {
+        delKey()
+      } else if (e.key === 'Escape') {
+        resetAuth()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [pressKey, delKey, resetAuth])
 
   return (
     <div style={{
@@ -178,7 +193,7 @@ export default function AuthScreen() {
 
               {/* PIN dots */}
               <div style={{ fontSize: 11, color: 'var(--txt3)', textAlign: 'center', marginBottom: 8 }}>Enter your 4-digit PIN</div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 8 }}>
                 {[0,1,2,3].map(i => (
                   <div key={i} style={{
                     width: 14, height: 14, borderRadius: '50%',
@@ -194,6 +209,10 @@ export default function AuthScreen() {
                     animation: pinState === 'error' ? 'shake .3s ease' : 'none',
                   }} />
                 ))}
+              </div>
+              {/* Keyboard hint */}
+              <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--txt3)', opacity: .6, marginBottom: 12, letterSpacing: '.2px' }}>
+                ⌨ Type PIN on keyboard
               </div>
 
               {/* PIN pad */}

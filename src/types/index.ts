@@ -5,7 +5,8 @@ export interface User {
   id: string
   name: string
   ini: string
-  pin: string
+  pin?: string        // plain text (seed fallback only)
+  pin_hash?: string   // SHA-256 hex (Supabase staff)
   role: UserRole
   color: string
   allowedModules: ModuleKey[]

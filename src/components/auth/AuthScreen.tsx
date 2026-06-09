@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { User, Shift } from '@/types'
 import { ROLES } from '@/lib/data/seed'
+import { hashPin } from '@/lib/utils/hash'
 
 const MOD_TAG_CLS: Record<string, string> = {
   restaurant: 'mod-rest',
@@ -47,8 +48,16 @@ export default function AuthScreen() {
     setPin(newPin)
 
     if (newPin.length === 4) {
-      setTimeout(() => {
-        if (newPin === selectedUser.pin) {
+      setTimeout(async () => {
+        let correct = false
+        if (selectedUser.pin_hash) {
+          const h = await hashPin(newPin)
+          correct = h === selectedUser.pin_hash
+        } else {
+          correct = newPin === (selectedUser.pin ?? '')
+        }
+
+        if (correct) {
           setPinState('success')
           setTimeout(() => {
             const shift: Shift = {

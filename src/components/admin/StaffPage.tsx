@@ -1,69 +1,405 @@
 'use client'
 
+import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
+import type { User, UserRole, ModuleKey } from '@/types'
 import { ROLES } from '@/lib/data/seed'
+import { hashPin } from '@/lib/utils/hash'
 
+const API = 'https://www.soultiesseafoodjm.com/api/staff'
+
+const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+  { value: 'admin',      label: 'Administrator' },
+  { value: 'manager',    label: 'Manager' },
+  { value: 'supervisor', label: 'Supervisor' },
+  { value: 'cashier',    label: 'Cashier' },
+  { value: 'bartender',  label: 'Bartender' },
+  { value: 'attendant',  label: 'Attendant' },
+]
+
+const MODULE_OPTIONS: { value: ModuleKey; label: string; emoji: string }[] = [
+  { value: 'restaurant', label: 'Restaurant', emoji: '🍽️' },
+  { value: 'bar',        label: 'Bar',         emoji: '🍺' },
+  { value: 'carwash',    label: 'Car Wash',    emoji: '🚗' },
+]
+
+const COLOR_PRESETS = ['#f56565','#f5a623','#9b8afb','#4f8ef7','#3ecf8e','#38bdf8','#f6993f','#48bb78']
+
+const label: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase' as const, letterSpacing: '.5px', marginBottom: 4, display: 'block' }
+const inputStyle: React.CSSProperties = { width: '100%', background: 'var(--surf2)', border: '1px solid var(--bdr2)', borderRadius: 'var(--r2)', padding: '8px 10px', fontSize: 13, color: 'var(--txt)' }
+const toggleBtn = (active: boolean): React.CSSProperties => ({ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none', background: active ? 'var(--grn-bg)' : 'var(--red-bg)', color: active ? 'var(--grn)' : 'var(--red)' })
+
+function autoIni(name: string): string {
+  return name.trim().split(/\s+/).map(w => w[0] ?? '').join('').toUpperCase().slice(0, 3)
+}
+
+// ── Staff form modal ──────────────────────────────────────────
+interface StaffForm {
+  name: string
+  ini: string
+  role: UserRole
+  allowedModules: ModuleKey[]
+  color: string
+  staffId: string
+  pin: string
+  confirmPin: string
+}
+
+function emptyForm(): StaffForm {
+  return { name: '', ini: '', role: 'cashier', allowedModules: ['restaurant'], color: '#4f8ef7', staffId: '', pin: '', confirmPin: '' }
+}
+
+function StaffModal({
+  editUser,
+  onSave,
+  onClose,
+}: {
+  editUser: User | null
+  onSave: (form: StaffForm) => Promise<string | null>
+  onClose: () => void
+}) {
+  const [form, setForm] = useState<StaffForm>(() =>
+    editUser
+      ? { name: editUser.name, ini: editUser.ini, role: editUser.role, allowedModules: [...editUser.allowedModules], color: editUser.color, staffId: editUser.staffId ?? '', pin: '', confirmPin: '' }
+      : emptyForm()
+  )
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const set = <K extends keyof StaffForm>(k: K, v: StaffForm[K]) => setForm(f => ({ ...f, [k]: v }))
+
+  // Auto-fill initials when name changes (only if user hasn't manually edited)
+  const [iniTouched, setIniTouched] = useState(!!editUser)
+  useEffect(() => {
+    if (!iniTouched && form.name) set('ini', autoIni(form.name))
+  }, [form.name, iniTouched])
+
+  const toggleModule = (mod: ModuleKey) => {
+    set('allowedModules', form.allowedModules.includes(mod)
+      ? form.allowedModules.filter(m => m !== mod)
+      : [...form.allowedModules, mod]
+    )
+  }
+
+  const submit = async () => {
+    setErr('')
+    if (!form.name.trim()) { setErr('Name is required'); return }
+    if (!form.ini.trim()) { setErr('Initials are required'); return }
+    if (form.allowedModules.length === 0) { setErr('Select at least one module'); return }
+    if (!editUser) {
+      if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) { setErr('PIN must be exactly 4 digits'); return }
+      if (form.pin !== form.confirmPin) { setErr('PINs do not match'); return }
+    } else if (form.pin) {
+      if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) { setErr('New PIN must be exactly 4 digits'); return }
+      if (form.pin !== form.confirmPin) { setErr('PINs do not match'); return }
+    }
+    setSaving(true)
+    const error = await onSave(form)
+    setSaving(false)
+    if (error) setErr(error)
+  }
+
+  return (
+    <div className="mo-bg" onClick={onClose}>
+      <div className="mo" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div className="mh">
+          <span className="mt">{editUser ? 'Edit Staff Member' : 'Add Staff Member'}</span>
+          <button className="mx" onClick={onClose}>×</button>
+        </div>
+        <div className="mb-c" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Name + Initials */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 12 }}>
+            <div>
+              <label style={label}>Full Name *</label>
+              <input style={inputStyle} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Jane Smith" />
+            </div>
+            <div>
+              <label style={label}>Initials *</label>
+              <input style={inputStyle} value={form.ini} onChange={e => { setIniTouched(true); set('ini', e.target.value.toUpperCase().slice(0, 3)) }} placeholder="JS" />
+            </div>
+          </div>
+
+          {/* Role + Staff ID */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={label}>Role *</label>
+              <select style={inputStyle} value={form.role} onChange={e => set('role', e.target.value as UserRole)}>
+                {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={label}>Staff ID</label>
+              <input style={inputStyle} value={form.staffId} onChange={e => set('staffId', e.target.value)} placeholder="Optional" />
+            </div>
+          </div>
+
+          {/* Modules */}
+          <div>
+            <label style={label}>Allowed Modules *</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {MODULE_OPTIONS.map(m => {
+                const on = form.allowedModules.includes(m.value)
+                return (
+                  <button key={m.value} onClick={() => toggleModule(m.value)} style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${on ? 'var(--blue)' : 'var(--bdr)'}`, background: on ? 'var(--blue-bg)' : 'transparent', color: on ? 'var(--blue)' : 'var(--txt3)', transition: 'all .12s' }}>
+                    {m.emoji} {m.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Color */}
+          <div>
+            <label style={label}>Avatar Color</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {COLOR_PRESETS.map(c => (
+                <button key={c} onClick={() => set('color', c)} style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: `3px solid ${form.color === c ? 'white' : 'transparent'}`, cursor: 'pointer', outline: form.color === c ? `2px solid ${c}` : 'none', outlineOffset: 1 }} />
+              ))}
+              <input type="color" value={form.color} onChange={e => set('color', e.target.value)} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer', background: 'transparent' }} title="Custom color" />
+            </div>
+          </div>
+
+          {/* PIN */}
+          <div>
+            <label style={label}>{editUser ? 'New PIN (leave blank to keep current)' : 'PIN *'}</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <input
+                style={inputStyle}
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={form.pin}
+                onChange={e => set('pin', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="4-digit PIN"
+              />
+              <input
+                style={inputStyle}
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={form.confirmPin}
+                onChange={e => set('confirmPin', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="Confirm PIN"
+              />
+            </div>
+          </div>
+
+          {err && <div style={{ color: 'var(--red)', fontSize: 12, fontWeight: 600 }}>⚠ {err}</div>}
+        </div>
+        <div className="mf">
+          <button className="btn btn-gh" onClick={onClose}>Cancel</button>
+          <button className="btn btn-pr" onClick={submit} disabled={saving}>
+            {saving ? 'Saving…' : (editUser ? 'Save Changes' : 'Add Staff')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Confirm delete modal ──────────────────────────────────────
+function ConfirmModal({ name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="mo-bg" onClick={onCancel}>
+      <div className="mo" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+        <div className="mh"><span className="mt">Remove Staff Member</span><button className="mx" onClick={onCancel}>×</button></div>
+        <div className="mb-c"><p style={{ fontSize: 13, color: 'var(--txt2)' }}>Remove <strong>{name}</strong> from the system? They will no longer be able to log in.</p></div>
+        <div className="mf">
+          <button className="btn btn-gh" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-red" onClick={onConfirm}>Remove</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main StaffPage ────────────────────────────────────────────
 export default function StaffPage() {
   const { state, dispatch, toast } = useApp()
   const { users, currentUser } = state
 
-  const toggleActive = (id: string) => {
-    if (id === currentUser?.id) { toast('Cannot deactivate yourself', 'warn'); return }
-    const updated = users.map(u => u.id === id ? { ...u, active: !u.active } : u)
-    dispatch({ type: 'SET_USERS', users: updated })
-    toast('Staff updated', 'success')
+  const [showModal, setShowModal]   = useState(false)
+  const [editUser, setEditUser]     = useState<User | null>(null)
+  const [confirmDel, setConfirmDel] = useState<User | null>(null)
+  const [saving, setSaving]         = useState(false)
+
+  const isAdmin = currentUser?.role === 'admin'
+
+  const refetchStaff = useCallback(async () => {
+    try {
+      const res = await fetch(API)
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const rows = await res.json()
+      if (Array.isArray(rows) && rows.length > 0) {
+        const updated: User[] = rows.map((r: { id: string; name: string; ini: string; pin_hash: string; role: UserRole; color: string; allowed_modules: string[]; active: boolean; staff_id?: string }) => ({
+          id: r.id, name: r.name, ini: r.ini, pin_hash: r.pin_hash,
+          role: r.role as UserRole, color: r.color,
+          allowedModules: (r.allowed_modules ?? ['restaurant']) as ModuleKey[],
+          active: r.active, staffId: r.staff_id ?? undefined,
+        }))
+        dispatch({ type: 'SET_USERS', users: updated })
+      }
+    } catch { /* ignore */ }
+  }, [dispatch])
+
+  const saveStaff = async (form: StaffForm): Promise<string | null> => {
+    try {
+      let pin_hash: string | undefined
+      if (form.pin) {
+        pin_hash = await hashPin(form.pin)
+      }
+
+      const payload: Record<string, unknown> = {
+        name: form.name.trim(),
+        ini: form.ini.trim(),
+        role: form.role,
+        allowed_modules: form.allowedModules,
+        color: form.color,
+        staff_id: form.staffId.trim() || null,
+        active: editUser?.active ?? true,
+      }
+      if (pin_hash) payload.pin_hash = pin_hash
+
+      if (editUser) {
+        const res = await fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editUser.id, ...payload }) })
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Save failed') }
+        toast('Staff updated', 'success')
+      } else {
+        if (!pin_hash) return 'PIN is required'
+        const res = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Save failed') }
+        toast('Staff member added', 'success')
+      }
+
+      setShowModal(false)
+      setEditUser(null)
+      await refetchStaff()
+      return null
+    } catch (e: unknown) {
+      return e instanceof Error ? e.message : 'An error occurred'
+    }
   }
+
+  const toggleActive = async (user: User) => {
+    if (user.id === currentUser?.id) { toast('Cannot deactivate yourself', 'warn'); return }
+    setSaving(true)
+    try {
+      const res = await fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id, active: !user.active }) })
+      if (!res.ok) throw new Error('Failed')
+      toast(user.active ? 'Staff deactivated' : 'Staff activated', 'success')
+      await refetchStaff()
+    } catch {
+      toast('Toggle failed', 'error')
+    }
+    setSaving(false)
+  }
+
+  const deleteStaff = async (user: User) => {
+    setSaving(true)
+    try {
+      const res = await fetch(`${API}?id=${encodeURIComponent(user.id)}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed')
+      toast('Staff member removed', 'success')
+      setConfirmDel(null)
+      await refetchStaff()
+    } catch {
+      toast('Delete failed', 'error')
+    }
+    setSaving(false)
+  }
+
+  const usingSupabase = users.some(u => u.pin_hash)
 
   return (
     <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
+
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 15 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>Staff</div>
-          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>{users.filter(u => u.active).length} active · {users.length} total</div>
+          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>
+            {users.filter(u => u.active).length} active · {users.length} total
+            {!usingSupabase && <span style={{ color: 'var(--ora)', marginLeft: 8 }}>⚠ Using demo staff — run SQL below to activate Supabase</span>}
+          </div>
         </div>
+        {isAdmin && (
+          <button className="btn btn-pr" onClick={() => { setEditUser(null); setShowModal(true) }}>+ Add Staff</button>
+        )}
       </div>
 
+      {/* SQL notice when no Supabase staff yet */}
+      {!usingSupabase && isAdmin && (
+        <div style={{ background: 'var(--ora-bg)', border: '1px solid rgba(255,124,76,.3)', borderRadius: 'var(--r2)', padding: '12px 16px', marginBottom: 16, fontSize: 12, color: 'var(--txt2)' }}>
+          <strong style={{ color: 'var(--ora)' }}>Setup required</strong> — run this SQL in your{' '}
+          <a href="https://supabase.com/dashboard/project/uzkwpkcgzllcixjpazoo/sql/new" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>Supabase SQL editor</a>, then click "Add Staff" to create your real staff accounts.
+          <pre style={{ marginTop: 8, background: 'var(--bg)', borderRadius: 'var(--r)', padding: '10px 12px', fontSize: 11, overflowX: 'auto', color: 'var(--grn)', lineHeight: 1.6 }}>{`CREATE TABLE IF NOT EXISTS public.staff (
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  ini             TEXT NOT NULL,
+  role            TEXT NOT NULL DEFAULT 'cashier',
+  pin_hash        TEXT NOT NULL,
+  color           TEXT NOT NULL DEFAULT '#4f8ef7',
+  allowed_modules TEXT[] NOT NULL DEFAULT '{restaurant}',
+  active          BOOLEAN NOT NULL DEFAULT true,
+  staff_id        TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.staff DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.staff TO anon, authenticated;
+NOTIFY pgrst, 'reload schema';`}</pre>
+        </div>
+      )}
+
+      {/* Staff table */}
       <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
         <table className="dt">
           <thead>
             <tr>
-              <th>Staff</th><th>Role</th><th>Modules</th><th>Staff ID</th><th>Status</th>
-              {currentUser?.role === 'admin' && <th>Actions</th>}
+              <th>Staff Member</th>
+              <th>Role</th>
+              <th>Modules</th>
+              <th>Staff ID</th>
+              <th>Status</th>
+              {isAdmin && <th style={{ width: 160 }}>Actions</th>}
             </tr>
           </thead>
           <tbody>
-            {users.map(u => {
+            {users.length === 0 ? (
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: 'var(--txt3)', fontSize: 13 }}>No staff found. Click "+ Add Staff" to get started.</td></tr>
+            ) : users.map(u => {
               const role = ROLES[u.role]
+              const isSelf = u.id === currentUser?.id
               return (
                 <tr key={u.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, background: `${u.color}22`, color: u.color, flexShrink: 0 }}>{u.ini}</div>
+                      <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: `${u.color}22`, color: u.color, flexShrink: 0 }}>{u.ini}</div>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{u.name}</div>
-                        <div style={{ fontSize: 10, color: 'var(--txt3)' }}>ID: {u.id}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{u.name}{isSelf && <span style={{ fontSize: 10, marginLeft: 6, color: 'var(--blue)' }}>(you)</span>}</div>
+                        <div style={{ fontSize: 10, color: 'var(--txt3)', marginTop: 1 }}>{u.pin_hash ? '🔒 Supabase' : '⚠ Demo'}</div>
                       </div>
                     </div>
                   </td>
-                  <td>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: role?.color ?? 'var(--txt2)' }}>{role?.label ?? u.role}</span>
-                  </td>
+                  <td><span style={{ fontSize: 11, fontWeight: 700, color: role?.color ?? 'var(--txt2)' }}>{role?.label ?? u.role}</span></td>
                   <td>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {u.allowedModules.map(m => (
-                        <span key={m} className="b b-bl" style={{ fontSize: 9 }}>{m}</span>
-                      ))}
+                      {u.allowedModules.map(m => <span key={m} className="b b-bl" style={{ fontSize: 9 }}>{m}</span>)}
                     </div>
                   </td>
                   <td style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{u.staffId ?? '—'}</td>
-                  <td>
-                    <span className={`b ${u.active ? 'b-gn' : 'b-rd'}`}>{u.active ? 'Active' : 'Inactive'}</span>
-                  </td>
-                  {currentUser?.role === 'admin' && (
+                  <td><span className={`b ${u.active ? 'b-gn' : 'b-rd'}`}>{u.active ? 'Active' : 'Inactive'}</span></td>
+                  {isAdmin && (
                     <td>
-                      <button className={`btn btn-xs ${u.active ? 'btn-red' : 'btn-gn'}`} onClick={() => toggleActive(u.id)} disabled={u.id === currentUser.id}>
-                        {u.active ? 'Deactivate' : 'Activate'}
-                      </button>
+                      <div style={{ display: 'flex', gap: 5 }}>
+                        <button className="btn btn-gh btn-xs" onClick={() => { setEditUser(u); setShowModal(true) }}>Edit</button>
+                        <button style={toggleBtn(u.active)} onClick={() => toggleActive(u)} disabled={isSelf || saving}>
+                          {u.active ? 'Deactivate' : 'Activate'}
+                        </button>
+                        {!isSelf && (
+                          <button className="btn btn-xs" style={{ background: 'var(--red-bg)', color: 'var(--red)', border: 'none' }} onClick={() => setConfirmDel(u)} disabled={saving}>Del</button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -72,6 +408,22 @@ export default function StaffPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Modals */}
+      {showModal && (
+        <StaffModal
+          editUser={editUser}
+          onSave={saveStaff}
+          onClose={() => { setShowModal(false); setEditUser(null) }}
+        />
+      )}
+      {confirmDel && (
+        <ConfirmModal
+          name={confirmDel.name}
+          onConfirm={() => deleteStaff(confirmDel)}
+          onCancel={() => setConfirmDel(null)}
+        />
+      )}
     </div>
   )
 }

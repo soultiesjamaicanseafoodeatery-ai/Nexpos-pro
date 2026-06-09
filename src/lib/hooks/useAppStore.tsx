@@ -1,11 +1,39 @@
 'use client'
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react'
 import type {
-  User, ModuleKey, Transaction, Shift, AuditEntry,
+  User, UserRole, ModuleKey, Transaction, Shift, AuditEntry,
   BusinessConfig, FleetAccount, POSState, LoyaltyMember, PromoCode,
   CartItem, OrderType,
 } from '@/types'
+
+const STAFF_API = 'https://www.soultiesseafoodjm.com/api/staff'
+
+interface DbStaffRow {
+  id: string
+  name: string
+  ini: string
+  role: string
+  pin_hash: string
+  color: string
+  allowed_modules: string[]
+  active: boolean
+  staff_id: string | null
+}
+
+function dbStaffToUser(row: DbStaffRow): User {
+  return {
+    id: row.id,
+    name: row.name,
+    ini: row.ini,
+    pin_hash: row.pin_hash,
+    role: row.role as UserRole,
+    color: row.color,
+    allowedModules: (row.allowed_modules ?? ['restaurant']) as ModuleKey[],
+    active: row.active,
+    staffId: row.staff_id ?? undefined,
+  }
+}
 import { storage } from '@/lib/utils/storage'
 import {
   SEED_USERS, MODULE_DATA, DEFAULT_BIZ_CONFIG,
@@ -223,12 +251,20 @@ const AppContext = createContext<AppContextValue | null>(null)
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, initState)
 
-  // Seed staff IDs on first load
+  // Load staff from Supabase — overwrites seed/cache on success
+  const staffFetched = useRef(false)
   useEffect(() => {
-    const ids = ['01','02','03','04','05','06']
-    const updated = state.users.map((u, i) => ({ ...u, staffId: u.staffId ?? ids[i] ?? String(10 + i) }))
-    dispatch({ type: 'SET_USERS', users: updated })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (staffFetched.current) return
+    staffFetched.current = true
+    fetch(STAFF_API)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then((rows: unknown) => {
+        if (!Array.isArray(rows) || rows.length === 0) return
+        const users = (rows as DbStaffRow[]).map(dbStaffToUser)
+        dispatch({ type: 'SET_USERS', users })
+        storage.set('users', users)
+      })
+      .catch(() => { /* keep localStorage cache / seed users */ })
   }, [])
 
   // Online/offline detection

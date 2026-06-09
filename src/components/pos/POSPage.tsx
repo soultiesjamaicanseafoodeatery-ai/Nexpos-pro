@@ -35,9 +35,11 @@ export default function POSPage() {
     hasFetched.current = true
 
     // ── Step 1: Load from localStorage immediately (works offline) ──
-    // Normalize handles both raw Supabase format (description/category) and mapped format (desc/cat)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const normMenuItem = (r: any): MenuItem => ({
+    // Handles both raw Supabase format (description/category) and mapped format (desc/cat)
+    type RawItem = MenuItem & { description?: string; category?: string }
+    type RawAddon = Addon & { description?: string }
+
+    const normMenuItem = (r: RawItem): MenuItem => ({
       id: r.id, name: r.name,
       desc: r.desc ?? r.description ?? '',
       price: Number(r.price),
@@ -46,8 +48,7 @@ export default function POSPage() {
       active: r.active ?? true,
       duration: r.duration ?? undefined,
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const normAddon = (r: any): Addon => ({
+    const normAddon = (r: RawAddon): Addon => ({
       id: r.id, name: r.name,
       desc: r.desc ?? r.description ?? '',
       price: Number(r.price),
@@ -55,12 +56,9 @@ export default function POSPage() {
       active: r.active ?? true,
     })
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cachedMenuRaw    = storage.get<any[]>('menu_items')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cachedCarwashRaw = storage.get<any[]>('carwash_services')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cachedAddonsRaw  = storage.get<any[]>('carwash_addons')
+    const cachedMenuRaw    = storage.get<RawItem[]>('menu_items')
+    const cachedCarwashRaw = storage.get<RawItem[]>('carwash_services')
+    const cachedAddonsRaw  = storage.get<RawAddon[]>('carwash_addons')
 
     if (cachedMenuRaw    && cachedMenuRaw.length > 0)
       setLiveMenuItems(cachedMenuRaw.map(normMenuItem).filter(i => i.active))

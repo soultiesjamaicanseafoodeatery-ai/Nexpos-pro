@@ -134,26 +134,31 @@ export default function POSPage() {
     syncFromSupabase()
   }, [])
 
-  // Build the effective module data — overlay live items on top of seed config
+  // Build the effective module data.
+  // Seed items are only used when Supabase is not configured at all (no URL/key).
+  // If Supabase IS configured, show live data (or empty) — never show demo items in production.
   const seedMod = MODULE_DATA[activeModule]
+  const supabaseConfigured = !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
   const mod: ModuleData = {
     ...seedMod,
     items: (() => {
       if (activeModule === 'restaurant' || activeModule === 'bar') {
-        return (liveMenuItems && liveMenuItems.length > 0) ? liveMenuItems : seedMod.items
+        if (liveMenuItems && liveMenuItems.length > 0) return liveMenuItems
+        return supabaseConfigured ? [] : seedMod.items
       }
       if (activeModule === 'carwash') {
-        return (liveCarwashItems && liveCarwashItems.length > 0) ? liveCarwashItems : seedMod.items
+        if (liveCarwashItems && liveCarwashItems.length > 0) return liveCarwashItems
+        return supabaseConfigured ? [] : seedMod.items
       }
-      return seedMod.items
+      return supabaseConfigured ? [] : seedMod.items
     })(),
     addons: (() => {
       if (activeModule === 'carwash') {
-        return (liveAddons && liveAddons.length > 0) ? liveAddons : seedMod.addons
+        if (liveAddons && liveAddons.length > 0) return liveAddons
+        return supabaseConfigured ? [] : seedMod.addons
       }
       return seedMod.addons
     })(),
-    // Rebuild categories from live items if available
     categories: (() => {
       const items = (() => {
         if (activeModule === 'restaurant' || activeModule === 'bar') {
@@ -164,7 +169,7 @@ export default function POSPage() {
         }
         return null
       })()
-      if (!items) return seedMod.categories
+      if (!items) return supabaseConfigured ? ['All'] : seedMod.categories
       const cats = Array.from(new Set(items.map(i => i.cat).filter(Boolean)))
       return ['All', ...cats]
     })(),

@@ -48,7 +48,7 @@ type Action =
   | { type: 'SET_PAGE'; page: string }
   | { type: 'SET_POS_STATE'; mod: ModuleKey; patch: Partial<POSState> }
   | { type: 'ADD_TRANSACTION'; tx: Transaction }
-  | { type: 'ADD_TOAST'; msg: string; toastType: string }
+  | { type: 'ADD_TOAST'; msg: string; toastType: string; id: number }
   | { type: 'REMOVE_TOAST'; id: number }
   | { type: 'SET_USERS'; users: User[] }
   | { type: 'SET_BIZ'; biz: BusinessConfig }
@@ -150,8 +150,7 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, transactions }
     }
     case 'ADD_TOAST': {
-      const id = Date.now()
-      return { ...state, toasts: [...state.toasts, { id, msg: action.msg, type: action.toastType }] }
+      return { ...state, toasts: [...state.toasts, { id: action.id, msg: action.msg, type: action.toastType }] }
     }
     case 'REMOVE_TOAST':
       return { ...state, toasts: state.toasts.filter(t => t.id !== action.id) }
@@ -243,7 +242,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const toast = useCallback((msg: string, type = 'info') => {
     const id = Date.now()
-    dispatch({ type: 'ADD_TOAST', msg, toastType: type })
+    dispatch({ type: 'ADD_TOAST', msg, toastType: type, id })
     setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 3000)
   }, [])
 

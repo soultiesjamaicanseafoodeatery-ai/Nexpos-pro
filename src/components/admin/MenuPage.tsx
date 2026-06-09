@@ -90,15 +90,17 @@ function ConfirmModal({ msg, onConfirm, onCancel }: { msg: string; onConfirm: ()
 
 // ── MenuItem form modal ───────────────────────────────────────
 function MenuItemModal({
-  item, onSave, onClose,
+  item, onSave, onClose, isAddon,
 }: {
   item: Partial<MenuItemRow> | null
   onSave: (data: Omit<MenuItemRow, 'id' | 'created_at'>) => Promise<void>
   onClose: () => void
+  isAddon?: boolean
 }) {
+  const defaultCategory = isAddon ? 'addon' : ''
   const [form, setForm] = useState<Omit<MenuItemRow, 'id' | 'created_at'>>(
-    item ? { name: item.name ?? '', description: item.description ?? '', price: item.price ?? 0, category: item.category ?? '', emoji: item.emoji ?? '🍽️', active: item.active ?? true }
-          : emptyMenuItem()
+    item ? { name: item.name ?? '', description: item.description ?? '', price: item.price ?? 0, category: item.category ?? defaultCategory, emoji: item.emoji ?? '✨', active: item.active ?? true }
+          : { ...emptyMenuItem(), category: defaultCategory, emoji: isAddon ? '✨' : '🍽️' }
   )
   const [saving, setSaving] = useState(false)
   const set = (k: keyof typeof form, v: string | number | boolean) => setForm(f => ({ ...f, [k]: v }))
@@ -106,42 +108,54 @@ function MenuItemModal({
   const submit = async () => {
     if (!form.name.trim()) return
     setSaving(true)
-    await onSave(form)
+    await onSave(isAddon ? { ...form, category: 'addon' } : form)
     setSaving(false)
   }
+
+  const title = isAddon
+    ? (item?.id ? 'Edit Modifier' : 'New Modifier')
+    : (item?.id ? 'Edit Menu Item' : 'New Menu Item')
 
   return (
     <div className="mo-bg" onClick={onClose}>
       <div className="mo" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
         <div className="mh">
-          <span className="mt">{item?.id ? 'Edit Menu Item' : 'New Menu Item'}</span>
+          <span className="mt">{title}</span>
           <button className="mx" onClick={onClose}>×</button>
         </div>
         <div className="mb-c">
           <div style={formRow}>
             <div>
               <label style={label}>Name *</label>
-              <input style={inputStyle} value={form.name} onChange={e => set('name', e.target.value)} placeholder="Item name" />
+              <input style={inputStyle} value={form.name} onChange={e => set('name', e.target.value)} placeholder={isAddon ? 'Modifier name' : 'Item name'} />
             </div>
             <div>
               <label style={label}>Emoji</label>
-              <input style={inputStyle} value={form.emoji} onChange={e => set('emoji', e.target.value)} placeholder="🍽️" />
+              <input style={inputStyle} value={form.emoji} onChange={e => set('emoji', e.target.value)} placeholder={isAddon ? '✨' : '🍽️'} />
             </div>
           </div>
           <div style={{ marginBottom: 12 }}>
             <label style={label}>Description</label>
             <input style={inputStyle} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Short description" />
           </div>
-          <div style={formRow}>
-            <div>
+          <div style={isAddon ? { marginBottom: 12 } : formRow}>
+            <div style={isAddon ? { marginBottom: 12 } : undefined}>
               <label style={label}>Price (JMD)</label>
               <input style={inputStyle} type="number" min={0} step={0.01} value={form.price} onChange={e => set('price', parseFloat(e.target.value) || 0)} />
             </div>
-            <div>
-              <label style={label}>Category</label>
-              <input style={inputStyle} value={form.category} onChange={e => set('category', e.target.value)} placeholder="e.g. Mains, Drinks" />
-            </div>
+            {!isAddon && (
+              <div>
+                <label style={label}>Category</label>
+                <input style={inputStyle} value={form.category} onChange={e => set('category', e.target.value)} placeholder="e.g. Mains, Drinks" />
+              </div>
+            )}
           </div>
+          {isAddon && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={label}>Category</label>
+              <span style={{ ...inputStyle, display: 'inline-block', background: 'var(--surf3)', color: 'var(--txt3)', cursor: 'default' }}>addon</span>
+            </div>
+          )}
           <div>
             <label style={label}>Active</label>
             <button style={toggleBtn(form.active)} onClick={() => set('active', !form.active)}>
@@ -152,7 +166,7 @@ function MenuItemModal({
         <div className="mf">
           <button className="btn btn-gh" onClick={onClose}>Cancel</button>
           <button className="btn btn-pr" onClick={submit} disabled={saving || !form.name.trim()}>
-            {saving ? 'Saving…' : 'Save Item'}
+            {saving ? 'Saving…' : (isAddon ? 'Save Modifier' : 'Save Item')}
           </button>
         </div>
       </div>
@@ -327,6 +341,7 @@ export default function MenuPage() {
   const [editService,  setEditService]  = useState<CarwashServiceRow | null>(null)
   const [editAddon,    setEditAddon]    = useState<CarwashAddonRow | null>(null)
   const [confirmDel, setConfirmDel] = useState<{ table: string; id: string; name: string } | null>(null)
+  const [addingAddon, setAddingAddon] = useState(false)
 
   // Toast (local)
   const [localToast, setLocalToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
@@ -567,7 +582,7 @@ export default function MenuPage() {
           </div>
         </div>
         {tab === 'restaurant' && (
-          <button className="btn btn-pr" onClick={() => { setEditMenuItem(null); setShowMenuModal(true) }}>+ Add Item</button>
+          <button className="btn btn-pr" onClick={() => { setEditMenuItem(null); setAddingAddon(false); setShowMenuModal(true) }}>+ Add Item</button>
         )}
         {tab === 'carwash' && (
           <button className="btn btn-pr" onClick={() => { setEditService(null); setShowSvcModal(true) }}>+ Add Service</button>
@@ -593,55 +608,113 @@ export default function MenuPage() {
 
       {/* ── Restaurant / Bar Tab ── */}
       {tab === 'restaurant' && (
-        <div style={{ ...card, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ overflowY: 'auto', flex: 1 }}>
-            <table className="dt">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Category</th>
-                  <th>Price (JMD)</th>
-                  <th>Status</th>
-                  <th style={{ width: 120 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {menuLoading ? <LoadingRow /> :
-                 menuError ? <ErrorRow msg={menuError} /> :
-                 menuItems.length === 0 ? <EmptyRow cols={5} text="No menu items yet. Click + Add Item to create one." /> :
-                 menuItems.map(item => (
-                  <tr key={item.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontSize: 22, width: 32, textAlign: 'center', flexShrink: 0 }}>{item.emoji || '🍽️'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, overflow: 'hidden' }}>
+          {/* Menu items table */}
+          <div style={{ ...card, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ overflowY: 'auto' }}>
+              <table className="dt">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Category</th>
+                    <th>Price (JMD)</th>
+                    <th>Status</th>
+                    <th style={{ width: 120 }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {menuLoading ? <LoadingRow /> :
+                   menuError ? <ErrorRow msg={menuError} /> :
+                   menuItems.filter(i => i.category !== 'addon').length === 0 ? <EmptyRow cols={5} text="No menu items yet. Click + Add Item to create one." /> :
+                   menuItems.filter(i => i.category !== 'addon').map(item => (
+                    <tr key={item.id}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 22, width: 32, textAlign: 'center', flexShrink: 0 }}>{item.emoji || '🍽️'}</span>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{item.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--txt3)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.description}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="b b-bl" style={{ fontSize: 10 }}>{item.category || '—'}</span>
+                      </td>
+                      <td style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--grn)' }}>
+                        {fmtJMD(item.price)}
+                      </td>
+                      <td>
+                        <button style={toggleBtn(item.active)} onClick={() => toggleMenuActive(item)}>
+                          {item.active ? '✓ Active' : '✗ Inactive'}
+                        </button>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-gh btn-xs" onClick={() => { setEditMenuItem(item); setShowMenuModal(true) }}>Edit</button>
+                          <button className="btn btn-xs" style={{ background: 'var(--red-bg)', color: 'var(--red)', border: 'none' }}
+                            onClick={() => setConfirmDel({ table: 'menu_items', id: item.id, name: item.name })}>Del</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Modifiers / Add-ons section */}
+          <div style={{ ...card, overflow: 'hidden', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>Modifiers / Add-ons</div>
+                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>Shown in the add-ons modal when placing restaurant &amp; bar orders</div>
+              </div>
+              <button className="btn btn-pr" onClick={() => { setEditMenuItem(null); setAddingAddon(true); setShowMenuModal(true) }}>+ Add Modifier</button>
+            </div>
+            <div style={{ overflowY: 'auto' }}>
+              <table className="dt">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Emoji</th>
+                    <th>Price (JMD)</th>
+                    <th>Status</th>
+                    <th style={{ width: 120 }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {menuLoading ? <LoadingRow /> :
+                   menuError ? <ErrorRow msg={menuError} /> :
+                   menuItems.filter(i => i.category === 'addon').length === 0 ? <EmptyRow cols={5} text="No modifiers yet. Click + Add Modifier to create one." /> :
+                   menuItems.filter(i => i.category === 'addon').map(item => (
+                    <tr key={item.id}>
+                      <td>
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{item.name}</div>
                           <div style={{ fontSize: 11, color: 'var(--txt3)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.description}</div>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="b b-bl" style={{ fontSize: 10 }}>{item.category || '—'}</span>
-                    </td>
-                    <td style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--grn)' }}>
-                      {fmtJMD(item.price)}
-                    </td>
-                    <td>
-                      <button style={toggleBtn(item.active)} onClick={() => toggleMenuActive(item)}>
-                        {item.active ? '✓ Active' : '✗ Inactive'}
-                      </button>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-gh btn-xs" onClick={() => { setEditMenuItem(item); setShowMenuModal(true) }}>Edit</button>
-                        <button className="btn btn-xs" style={{ background: 'var(--red-bg)', color: 'var(--red)', border: 'none' }}
-                          onClick={() => setConfirmDel({ table: 'menu_items', id: item.id, name: item.name })}>Del</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                      <td style={{ fontSize: 20, textAlign: 'center' }}>{item.emoji || '✨'}</td>
+                      <td style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--grn)' }}>
+                        {fmtJMD(item.price)}
+                      </td>
+                      <td>
+                        <button style={toggleBtn(item.active)} onClick={() => toggleMenuActive(item)}>
+                          {item.active ? '✓ Active' : '✗ Inactive'}
+                        </button>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-gh btn-xs" onClick={() => { setEditMenuItem(item); setAddingAddon(true); setShowMenuModal(true) }}>Edit</button>
+                          <button className="btn btn-xs" style={{ background: 'var(--red-bg)', color: 'var(--red)', border: 'none' }}
+                            onClick={() => setConfirmDel({ table: 'menu_items', id: item.id, name: item.name })}>Del</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -757,7 +830,8 @@ export default function MenuPage() {
         <MenuItemModal
           item={editMenuItem}
           onSave={saveMenuItem}
-          onClose={() => { setShowMenuModal(false); setEditMenuItem(null) }}
+          onClose={() => { setShowMenuModal(false); setEditMenuItem(null); setAddingAddon(false) }}
+          isAddon={addingAddon}
         />
       )}
       {showSvcModal && (

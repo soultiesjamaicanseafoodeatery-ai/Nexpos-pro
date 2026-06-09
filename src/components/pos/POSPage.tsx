@@ -42,6 +42,7 @@ export default function POSPage() {
   const [liveMenuItems,    setLiveMenuItems]    = useState<MenuItem[] | null>(null)
   const [liveCarwashItems, setLiveCarwashItems] = useState<MenuItem[] | null>(null)
   const [liveAddons,       setLiveAddons]       = useState<Addon[] | null>(null)
+  const [liveRestAddons,   setLiveRestAddons]   = useState<Addon[] | null>(null)
   const hasFetched = useRef(false)
 
   useEffect(() => {
@@ -73,30 +74,44 @@ export default function POSPage() {
     const cachedMenuRaw    = storage.get<RawItem[]>('menu_items')
     const cachedCarwashRaw = storage.get<RawItem[]>('carwash_services')
     const cachedAddonsRaw  = storage.get<RawAddon[]>('carwash_addons')
+    const cachedRestAddonsRaw = storage.get<RawAddon[]>('menu_addons')
 
     if (cachedMenuRaw    && cachedMenuRaw.length > 0)
-      setLiveMenuItems(cachedMenuRaw.map(normMenuItem).filter(i => i.active))
+      setLiveMenuItems(cachedMenuRaw.map(normMenuItem).filter(i => i.active && i.cat !== 'addon'))
     if (cachedCarwashRaw && cachedCarwashRaw.length > 0)
       setLiveCarwashItems(cachedCarwashRaw.map(normMenuItem).filter(i => i.active))
     if (cachedAddonsRaw  && cachedAddonsRaw.length > 0)
       setLiveAddons(cachedAddonsRaw.map(normAddon).filter(i => i.active))
+    if (cachedRestAddonsRaw && cachedRestAddonsRaw.length > 0)
+      setLiveRestAddons(cachedRestAddonsRaw.map(normAddon).filter(i => i.active))
 
     // ── Step 2: Background sync with Supabase ──
     async function syncFromSupabase() {
       if (!supabase) return
       try {
-        // Fetch menu items (restaurant + bar)
+        // Fetch menu items (restaurant + bar + addons)
         const { data: menuData } = await supabase
           .from('menu_items')
           .select('*')
           .eq('active', true)
         if (menuData && menuData.length > 0) {
-          const mapped: MenuItem[] = menuData.map((r: { id: string; name: string; description: string; price: number; category: string; emoji: string; active: boolean }) => ({
+          type MenuRow = { id: string; name: string; description: string; price: number; category: string; emoji: string; active: boolean }
+          const addonRows = (menuData as MenuRow[]).filter(r => r.category === 'addon')
+          const itemRows  = (menuData as MenuRow[]).filter(r => r.category !== 'addon')
+
+          const mappedItems: MenuItem[] = itemRows.map(r => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
             cat: r.category ?? 'All', emoji: r.emoji ?? '🍽️', active: r.active,
           }))
-          setLiveMenuItems(mapped)
-          storage.set('menu_items', mapped)
+          const mappedAddons: Addon[] = addonRows.map(r => ({
+            id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
+            icon: r.emoji ?? '✨', active: r.active,
+          }))
+
+          setLiveMenuItems(mappedItems)
+          setLiveRestAddons(mappedAddons)
+          storage.set('menu_items', mappedItems)
+          storage.set('menu_addons', mappedAddons)
         }
 
         // Fetch carwash services
@@ -157,6 +172,8 @@ export default function POSPage() {
         if (liveAddons && liveAddons.length > 0) return liveAddons
         return supabaseConfigured ? [] : seedMod.addons
       }
+      // restaurant and bar — use Supabase addons if available, else seed fallback
+      if (liveRestAddons && liveRestAddons.length > 0) return liveRestAddons
       return seedMod.addons
     })(),
     categories: (() => {

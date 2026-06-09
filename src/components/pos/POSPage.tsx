@@ -7,6 +7,7 @@ import { calcCart, fmt } from '@/lib/utils/tax'
 import OutsideOrders from './OutsideOrders'
 import { MODULE_DATA } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
+import { storage } from '@/lib/utils/storage'
 
 const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = {
   restaurant: { bg: 'var(--ora-bg, #78350f22)', color: 'var(--ora, #f97316)', label: '🍽 Food' },
@@ -23,19 +24,27 @@ export default function POSPage() {
   const [cwTab,        setCwTab]        = useState<'pos' | 'orders'>('pos')
   const [pendingCount, setPendingCount] = useState(0)
 
-  // Live data from Supabase — overrides seed items when loaded
+  // Live data — loaded from localStorage immediately, refreshed from Supabase in background
   const [liveMenuItems,    setLiveMenuItems]    = useState<MenuItem[] | null>(null)
   const [liveCarwashItems, setLiveCarwashItems] = useState<MenuItem[] | null>(null)
   const [liveAddons,       setLiveAddons]       = useState<Addon[] | null>(null)
-  const [itemsLoading,     setItemsLoading]     = useState(true)
   const hasFetched = useRef(false)
 
   useEffect(() => {
     if (hasFetched.current) return
     hasFetched.current = true
 
-    async function loadLiveData() {
-      if (!supabase) { setItemsLoading(false); return }
+    // ── Step 1: Load from localStorage immediately (works offline) ──
+    const cachedMenu    = storage.get<MenuItem[]>('menu_items')
+    const cachedCarwash = storage.get<MenuItem[]>('carwash_services')
+    const cachedAddons  = storage.get<Addon[]>('carwash_addons')
+    if (cachedMenu    && cachedMenu.length > 0)    setLiveMenuItems(cachedMenu)
+    if (cachedCarwash && cachedCarwash.length > 0) setLiveCarwashItems(cachedCarwash)
+    if (cachedAddons  && cachedAddons.length > 0)  setLiveAddons(cachedAddons)
+
+    // ── Step 2: Background sync with Supabase ──
+    async function syncFromSupabase() {
+      if (!supabase) return
       try {
         // Fetch menu items (restaurant + bar)
         const { data: menuData } = await supabase
@@ -48,6 +57,7 @@ export default function POSPage() {
             cat: r.category ?? 'All', emoji: r.emoji ?? '🍽️', active: r.active,
           }))
           setLiveMenuItems(mapped)
+          storage.set('menu_items', mapped)
         }
 
         // Fetch carwash services
@@ -62,6 +72,7 @@ export default function POSPage() {
             emoji: '🚗', active: r.active, duration: r.duration ?? '',
           }))
           setLiveCarwashItems(mapped)
+          storage.set('carwash_services', mapped)
         }
 
         // Fetch carwash addons
@@ -75,13 +86,13 @@ export default function POSPage() {
             icon: '✨', active: r.active,
           }))
           setLiveAddons(mapped)
+          storage.set('carwash_addons', mapped)
         }
       } catch {
-        // Silently fall back to seed data
+        // Silently keep using cached / seed data
       }
-      setItemsLoading(false)
     }
-    loadLiveData()
+    syncFromSupabase()
   }, [])
 
   // Build the effective module data — overlay live items on top of seed config
@@ -282,11 +293,6 @@ export default function POSPage() {
 
             {/* Item grid */}
             <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-              {itemsLoading && (
-                <div style={{ textAlign: 'center', padding: '12px 0 8px', fontSize: 11, color: 'var(--txt3)', letterSpacing: '.3px', marginBottom: 8 }}>
-                  ⏳ Loading live menu…
-                </div>
-              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {filteredItems.map((item: MenuItem) => {
                   const selected = ps.selItem?.id === item.id

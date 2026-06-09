@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { storage } from '@/lib/utils/storage'
 
 // ── JMD formatter ─────────────────────────────────────────────
 function fmtJMD(n: number): string {
@@ -339,7 +340,11 @@ export default function MenuPage() {
     if (!supabase) { setMenuError('Supabase not configured'); setMenuLoading(false); return }
     const { data, error } = await supabase.from('menu_items').select('*').order('created_at', { ascending: true })
     if (error) setMenuError(error.message)
-    else setMenuItems((data as MenuItemRow[]) ?? [])
+    else {
+      const rows = (data as MenuItemRow[]) ?? []
+      setMenuItems(rows)
+      storage.set('menu_items', rows)
+    }
     setMenuLoading(false)
   }, [])
 
@@ -348,7 +353,11 @@ export default function MenuPage() {
     if (!supabase) { setSvcError('Supabase not configured'); setSvcLoading(false); return }
     const { data, error } = await supabase.from('carwash_services').select('*').order('price', { ascending: true })
     if (error) setSvcError(error.message)
-    else setServices((data as CarwashServiceRow[]) ?? [])
+    else {
+      const rows = (data as CarwashServiceRow[]) ?? []
+      setServices(rows)
+      storage.set('carwash_services', rows)
+    }
     setSvcLoading(false)
   }, [])
 
@@ -357,7 +366,11 @@ export default function MenuPage() {
     if (!supabase) { setAddError('Supabase not configured'); setAddLoading(false); return }
     const { data, error } = await supabase.from('carwash_addons').select('*').order('price', { ascending: true })
     if (error) setAddError(error.message)
-    else setAddons((data as CarwashAddonRow[]) ?? [])
+    else {
+      const rows = (data as CarwashAddonRow[]) ?? []
+      setAddons(rows)
+      storage.set('carwash_addons', rows)
+    }
     setAddLoading(false)
   }, [])
 

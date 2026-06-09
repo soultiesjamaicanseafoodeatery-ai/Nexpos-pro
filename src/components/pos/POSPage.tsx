@@ -2,17 +2,22 @@
 
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import type { MenuItem, Addon, Transaction } from '@/types'
-import { calcOrder, fmt } from '@/lib/utils/tax'
+import type { MenuItem, Addon, Transaction, CartItem, OrderType } from '@/types'
+import { calcCart, fmt } from '@/lib/utils/tax'
 import OutsideOrders from './OutsideOrders'
 import { MODULE_DATA } from '@/lib/data/seed'
 
+const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  restaurant: { bg: 'var(--ora-bg, #78350f22)', color: 'var(--ora, #f97316)', label: '🍽 Food' },
+  bar:        { bg: 'var(--pur-bg, #4c1d9522)', color: 'var(--pur, #a855f7)', label: '🍺 Bar' },
+  carwash:    { bg: 'var(--blue-bg)',            color: 'var(--blue)',          label: '🚗 Wash' },
+}
+
 export default function POSPage() {
   const { state, dispatch, toast, audit } = useApp()
-  const { activeModule, posState, currentUser, biz } = state
+  const { activeModule, posState, currentUser, biz, cart, cartPayMethod, cartOrderType } = state
   const ps  = posState[activeModule]
   const mod = MODULE_DATA[activeModule]
-  const calc = calcOrder(ps, activeModule)
   const sym  = biz.currencySymbol ?? 'J$'
 
   const [cwTab,        setCwTab]        = useState<'pos' | 'orders'>('pos')
@@ -36,40 +41,76 @@ export default function POSPage() {
     setPOS({ selAddons: exists ? ps.selAddons.filter(a => a.id !== addon.id) : [...ps.selAddons, addon] })
   }
 
-  const checkout = () => {
+  const addToCart = () => {
     if (!ps.selItem) { toast('Select an item first', 'warn'); return }
+
+    const cartItem: CartItem = {
+      id: crypto.randomUUID(),
+      itemId: ps.selItem.id,
+      name: ps.selItem.name,
+      price: ps.selItem.price,
+      qty: ps.qty,
+      addons: [...ps.selAddons],
+      module: activeModule,
+      note: ps.note || undefined,
+      plate: activeModule === 'carwash' ? (ps.plate || undefined) : undefined,
+    }
+    dispatch({ type: 'ADD_TO_CART', item: cartItem })
+    toast(`Added: ${ps.selItem.name}`, 'success')
+    setPOS({ selItem: null, selAddons: [], qty: 1, note: '' })
+  }
+
+  const checkout = () => {
+    if (cart.length === 0) { toast('Add items first', 'warn'); return }
     if (!currentUser) return
 
-    const customer = activeModule === 'carwash'
-      ? `${ps.plate || 'Unknown'}${ps.selTable ? ` · ${ps.selTable}` : ''}`
-      : (ps.selTable ? `Table ${ps.selTable}` : ps.customerName || 'Walk-in')
+    const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null })
+
+    const modules = Array.from(new Set(cart.map(ci => ci.module)))
+    const mod2 = modules.length === 1 ? modules[0] : 'mixed' as const
+
+    const plates = Array.from(new Set(cart.filter(ci => ci.plate).map(ci => ci.plate!)))
+    const tableInfo = posState['restaurant'].selTable ? `Table ${posState['restaurant'].selTable}` : ''
+    const customer = plates.length > 0
+      ? plates.join(', ') + (tableInfo ? ` · ${tableInfo}` : '')
+      : (tableInfo || 'Walk-in')
+
+    const itemSummary = cart.length === 1
+      ? `${cart[0].name}${cart[0].qty > 1 ? ` ×${cart[0].qty}` : ''}`
+      : `${cart.length} items (${modules.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(' + ')})`
 
     const tx: Transaction = {
       id: Date.now(),
-      ts: new Date().toLocaleDateString('en-US', { month:'2-digit', day:'2-digit' }) + ' ' +
-          new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' }),
-      mod: activeModule,
+      ts: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' +
+          new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      mod: mod2,
       cashier: currentUser.name,
       userId:  currentUser.id,
       customer,
-      item:    `${ps.selItem.name}${ps.qty > 1 ? ` ×${ps.qty}` : ''}`,
-      addons:  ps.selAddons.map(a => a.name),
+      item:    itemSummary,
+      addons:  cart.flatMap(ci => ci.addons.map(a => a.name)),
       sub:     calc.sub,
       disc:    calc.disc,
-      tax:     calc.gct + calc.legacyTax,
+      tax:     calc.gct + calc.serviceCharge,
       total:   calc.total,
-      pay:     ps.payMethod,
-      orderType:    ps.orderType,
+      pay:     cartPayMethod,
+      orderType: cartOrderType,
       gct:          calc.gct,
       serviceCharge: calc.serviceCharge,
-      note:    ps.note,
+      items: cart,
     }
 
     dispatch({ type: 'ADD_TRANSACTION', tx })
-    audit('CHECKOUT', `${tx.item} — ${fmt(tx.total, sym)}`)
-    toast(`✓ Sale complete — ${fmt(tx.total, sym)}`, 'success')
-    setPOS({ selItem: null, selAddons: [], qty: 1, note: '', selTable: null, customerName: '', plate: '' })
+    dispatch({ type: 'CLEAR_CART' })
+    audit('CHECKOUT', `${itemSummary} — ${fmt(tx.total, sym)}`)
+    toast(`✓ ${fmt(tx.total, sym)} charged`, 'success')
+    dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: null } })
+    dispatch({ type: 'SET_POS_STATE', mod: 'carwash',    patch: { plate: '' } })
   }
+
+  // Cart totals
+  const hasRestaurantItems = cart.some(ci => ci.module === 'restaurant')
+  const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -126,7 +167,7 @@ export default function POSPage() {
       ) : (
 
         /* ── Main POS grid ── */
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 268px 308px', flex: 1, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 268px 324px', flex: 1, overflow: 'hidden' }}>
 
           {/* Col 1 — Item browser */}
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--bdr)' }}>
@@ -180,7 +221,7 @@ export default function POSPage() {
             </div>
           </div>
 
-          {/* Col 2 — Add-ons */}
+          {/* Col 2 — Add-ons + Add to Cart */}
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--bdr)' }}>
             <div style={{ padding: '10px 13px', borderBottom: '1px solid var(--bdr)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>Add-ons</span>
@@ -223,54 +264,122 @@ export default function POSPage() {
                   style={{ width: '100%', background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '8px 10px', fontSize: 12, color: 'var(--txt)', resize: 'none', minHeight: 60 }} />
               </div>
             </div>
+
+            {/* Add to Cart + Clear Selection */}
+            <div style={{ padding: '12px 13px', borderTop: '1px solid var(--bdr)', flexShrink: 0 }}>
+              <button onClick={addToCart} disabled={!ps.selItem} style={{
+                width: '100%', padding: 14, borderRadius: 'var(--r)', fontSize: 14, fontWeight: 800,
+                color: mod.cobText, background: ps.selItem ? mod.color : 'var(--surf3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                cursor: ps.selItem ? 'pointer' : 'not-allowed', border: 'none', transition: 'all .15s', minHeight: 50,
+              }}>
+                + Add to Cart{ps.selItem ? ` (×${ps.qty})` : ''}
+              </button>
+              <button onClick={() => setPOS({ selItem: null, selAddons: [], qty: 1, note: '' })} style={{
+                width: '100%', padding: 9, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700,
+                background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', marginTop: 7,
+                cursor: 'pointer', transition: 'all .12s', minHeight: 38,
+              }}>
+                Clear Selection
+              </button>
+            </div>
           </div>
 
-          {/* Col 3 — Order summary + checkout */}
+          {/* Col 3 — Global Cart */}
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>Order Summary</div>
-              {activeModule === 'carwash' && (ps.plate || ps.selTable) && (
-                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 3, display: 'flex', gap: 10 }}>
-                  {ps.plate    && <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--blue)' }}>🚗 {ps.plate}</span>}
-                  {ps.selTable && <span>📍 {ps.selTable}</span>}
-                </div>
+
+            {/* Cart header */}
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--bdr)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>Bill</span>
+              {cart.length > 0 && (
+                <span style={{ background: 'var(--blue)', color: '#fff', borderRadius: 12, fontSize: 11, fontWeight: 800, padding: '1px 8px', minWidth: 22, textAlign: 'center' }}>
+                  {cart.length}
+                </span>
               )}
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
-              {!ps.selItem ? (
-                <div style={{ textAlign: 'center', padding: '28px 10px', color: 'var(--txt3)' }}>
-                  <div style={{ fontSize: 32, marginBottom: 8, opacity: .4 }}>🧾</div>
-                  <div style={{ fontSize: 12 }}>No items selected</div>
+            {/* Cart item list */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+              {cart.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '36px 10px', color: 'var(--txt3)' }}>
+                  <div style={{ fontSize: 32, marginBottom: 8, opacity: .4 }}>🛒</div>
+                  <div style={{ fontSize: 12 }}>No items yet — add from any module</div>
                 </div>
               ) : (
-                <div style={{ background: 'var(--surf)', borderRadius: 'var(--r)', padding: '11px 12px', marginBottom: 7, display: 'flex', gap: 9 }}>
-                  <div style={{ width: 4, borderRadius: 4, background: mod.color, alignSelf: 'stretch', flexShrink: 0 }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>
-                      {ps.selItem.name} {ps.qty > 1 && <span style={{ color: 'var(--txt3)' }}>×{ps.qty}</span>}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>{fmt(ps.selItem.price, sym)} each</div>
-                    {ps.selAddons.map(a => (
-                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 0', borderBottom: '1px solid var(--bdr)', fontSize: 12 }}>
-                        <span style={{ fontSize: 13 }}>{a.icon}</span>
-                        <span style={{ flex: 1, color: 'var(--txt2)' }}>{a.name}</span>
-                        <span style={{ fontFamily: 'var(--mono)', color: 'var(--txt3)' }}>+{fmt(a.price, sym)}</span>
+                cart.map((ci: CartItem) => {
+                  const badge = MOD_BADGE[ci.module] ?? MOD_BADGE.restaurant
+                  const lineTotal = (ci.price + ci.addons.reduce((s, a) => s + a.price, 0)) * ci.qty
+                  return (
+                    <div key={ci.id} style={{ background: 'var(--surf)', borderRadius: 'var(--r)', marginBottom: 8, display: 'flex', gap: 0, overflow: 'hidden', border: '1px solid var(--bdr)' }}>
+                      {/* Module color bar */}
+                      <div style={{ width: 4, background: badge.color, flexShrink: 0 }} />
+                      <div style={{ flex: 1, padding: '9px 10px' }}>
+                        {/* Module badge + name row */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginBottom: 4 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 8, background: badge.bg, color: badge.color, flexShrink: 0 }}>{badge.label}</span>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', flex: 1, lineHeight: 1.2 }}>{ci.name} <span style={{ color: 'var(--txt3)', fontWeight: 600 }}>×{ci.qty}</span></span>
+                          <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: 'var(--txt)', flexShrink: 0 }}>{fmt(lineTotal, sym)}</span>
+                        </div>
+                        {/* Addons */}
+                        {ci.addons.map(a => (
+                          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                            <span style={{ fontSize: 11 }}>{a.icon}</span>
+                            <span style={{ fontSize: 11, color: 'var(--txt3)', flex: 1 }}>{a.name}</span>
+                            <span style={{ fontSize: 11, color: 'var(--txt3)', fontFamily: 'var(--mono)' }}>+{fmt(a.price, sym)}</span>
+                          </div>
+                        ))}
+                        {/* Plate */}
+                        {ci.plate && (
+                          <div style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--mono)', fontWeight: 700, marginTop: 2 }}>🚗 {ci.plate}</div>
+                        )}
+                        {/* Qty controls + remove */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
+                          <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty - 1 })}
+                            style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>−</button>
+                          <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, minWidth: 18, textAlign: 'center' }}>{ci.qty}</span>
+                          <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty + 1 })}
+                            style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>+</button>
+                          <button onClick={() => dispatch({ type: 'REMOVE_FROM_CART', id: ci.id })}
+                            style={{ marginLeft: 'auto', width: 26, height: 26, borderRadius: 6, background: 'var(--red-bg, #7f1d1d22)', border: '1px solid var(--red-bdr, #ef444433)', color: 'var(--red, #ef4444)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🗑</button>
+                        </div>
                       </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Totals + payment + checkout */}
+            <div style={{ padding: '12px 14px', borderTop: '1px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
+
+              {/* Order type selector — only if restaurant items in cart */}
+              {hasRestaurantItems && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--txt3)', marginBottom: 5 }}>Order Type</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
+                    {(['dine-in', 'takeout', 'delivery'] as OrderType[]).map(ot => (
+                      <button key={ot} onClick={() => dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: ot })} style={{
+                        padding: '7px 4px', borderRadius: 'var(--r)',
+                        border: `2px solid ${cartOrderType === ot ? 'var(--ora, #f97316)' : 'var(--bdr2)'}`,
+                        background: cartOrderType === ot ? 'var(--ora-bg, #78350f22)' : 'var(--surf)',
+                        color: cartOrderType === ot ? 'var(--ora, #f97316)' : 'var(--txt2)',
+                        fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all .12s',
+                      }}>
+                        {ot === 'dine-in' ? '🍽 Dine-in' : ot === 'takeout' ? '🥡 Takeout' : '🛵 Delivery'}
+                      </button>
                     ))}
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* Totals + payment */}
-            <div style={{ padding: '12px 14px', borderTop: '1px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
+              {/* Divider */}
+              <div style={{ height: 1, background: 'var(--bdr)', margin: '6px 0 10px' }} />
+
+              {/* Totals */}
               {([
-                { label: 'Subtotal',                                         value: fmt(calc.sub, sym) },
-                calc.disc > 0           && { label: 'Discount',              value: `-${fmt(calc.disc, sym)}` },
-                calc.gct > 0            && { label: `GCT (${(calc.gctRate*100).toFixed(0)}%)`, value: fmt(calc.gct, sym) },
-                calc.serviceCharge > 0  && { label: `Service (${(calc.scRate*100).toFixed(0)}%)`, value: fmt(calc.serviceCharge, sym) },
-                calc.legacyTax > 0      && { label: 'Tax',                   value: fmt(calc.legacyTax, sym) },
+                { label: 'Subtotal',                                                    value: fmt(calc.sub, sym) },
+                calc.gct > 0           && { label: `GCT (${(calc.gctRate * 100).toFixed(0)}%)`,    value: fmt(calc.gct, sym) },
+                calc.serviceCharge > 0 && { label: `Service (${(calc.scRate * 100).toFixed(0)}%)`, value: fmt(calc.serviceCharge, sym) },
               ].filter(Boolean) as { label: string; value: string }[]).map((row, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: 13 }}>
                   <span style={{ color: 'var(--txt3)' }}>{row.label}</span>
@@ -280,17 +389,17 @@ export default function POSPage() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0', fontSize: 18, fontWeight: 800 }}>
                 <span style={{ color: 'var(--txt)' }}>TOTAL</span>
-                <span style={{ fontFamily: 'var(--mono)', color: mod.color }}>{fmt(calc.total, sym)}</span>
+                <span style={{ fontFamily: 'var(--mono)', color: cart.length > 0 ? 'var(--blue)' : 'var(--txt3)' }}>{fmt(calc.total, sym)}</span>
               </div>
 
               {/* Payment method */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, margin: '10px 0' }}>
                 {[['cash','💵','Cash'],['card','💳','Card'],['tab','📑','Tab'],['qr','📱','QR Pay']].map(([key, ic, lbl]) => (
-                  <button key={key} onClick={() => setPOS({ payMethod: key })} style={{
+                  <button key={key} onClick={() => dispatch({ type: 'SET_CART_PAY', method: key })} style={{
                     padding: '13px 4px', borderRadius: 'var(--r)',
-                    border: `2px solid ${ps.payMethod === key ? 'var(--blue)' : 'var(--bdr2)'}`,
-                    background: ps.payMethod === key ? 'var(--blue-bg)' : 'var(--surf)',
-                    color: ps.payMethod === key ? 'var(--blue)' : 'var(--txt2)',
+                    border: `2px solid ${cartPayMethod === key ? 'var(--blue)' : 'var(--bdr2)'}`,
+                    background: cartPayMethod === key ? 'var(--blue-bg)' : 'var(--surf)',
+                    color: cartPayMethod === key ? 'var(--blue)' : 'var(--txt2)',
                     fontSize: 12, fontWeight: 700, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                     cursor: 'pointer', transition: 'all .12s', minHeight: 60,
                   }}>
@@ -300,17 +409,18 @@ export default function POSPage() {
                 ))}
               </div>
 
-              {/* Checkout */}
-              <button onClick={checkout} disabled={!ps.selItem} style={{
+              {/* Charge button */}
+              <button onClick={checkout} disabled={cart.length === 0} style={{
                 width: '100%', padding: 16, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
-                color: mod.cobText, background: ps.selItem ? mod.color : 'var(--surf3)',
+                color: cart.length > 0 ? '#fff' : 'var(--txt3)',
+                background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                cursor: ps.selItem ? 'pointer' : 'not-allowed', border: 'none', transition: 'all .15s', minHeight: 54,
+                cursor: cart.length > 0 ? 'pointer' : 'not-allowed', border: 'none', transition: 'all .15s', minHeight: 54,
               }}>
-                ✓ Charge {ps.selItem ? fmt(calc.total, sym) : '—'}
+                ✓ Charge {cart.length > 0 ? fmt(calc.total, sym) : '—'}
               </button>
 
-              <button onClick={() => setPOS({ selItem: null, selAddons: [], qty: 1, note: '', selTable: null, customerName: '', plate: '' })} style={{
+              <button onClick={() => dispatch({ type: 'CLEAR_CART' })} style={{
                 width: '100%', padding: 10, borderRadius: 'var(--r2)', fontSize: 12.5, fontWeight: 700,
                 background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', marginTop: 7,
                 cursor: 'pointer', transition: 'all .12s', minHeight: 42,

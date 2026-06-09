@@ -150,11 +150,24 @@ export interface Member {
   billing: MemberBilling
 }
 
+// ── Cart ──────────────────────────────────────────────────────
+export interface CartItem {
+  id: string        // unique cart line id (crypto.randomUUID())
+  itemId: string    // original MenuItem.id
+  name: string
+  price: number     // base price per unit
+  qty: number
+  addons: Addon[]
+  module: ModuleKey
+  note?: string
+  plate?: string    // carwash only
+}
+
 // ── Transactions ──────────────────────────────────────────────
 export interface Transaction {
   id: number
   ts: string
-  mod: ModuleKey
+  mod: ModuleKey | 'mixed'
   cashier: string
   userId: string
   customer: string
@@ -172,6 +185,7 @@ export interface Transaction {
   voided?: boolean
   voidReason?: string
   note?: string
+  items?: CartItem[]
 }
 
 // ── Shifts ────────────────────────────────────────────────────

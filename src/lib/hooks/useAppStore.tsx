@@ -3,7 +3,8 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
 import type {
   User, ModuleKey, Transaction, Shift, AuditEntry,
-  BusinessConfig, FleetAccount, POSState, LoyaltyMember, PromoCode
+  BusinessConfig, FleetAccount, POSState, LoyaltyMember, PromoCode,
+  CartItem, OrderType,
 } from '@/types'
 import { storage } from '@/lib/utils/storage'
 import {
@@ -22,6 +23,10 @@ interface AppState {
   activePage: string
   // POS
   posState: Record<ModuleKey, POSState>
+  // Global Cart
+  cart: CartItem[]
+  cartPayMethod: string
+  cartOrderType: OrderType
   // Data
   transactions: Transaction[]
   shifts: Shift[]
@@ -51,6 +56,12 @@ type Action =
   | { type: 'VOID_TRANSACTION'; id: number; reason: string }
   | { type: 'CLOCK_OUT' }
   | { type: 'SET_ONLINE'; online: boolean }
+  | { type: 'ADD_TO_CART'; item: CartItem }
+  | { type: 'REMOVE_FROM_CART'; id: string }
+  | { type: 'UPDATE_CART_QTY'; id: string; qty: number }
+  | { type: 'CLEAR_CART' }
+  | { type: 'SET_CART_PAY'; method: string }
+  | { type: 'SET_CART_ORDER_TYPE'; orderType: OrderType }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -73,6 +84,9 @@ function initState(): AppState {
       bar:        { ...defaultPOS(), orderType: 'dine-in' },
       carwash:    { ...defaultPOS(), orderType: 'walk-in' as POSState['orderType'] },
     },
+    cart: [],
+    cartPayMethod: 'cash',
+    cartOrderType: 'dine-in',
     transactions: storage.get<Transaction[]>('tx') ?? SEED_TRANSACTIONS,
     shifts: storage.get<Shift[]>('shifts') ?? [],
     audit: storage.get<AuditEntry[]>('audit') ?? [],
@@ -156,6 +170,40 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_ONLINE':
       return { ...state, isOnline: action.online }
+    case 'ADD_TO_CART': {
+      const incoming = action.item
+      // Deduplicate: same itemId + same addon ids + same plate → increment qty
+      const existingIdx = state.cart.findIndex(ci =>
+        ci.itemId === incoming.itemId &&
+        ci.plate === incoming.plate &&
+        ci.addons.length === incoming.addons.length &&
+        ci.addons.every(a => incoming.addons.some(b => b.id === a.id))
+      )
+      if (existingIdx !== -1) {
+        const cart = state.cart.map((ci, idx) =>
+          idx === existingIdx ? { ...ci, qty: ci.qty + incoming.qty } : ci
+        )
+        return { ...state, cart }
+      }
+      return { ...state, cart: [...state.cart, incoming] }
+    }
+    case 'REMOVE_FROM_CART':
+      return { ...state, cart: state.cart.filter(ci => ci.id !== action.id) }
+    case 'UPDATE_CART_QTY': {
+      if (action.qty < 1) {
+        return { ...state, cart: state.cart.filter(ci => ci.id !== action.id) }
+      }
+      return {
+        ...state,
+        cart: state.cart.map(ci => ci.id === action.id ? { ...ci, qty: action.qty } : ci),
+      }
+    }
+    case 'CLEAR_CART':
+      return { ...state, cart: [] }
+    case 'SET_CART_PAY':
+      return { ...state, cartPayMethod: action.method }
+    case 'SET_CART_ORDER_TYPE':
+      return { ...state, cartOrderType: action.orderType }
     default:
       return state
   }

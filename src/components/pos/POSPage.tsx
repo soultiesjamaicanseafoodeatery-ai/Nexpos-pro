@@ -9,6 +9,13 @@ import { MODULE_DATA } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
 import { storage } from '@/lib/utils/storage'
 
+// ── Relational menu types (used by live state in POSPage) ─────
+interface FlavourRow { id: string; name: string; active: boolean }
+interface SideRow { id: string; name: string; price: number; active: boolean }
+interface AddonRow { id: string; name: string; description: string; price: number; icon?: string; active: boolean }
+interface SizeRow { id: string; name: string; sort_order: number; active: boolean }
+interface ItemAssignment { flavour_ids: string[]; side_ids: string[]; addon_ids: string[]; sizes: { size_id: string; price: number }[] }
+
 const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = {
   restaurant: { bg: 'var(--ora-bg, #78350f22)', color: 'var(--ora, #f97316)', label: '🍽 Food' },
   bar:        { bg: 'var(--pur-bg, #4c1d9522)', color: 'var(--pur, #a855f7)', label: '🍺 Bar' },
@@ -29,6 +36,10 @@ export default function POSPage() {
   const [modalAddons, setModalAddons] = useState<Addon[]>([])
   const [modalQty,    setModalQty]    = useState(1)
   const [modalNote,   setModalNote]   = useState('')
+  const [modalFlavourId, setModalFlavourId] = useState<string | null>(null)
+  const [modalSideIds,   setModalSideIds]   = useState<string[]>([])
+  const [modalSizeId,    setModalSizeId]    = useState<string | null>(null)
+  const [modalSizePrice, setModalSizePrice] = useState<number>(0)
   const modalRef = useRef<HTMLDivElement>(null)
 
   // Focus modal when it opens so Escape key works
@@ -43,6 +54,11 @@ export default function POSPage() {
   const [liveCarwashItems, setLiveCarwashItems] = useState<MenuItem[] | null>(null)
   const [liveAddons,       setLiveAddons]       = useState<Addon[] | null>(null)
   const [liveRestAddons,   setLiveRestAddons]   = useState<Addon[] | null>(null)
+  const [liveFlavours,    setLiveFlavours]    = useState<FlavourRow[]>([])
+  const [liveSides,       setLiveSides]       = useState<SideRow[]>([])
+  const [livePosAddons,   setLivePosAddons]   = useState<AddonRow[]>([])
+  const [liveSizesDefs,   setLiveSizesDefs]   = useState<SizeRow[]>([])
+  const [liveAssignments, setLiveAssignments] = useState<Record<string, ItemAssignment>>({})
   const hasFetched = useRef(false)
 
   useEffect(() => {
@@ -84,6 +100,18 @@ export default function POSPage() {
       setLiveAddons(cachedAddonsRaw.map(normAddon).filter(i => i.active))
     if (cachedRestAddonsRaw && cachedRestAddonsRaw.length > 0)
       setLiveRestAddons(cachedRestAddonsRaw.map(normAddon).filter(i => i.active))
+
+    // ── Load relational menu data from localStorage cache ──
+    const cachedFlavours  = storage.get<FlavourRow[]>('pos_flavours')
+    const cachedSides     = storage.get<SideRow[]>('pos_sides')
+    const cachedPosAddons = storage.get<AddonRow[]>('pos_addons')
+    const cachedSizes     = storage.get<SizeRow[]>('pos_sizes')
+    const cachedAssign    = storage.get<Record<string, ItemAssignment>>('pos_assignments')
+    if (cachedFlavours?.length)  setLiveFlavours(cachedFlavours)
+    if (cachedSides?.length)     setLiveSides(cachedSides)
+    if (cachedPosAddons?.length) setLivePosAddons(cachedPosAddons)
+    if (cachedSizes?.length)     setLiveSizesDefs(cachedSizes)
+    if (cachedAssign && Object.keys(cachedAssign).length) setLiveAssignments(cachedAssign)
 
     // ── Step 2: Background sync with Supabase ──
     async function syncFromSupabase() {
@@ -141,6 +169,31 @@ export default function POSPage() {
           }))
           setLiveAddons(mapped)
           storage.set('carwash_addons', mapped)
+        }
+
+        // Fetch flavours, sides, addons, sizes, assignments from website API
+        const WAPI = 'https://www.soultiesseafoodjm.com'
+        const [flvRes, sideRes, addRes, szRes, asgRes] = await Promise.allSettled([
+          fetch(`${WAPI}/api/flavours`).then(r => r.ok ? r.json() : []),
+          fetch(`${WAPI}/api/sides`).then(r => r.ok ? r.json() : []),
+          fetch(`${WAPI}/api/addons`).then(r => r.ok ? r.json() : []),
+          fetch(`${WAPI}/api/sizes`).then(r => r.ok ? r.json() : []),
+          fetch(`${WAPI}/api/assignments`).then(r => r.ok ? r.json() : {}),
+        ])
+        if (flvRes.status === 'fulfilled' && Array.isArray(flvRes.value) && flvRes.value.length > 0) {
+          setLiveFlavours(flvRes.value as FlavourRow[]); storage.set('pos_flavours', flvRes.value)
+        }
+        if (sideRes.status === 'fulfilled' && Array.isArray(sideRes.value) && sideRes.value.length > 0) {
+          setLiveSides(sideRes.value as SideRow[]); storage.set('pos_sides', sideRes.value)
+        }
+        if (addRes.status === 'fulfilled' && Array.isArray(addRes.value) && addRes.value.length > 0) {
+          setLivePosAddons(addRes.value as AddonRow[]); storage.set('pos_addons', addRes.value)
+        }
+        if (szRes.status === 'fulfilled' && Array.isArray(szRes.value) && szRes.value.length > 0) {
+          setLiveSizesDefs(szRes.value as SizeRow[]); storage.set('pos_sizes', szRes.value)
+        }
+        if (asgRes.status === 'fulfilled' && asgRes.value && typeof asgRes.value === 'object') {
+          setLiveAssignments(asgRes.value as Record<string, ItemAssignment>); storage.set('pos_assignments', asgRes.value)
         }
       } catch {
         // Silently keep using cached / seed data
@@ -212,6 +265,10 @@ export default function POSPage() {
   const closeModal = () => {
     setModalItem(null)
     setModalAddons([])
+    setModalFlavourId(null)
+    setModalSideIds([])
+    setModalSizeId(null)
+    setModalSizePrice(0)
     setModalQty(1)
     setModalNote('')
   }
@@ -219,16 +276,24 @@ export default function POSPage() {
   // Add to cart from modal (item with add-ons)
   const addToCart = () => {
     if (!modalItem) return
+    const effectivePrice = modalSizeId ? modalSizePrice : modalItem.price
+    const flavourName = liveFlavours.find(f => f.id === modalFlavourId)?.name
+    const sideName = modalSideIds.map(id => liveSides.find(s => s.id === id)?.name).filter(Boolean) as string[]
+    const sizeName  = liveSizesDefs.find(s => s.id === modalSizeId)?.name
+
     const cartItem: CartItem = {
       id: crypto.randomUUID(),
       itemId: modalItem.id,
       name: modalItem.name,
-      price: modalItem.price,
+      price: effectivePrice,
       qty: modalQty,
       addons: [...modalAddons],
       module: activeModule,
       note: modalNote || undefined,
       plate: activeModule === 'carwash' ? (ps.plate || undefined) : undefined,
+      flavour: flavourName,
+      size: sizeName,
+      sides: sideName.length > 0 ? sideName : undefined,
     }
     dispatch({ type: 'ADD_TO_CART', item: cartItem })
     toast(`Added: ${modalItem.name}`, 'success')
@@ -251,12 +316,22 @@ export default function POSPage() {
     toast(`Added: ${item.name}`, 'success')
   }
 
-  // Handle item click — open modal if addons exist, else add directly
+  // Handle item click — open modal if addons/flavours/sizes/sides exist, else add directly
   const handleItemClick = (item: MenuItem) => {
-    const activeAddons = mod.addons.filter((a: Addon) => a.active)
-    if (activeAddons.length > 0) {
+    const assignment = liveAssignments[item.id]
+    const hasFlavours  = (assignment?.flavour_ids?.length ?? 0) > 0
+    const hasSides     = (assignment?.side_ids?.length ?? 0) > 0
+    const hasSizes     = (assignment?.sizes?.length ?? 0) > 0
+    const hasNewAddons = (assignment?.addon_ids?.length ?? 0) > 0
+    const hasOldAddons = mod.addons.filter((a: Addon) => a.active).length > 0 && !assignment
+
+    if (hasFlavours || hasSides || hasSizes || hasNewAddons || hasOldAddons) {
       setModalItem(item)
       setModalAddons([])
+      setModalFlavourId(null)
+      setModalSideIds([])
+      setModalSizeId(null)
+      setModalSizePrice(item.price)
       setModalQty(1)
       setModalNote('')
     } else {
@@ -463,6 +538,10 @@ export default function POSPage() {
                             <span style={{ fontSize: 11, color: 'var(--txt3)', fontFamily: 'var(--mono)' }}>+{fmt(a.price, sym)}</span>
                           </div>
                         ))}
+                        {/* Flavour / Size / Sides */}
+                        {ci.flavour && <div style={{ fontSize: 11, color: 'var(--ora)', marginBottom: 2 }}>🌶️ {ci.flavour}</div>}
+                        {ci.size    && <div style={{ fontSize: 11, color: 'var(--pur)', marginBottom: 2 }}>📏 {ci.size}</div>}
+                        {ci.sides && ci.sides.length > 0 && <div style={{ fontSize: 11, color: 'var(--grn)', marginBottom: 2 }}>🍚 {ci.sides.join(', ')}</div>}
                         {/* Plate */}
                         {ci.plate && (
                           <div style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--mono)', fontWeight: 700, marginTop: 2 }}>🚗 {ci.plate}</div>
@@ -595,90 +674,175 @@ export default function POSPage() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{modalItem.name}</div>
               </div>
-              <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--mono)', color: mod.color }}>{fmt(modalItem.price, sym)}</div>
+              <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--mono)', color: mod.color }}>
+                {fmt(modalSizeId ? modalSizePrice : modalItem.price, sym)}
+              </div>
             </div>
 
-            {/* Add-ons list */}
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)', maxHeight: 260, overflowY: 'auto' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Add-ons (optional)</div>
-              {activeAddons.map((addon: Addon) => {
-                const checked = modalAddons.some(a => a.id === addon.id)
+            {/* Scrollable modal body */}
+            <div style={{ flex: 1, overflowY: 'auto', maxHeight: '60vh' }}>
+
+              {/* ─── Size picker ─── */}
+              {(() => {
+                const assignment = liveAssignments[modalItem!.id]
+                const itemSizes = (assignment?.sizes ?? []).map(s => ({ ...liveSizesDefs.find(sz => sz.id === s.size_id), price: s.price })).filter(s => s.id)
+                if (itemSizes.length === 0) return null
                 return (
-                  <div
-                    key={addon.id}
-                    onClick={() => toggleModalAddon(addon)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                      borderRadius: 'var(--r)', marginBottom: 6, cursor: 'pointer',
-                      background: checked ? 'var(--surf2)' : 'var(--surf)',
-                      border: `2px solid ${checked ? mod.color : 'var(--bdr)'}`,
-                      transition: 'all .14s',
-                    }}
-                  >
-                    {/* Checkbox */}
-                    <div style={{
-                      width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? mod.color : 'var(--bdr2)'}`,
-                      background: checked ? mod.color : 'transparent', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 11, fontWeight: 800, color: '#fff', transition: 'all .14s',
-                    }}>{checked ? '✓' : ''}</div>
-                    <span style={{ fontSize: 17 }}>{addon.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{addon.name}</div>
-                      {addon.desc && <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{addon.desc}</div>}
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: addon.price === 0 ? 'var(--grn)' : 'var(--txt)', flexShrink: 0 }}>
-                      {addon.price === 0 ? 'Free' : `+${fmt(addon.price, sym)}`}
+                  <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--bdr)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>Size <span style={{ color: 'var(--red)', fontSize: 10 }}>*required</span></div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {itemSizes.map(sz => {
+                        const selected = modalSizeId === sz.id
+                        return (
+                          <button key={sz.id} onClick={() => { setModalSizeId(sz.id!); setModalSizePrice(sz.price) }}
+                            style={{ padding: '8px 16px', borderRadius: 'var(--r)', border: `2px solid ${selected ? mod.color : 'var(--bdr)'}`, background: selected ? 'var(--surf2)' : 'transparent', color: selected ? 'var(--txt)' : 'var(--txt2)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                            {sz.name} — {sym}{sz.price.toLocaleString()}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 )
-              })}
-            </div>
+              })()}
 
-            {/* Qty + Note */}
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)' }}>
-              {/* Qty row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', flex: 1 }}>Qty</span>
-                <button onClick={() => setModalQty(q => Math.max(1, q - 1))} style={{
-                  width: 32, height: 32, borderRadius: 8, background: 'var(--surf2)', border: '1px solid var(--bdr)',
-                  color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, fontWeight: 800,
-                }}>−</button>
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 16, fontWeight: 800, minWidth: 28, textAlign: 'center' }}>{modalQty}</span>
-                <button onClick={() => setModalQty(q => q + 1)} style={{
-                  width: 32, height: 32, borderRadius: 8, background: 'var(--surf2)', border: '1px solid var(--bdr)',
-                  color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, fontWeight: 800,
-                }}>+</button>
+              {/* ─── Flavour picker ─── */}
+              {(() => {
+                const assignment = liveAssignments[modalItem!.id]
+                const itemFlavours = (assignment?.flavour_ids ?? []).map(id => liveFlavours.find(f => f.id === id)).filter(Boolean)
+                if (itemFlavours.length === 0) return null
+                return (
+                  <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--bdr)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>Flavour <span style={{ color: 'var(--red)', fontSize: 10 }}>*required</span></div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {itemFlavours.map(f => {
+                        const selected = modalFlavourId === f!.id
+                        return (
+                          <button key={f!.id} onClick={() => setModalFlavourId(selected ? null : f!.id)}
+                            style={{ padding: '8px 16px', borderRadius: 'var(--r)', border: `2px solid ${selected ? mod.color : 'var(--bdr)'}`, background: selected ? 'var(--surf2)' : 'transparent', color: selected ? 'var(--txt)' : 'var(--txt2)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                            {f!.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* ─── Sides picker ─── */}
+              {(() => {
+                const assignment = liveAssignments[modalItem!.id]
+                const itemSides = (assignment?.side_ids ?? []).map(id => liveSides.find(s => s.id === id)).filter(Boolean)
+                if (itemSides.length === 0) return null
+                return (
+                  <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--bdr)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>Sides (optional)</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {itemSides.map(s => {
+                        const selected = modalSideIds.includes(s!.id)
+                        return (
+                          <button key={s!.id} onClick={() => setModalSideIds(prev => selected ? prev.filter(id => id !== s!.id) : [...prev, s!.id])}
+                            style={{ padding: '8px 16px', borderRadius: 'var(--r)', border: `2px solid ${selected ? mod.color : 'var(--bdr)'}`, background: selected ? 'var(--surf2)' : 'transparent', color: selected ? 'var(--txt)' : 'var(--txt2)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                            {s!.name}{s!.price > 0 ? ` +${sym}${s!.price}` : ''}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* ─── Add-ons ─── */}
+              {(() => {
+                const assignment = liveAssignments[modalItem!.id]
+                let displayAddons: Addon[]
+                if (assignment?.addon_ids?.length > 0) {
+                  displayAddons = assignment.addon_ids.map(id => {
+                    const a = livePosAddons.find(x => x.id === id)
+                    if (!a) return null
+                    return { id: a.id, name: a.name, desc: a.description, price: a.price, icon: a.icon ?? '✨', active: a.active } as Addon
+                  }).filter(Boolean) as Addon[]
+                } else {
+                  displayAddons = activeAddons
+                }
+                if (displayAddons.length === 0) return null
+                return (
+                  <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)', maxHeight: 200, overflowY: 'auto' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Add-ons (optional)</div>
+                    {displayAddons.map((addon: Addon) => {
+                      const checked = modalAddons.some(a => a.id === addon.id)
+                      return (
+                        <div key={addon.id} onClick={() => toggleModalAddon(addon)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 'var(--r)', marginBottom: 6, cursor: 'pointer', background: checked ? 'var(--surf2)' : 'var(--surf)', border: `2px solid ${checked ? mod.color : 'var(--bdr)'}`, transition: 'all .14s' }}>
+                          <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? mod.color : 'var(--bdr2)'}`, background: checked ? mod.color : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>{checked ? '✓' : ''}</div>
+                          <span style={{ fontSize: 17 }}>{addon.icon}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{addon.name}</div>
+                            {addon.desc && <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{addon.desc}</div>}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: addon.price === 0 ? 'var(--grn)' : 'var(--txt)', flexShrink: 0 }}>{addon.price === 0 ? 'Free' : `+${fmt(addon.price, sym)}`}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+
+              {/* Qty + Note */}
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)' }}>
+                {/* Qty row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', flex: 1 }}>Qty</span>
+                  <button onClick={() => setModalQty(q => Math.max(1, q - 1))} style={{
+                    width: 32, height: 32, borderRadius: 8, background: 'var(--surf2)', border: '1px solid var(--bdr)',
+                    color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 16, fontWeight: 800,
+                  }}>−</button>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 16, fontWeight: 800, minWidth: 28, textAlign: 'center' }}>{modalQty}</span>
+                  <button onClick={() => setModalQty(q => q + 1)} style={{
+                    width: 32, height: 32, borderRadius: 8, background: 'var(--surf2)', border: '1px solid var(--bdr)',
+                    color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 16, fontWeight: 800,
+                  }}>+</button>
+                </div>
+                {/* Note */}
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', marginBottom: 5 }}>Note</div>
+                <textarea
+                  value={modalNote}
+                  onChange={e => setModalNote(e.target.value)}
+                  placeholder="Special instructions..."
+                  rows={2}
+                  style={{
+                    width: '100%', background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)',
+                    padding: '8px 10px', fontSize: 12, color: 'var(--txt)', resize: 'none', boxSizing: 'border-box',
+                  }}
+                />
               </div>
-              {/* Note */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', marginBottom: 5 }}>Note</div>
-              <textarea
-                value={modalNote}
-                onChange={e => setModalNote(e.target.value)}
-                placeholder="Special instructions..."
-                rows={2}
-                style={{
-                  width: '100%', background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)',
-                  padding: '8px 10px', fontSize: 12, color: 'var(--txt)', resize: 'none', boxSizing: 'border-box',
-                }}
-              />
-            </div>
+
+            </div>{/* end scrollable body */}
 
             {/* Footer — Cancel + Add to Cart */}
-            <div style={{ padding: '14px 18px', display: 'flex', gap: 10 }}>
-              <button onClick={closeModal} style={{
-                flex: 1, padding: '12px 8px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700,
-                background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)',
-                cursor: 'pointer', transition: 'all .12s',
-              }}>Cancel</button>
-              <button onClick={addToCart} style={{
-                flex: 2, padding: '12px 8px', borderRadius: 'var(--r)', fontSize: 14, fontWeight: 800,
-                background: mod.color, color: mod.cobText, border: 'none',
-                cursor: 'pointer', transition: 'all .15s',
-              }}>Add to Cart ×{modalQty}</button>
-            </div>
+            {(() => {
+              const assignment = modalItem ? liveAssignments[modalItem.id] : null
+              const needsSize    = (assignment?.sizes?.length ?? 0) > 0 && !modalSizeId
+              const needsFlavour = (assignment?.flavour_ids?.length ?? 0) > 0 && !modalFlavourId
+              const canAddToCart = !needsSize && !needsFlavour
+              return (
+                <div style={{ padding: '14px 18px', display: 'flex', gap: 10 }}>
+                  <button onClick={closeModal} style={{
+                    flex: 1, padding: '12px 8px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700,
+                    background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)',
+                    cursor: 'pointer', transition: 'all .12s',
+                  }}>Cancel</button>
+                  <button onClick={addToCart} disabled={!canAddToCart} style={{
+                    flex: 2, padding: '12px 8px', borderRadius: 'var(--r)', fontSize: 14, fontWeight: 800,
+                    background: canAddToCart ? mod.color : 'var(--surf3)', color: canAddToCart ? mod.cobText : 'var(--txt3)', border: 'none',
+                    cursor: canAddToCart ? 'pointer' : 'not-allowed', transition: 'all .15s',
+                  }}>
+                    {needsSize ? 'Select a size' : needsFlavour ? 'Select a flavour' : `Add to Cart ×${modalQty}`}
+                  </button>
+                </div>
+              )
+            })()}
           </div>
         </div>
       )}

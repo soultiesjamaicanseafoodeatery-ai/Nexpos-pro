@@ -1,15 +1,16 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
 import { storage } from '@/lib/utils/storage'
+
+const API = 'https://www.soultiesseafoodjm.com'
 
 // ── JMD formatter ─────────────────────────────────────────────
 function fmtJMD(n: number): string {
   return 'J$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// ── Types for Supabase rows ────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────
 interface MenuItemRow {
   id: string
   name: string
@@ -337,126 +338,188 @@ export default function MenuPage() {
   // ── Fetch helpers ─────────────────────────────────────────
   const fetchMenuItems = useCallback(async () => {
     setMenuLoading(true); setMenuError(null)
-    if (!supabase) { setMenuError('Supabase not configured'); setMenuLoading(false); return }
-    const { data, error } = await supabase.from('menu_items').select('*').order('created_at', { ascending: true })
-    if (error) setMenuError(error.message)
-    else {
-      const rows = (data as MenuItemRow[]) ?? []
+    try {
+      const res = await fetch(`${API}/api/menu`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const rows: MenuItemRow[] = await res.json()
       setMenuItems(rows)
       storage.set('menu_items', rows)
+    } catch (e: unknown) {
+      setMenuError(e instanceof Error ? e.message : 'Failed to load menu items')
     }
     setMenuLoading(false)
   }, [])
 
-  const fetchServices = useCallback(async () => {
+  const fetchCarwash = useCallback(async () => {
     setSvcLoading(true); setSvcError(null)
-    if (!supabase) { setSvcError('Supabase not configured'); setSvcLoading(false); return }
-    const { data, error } = await supabase.from('carwash_services').select('*').order('price', { ascending: true })
-    if (error) setSvcError(error.message)
-    else {
-      const rows = (data as CarwashServiceRow[]) ?? []
-      setServices(rows)
-      storage.set('carwash_services', rows)
+    setAddLoading(true); setAddError(null)
+    try {
+      const res = await fetch(`${API}/api/carwash`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: { services: CarwashServiceRow[]; addons: CarwashAddonRow[] } = await res.json()
+      const svcRows = data.services ?? []
+      const addRows = data.addons ?? []
+      setServices(svcRows)
+      storage.set('carwash_services', svcRows)
+      setAddons(addRows)
+      storage.set('carwash_addons', addRows)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to load carwash data'
+      setSvcError(msg)
+      setAddError(msg)
     }
     setSvcLoading(false)
-  }, [])
-
-  const fetchAddons = useCallback(async () => {
-    setAddLoading(true); setAddError(null)
-    if (!supabase) { setAddError('Supabase not configured'); setAddLoading(false); return }
-    const { data, error } = await supabase.from('carwash_addons').select('*').order('price', { ascending: true })
-    if (error) setAddError(error.message)
-    else {
-      const rows = (data as CarwashAddonRow[]) ?? []
-      setAddons(rows)
-      storage.set('carwash_addons', rows)
-    }
     setAddLoading(false)
   }, [])
 
   useEffect(() => { fetchMenuItems() }, [fetchMenuItems])
-  useEffect(() => { fetchServices() }, [fetchServices])
-  useEffect(() => { fetchAddons() }, [fetchAddons])
+  useEffect(() => { fetchCarwash() }, [fetchCarwash])
 
   // ── Menu item CRUD ────────────────────────────────────────
   const saveMenuItem = async (form: Omit<MenuItemRow, 'id' | 'created_at'>) => {
-    if (!supabase) { showToast('Supabase not configured', 'error'); return }
-    if (editMenuItem) {
-      const { error } = await supabase.from('menu_items').update(form).eq('id', editMenuItem.id)
-      if (error) { showToast(error.message, 'error'); return }
-      showToast('Item updated')
-    } else {
-      const { error } = await supabase.from('menu_items').insert(form)
-      if (error) { showToast(error.message, 'error'); return }
-      showToast('Item added')
+    try {
+      if (editMenuItem) {
+        const res = await fetch(`${API}/api/menu`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editMenuItem.id, ...form }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        showToast('Item updated')
+      } else {
+        const res = await fetch(`${API}/api/menu`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        showToast('Item added')
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Save failed', 'error'); return
     }
     setShowMenuModal(false); setEditMenuItem(null)
     await fetchMenuItems()
   }
 
   const toggleMenuActive = async (item: MenuItemRow) => {
-    if (!supabase) return
-    const { error } = await supabase.from('menu_items').update({ active: !item.active }).eq('id', item.id)
-    if (error) showToast(error.message, 'error')
-    else { showToast(item.active ? 'Item deactivated' : 'Item activated'); await fetchMenuItems() }
+    try {
+      const res = await fetch(`${API}/api/menu`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, name: item.name, description: item.description, price: item.price, category: item.category, emoji: item.emoji, active: !item.active }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      showToast(item.active ? 'Item deactivated' : 'Item activated')
+      await fetchMenuItems()
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Toggle failed', 'error')
+    }
   }
 
   // ── Carwash service CRUD ──────────────────────────────────
   const saveService = async (form: Omit<CarwashServiceRow, 'id'>) => {
-    if (!supabase) { showToast('Supabase not configured', 'error'); return }
-    if (editService) {
-      const { error } = await supabase.from('carwash_services').update(form).eq('id', editService.id)
-      if (error) { showToast(error.message, 'error'); return }
-      showToast('Service updated')
-    } else {
-      const { error } = await supabase.from('carwash_services').insert(form)
-      if (error) { showToast(error.message, 'error'); return }
-      showToast('Service added')
+    try {
+      if (editService) {
+        const res = await fetch(`${API}/api/carwash`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: 'service', id: editService.id, ...form }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        showToast('Service updated')
+      } else {
+        const res = await fetch(`${API}/api/carwash`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: 'service', ...form }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        showToast('Service added')
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Save failed', 'error'); return
     }
     setShowSvcModal(false); setEditService(null)
-    await fetchServices()
+    await fetchCarwash()
   }
 
   const toggleServiceActive = async (item: CarwashServiceRow) => {
-    if (!supabase) return
-    const { error } = await supabase.from('carwash_services').update({ active: !item.active }).eq('id', item.id)
-    if (error) showToast(error.message, 'error')
-    else { showToast(item.active ? 'Service deactivated' : 'Service activated'); await fetchServices() }
+    try {
+      const res = await fetch(`${API}/api/carwash`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: 'service', id: item.id, name: item.name, description: item.description, price: item.price, duration: item.duration, active: !item.active, vehicle_type: item.vehicle_type }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      showToast(item.active ? 'Service deactivated' : 'Service activated')
+      await fetchCarwash()
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Toggle failed', 'error')
+    }
   }
 
   // ── Addon CRUD ────────────────────────────────────────────
   const saveAddon = async (form: Omit<CarwashAddonRow, 'id'>) => {
-    if (!supabase) { showToast('Supabase not configured', 'error'); return }
-    if (editAddon) {
-      const { error } = await supabase.from('carwash_addons').update(form).eq('id', editAddon.id)
-      if (error) { showToast(error.message, 'error'); return }
-      showToast('Add-on updated')
-    } else {
-      const { error } = await supabase.from('carwash_addons').insert(form)
-      if (error) { showToast(error.message, 'error'); return }
-      showToast('Add-on added')
+    try {
+      if (editAddon) {
+        const res = await fetch(`${API}/api/carwash`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: 'addon', id: editAddon.id, ...form }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        showToast('Add-on updated')
+      } else {
+        const res = await fetch(`${API}/api/carwash`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: 'addon', ...form }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        showToast('Add-on added')
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Save failed', 'error'); return
     }
     setShowAddModal(false); setEditAddon(null)
-    await fetchAddons()
+    await fetchCarwash()
   }
 
   const toggleAddonActive = async (item: CarwashAddonRow) => {
-    if (!supabase) return
-    const { error } = await supabase.from('carwash_addons').update({ active: !item.active }).eq('id', item.id)
-    if (error) showToast(error.message, 'error')
-    else { showToast(item.active ? 'Add-on deactivated' : 'Add-on activated'); await fetchAddons() }
+    try {
+      const res = await fetch(`${API}/api/carwash`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: 'addon', id: item.id, name: item.name, description: item.description, price: item.price, duration_minutes: item.duration_minutes, active: !item.active }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      showToast(item.active ? 'Add-on deactivated' : 'Add-on activated')
+      await fetchCarwash()
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Toggle failed', 'error')
+    }
   }
 
   // ── Delete ────────────────────────────────────────────────
   const deleteItem = async () => {
-    if (!confirmDel || !supabase) return
-    const { error } = await supabase.from(confirmDel.table).delete().eq('id', confirmDel.id)
-    if (error) { showToast(error.message, 'error') }
-    else {
+    if (!confirmDel) return
+    try {
+      let url: string
+      if (confirmDel.table === 'menu_items') {
+        url = `${API}/api/menu?id=${encodeURIComponent(confirmDel.id)}`
+      } else if (confirmDel.table === 'carwash_services') {
+        url = `${API}/api/carwash?target=service&id=${encodeURIComponent(confirmDel.id)}`
+      } else {
+        url = `${API}/api/carwash?target=addon&id=${encodeURIComponent(confirmDel.id)}`
+      }
+      const res = await fetch(url, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       showToast('Deleted')
       if (confirmDel.table === 'menu_items') await fetchMenuItems()
-      else if (confirmDel.table === 'carwash_services') await fetchServices()
-      else await fetchAddons()
+      else await fetchCarwash()
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Delete failed', 'error')
     }
     setConfirmDel(null)
   }

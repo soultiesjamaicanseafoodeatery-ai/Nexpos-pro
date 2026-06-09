@@ -8,6 +8,7 @@ import TransactionsPage from '@/components/admin/TransactionsPage'
 import ReportsPage from '@/components/admin/ReportsPage'
 import StaffPage from '@/components/admin/StaffPage'
 import PlaceholderPage from '@/components/shared/PlaceholderPage'
+import MenuPage from '@/components/admin/MenuPage'
 
 export default function AppShell() {
   const { state } = useApp()
@@ -19,6 +20,7 @@ export default function AppShell() {
       case 'transactions': return <TransactionsPage />
       case 'reports':      return <ReportsPage />
       case 'staff':        return <StaffPage />
+      case 'menu':         return <MenuPage />
       case 'tables':       return <PlaceholderPage icon="🪑" title="Tables" desc="Table management view coming soon." />
       case 'members':      return <PlaceholderPage icon="💳" title="Members" desc="Membership management coming soon." />
       case 'fleet':        return <PlaceholderPage icon="🚛" title="Fleet Accounts" desc="Fleet management coming soon." />

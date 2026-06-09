@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import type { MenuItem, Addon, Transaction, CartItem, OrderType } from '@/types'
+import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData } from '@/types'
 import { calcCart, fmt } from '@/lib/utils/tax'
 import OutsideOrders from './OutsideOrders'
 import { MODULE_DATA } from '@/lib/data/seed'
+import { supabase } from '@/lib/supabase'
 
 const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = {
   restaurant: { bg: 'var(--ora-bg, #78350f22)', color: 'var(--ora, #f97316)', label: '🍽 Food' },
@@ -17,11 +18,107 @@ export default function POSPage() {
   const { state, dispatch, toast, audit } = useApp()
   const { activeModule, posState, currentUser, biz, cart, cartPayMethod, cartOrderType } = state
   const ps  = posState[activeModule]
-  const mod = MODULE_DATA[activeModule]
   const sym  = biz.currencySymbol ?? 'J$'
 
   const [cwTab,        setCwTab]        = useState<'pos' | 'orders'>('pos')
   const [pendingCount, setPendingCount] = useState(0)
+
+  // Live data from Supabase — overrides seed items when loaded
+  const [liveMenuItems,    setLiveMenuItems]    = useState<MenuItem[] | null>(null)
+  const [liveCarwashItems, setLiveCarwashItems] = useState<MenuItem[] | null>(null)
+  const [liveAddons,       setLiveAddons]       = useState<Addon[] | null>(null)
+  const [itemsLoading,     setItemsLoading]     = useState(true)
+  const hasFetched = useRef(false)
+
+  useEffect(() => {
+    if (hasFetched.current) return
+    hasFetched.current = true
+
+    async function loadLiveData() {
+      if (!supabase) { setItemsLoading(false); return }
+      try {
+        // Fetch menu items (restaurant + bar)
+        const { data: menuData } = await supabase
+          .from('menu_items')
+          .select('*')
+          .eq('active', true)
+        if (menuData && menuData.length > 0) {
+          const mapped: MenuItem[] = menuData.map((r: { id: string; name: string; description: string; price: number; category: string; emoji: string; active: boolean }) => ({
+            id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
+            cat: r.category ?? 'All', emoji: r.emoji ?? '🍽️', active: r.active,
+          }))
+          setLiveMenuItems(mapped)
+        }
+
+        // Fetch carwash services
+        const { data: cwData } = await supabase
+          .from('carwash_services')
+          .select('*')
+          .eq('active', true)
+        if (cwData && cwData.length > 0) {
+          const mapped: MenuItem[] = cwData.map((r: { id: string; name: string; description: string; price: number; duration: string; active: boolean; vehicle_type: string }) => ({
+            id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
+            cat: r.vehicle_type ? (r.vehicle_type.charAt(0).toUpperCase() + r.vehicle_type.slice(1)) : 'All',
+            emoji: '🚗', active: r.active, duration: r.duration ?? '',
+          }))
+          setLiveCarwashItems(mapped)
+        }
+
+        // Fetch carwash addons
+        const { data: addData } = await supabase
+          .from('carwash_addons')
+          .select('*')
+          .eq('active', true)
+        if (addData && addData.length > 0) {
+          const mapped: Addon[] = addData.map((r: { id: string; name: string; description: string; price: number; active: boolean }) => ({
+            id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
+            icon: '✨', active: r.active,
+          }))
+          setLiveAddons(mapped)
+        }
+      } catch {
+        // Silently fall back to seed data
+      }
+      setItemsLoading(false)
+    }
+    loadLiveData()
+  }, [])
+
+  // Build the effective module data — overlay live items on top of seed config
+  const seedMod = MODULE_DATA[activeModule]
+  const mod: ModuleData = {
+    ...seedMod,
+    items: (() => {
+      if (activeModule === 'restaurant' || activeModule === 'bar') {
+        return (liveMenuItems && liveMenuItems.length > 0) ? liveMenuItems : seedMod.items
+      }
+      if (activeModule === 'carwash') {
+        return (liveCarwashItems && liveCarwashItems.length > 0) ? liveCarwashItems : seedMod.items
+      }
+      return seedMod.items
+    })(),
+    addons: (() => {
+      if (activeModule === 'carwash') {
+        return (liveAddons && liveAddons.length > 0) ? liveAddons : seedMod.addons
+      }
+      return seedMod.addons
+    })(),
+    // Rebuild categories from live items if available
+    categories: (() => {
+      const items = (() => {
+        if (activeModule === 'restaurant' || activeModule === 'bar') {
+          return (liveMenuItems && liveMenuItems.length > 0) ? liveMenuItems : null
+        }
+        if (activeModule === 'carwash') {
+          return (liveCarwashItems && liveCarwashItems.length > 0) ? liveCarwashItems : null
+        }
+        return null
+      })()
+      if (!items) return seedMod.categories
+      const cats = Array.from(new Set(items.map(i => i.cat).filter(Boolean)))
+      return ['All', ...cats]
+    })(),
+  }
 
   const cats          = ['All', ...mod.categories.filter((c: string) => c !== 'All')]
   const filteredItems = ps.cat === 'All'
@@ -185,6 +282,11 @@ export default function POSPage() {
 
             {/* Item grid */}
             <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+              {itemsLoading && (
+                <div style={{ textAlign: 'center', padding: '12px 0 8px', fontSize: 11, color: 'var(--txt3)', letterSpacing: '.3px', marginBottom: 8 }}>
+                  ⏳ Loading live menu…
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {filteredItems.map((item: MenuItem) => {
                   const selected = ps.selItem?.id === item.id

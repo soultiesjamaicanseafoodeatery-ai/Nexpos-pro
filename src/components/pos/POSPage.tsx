@@ -124,17 +124,18 @@ export default function POSPage() {
           .select('*')
           .eq('is_available', true)
         if (menuData && menuData.length > 0) {
-          type MenuRow = { id: string; name: string; description: string; price: number; category: string; emoji: string; active: boolean }
+          type MenuRow = { id: string; name: string; description: string; price: number; category: string; emoji: string; is_available: boolean; module?: string }
           const addonRows = (menuData as MenuRow[]).filter(r => r.category === 'addon')
           const itemRows  = (menuData as MenuRow[]).filter(r => r.category !== 'addon')
 
           const mappedItems: MenuItem[] = itemRows.map(r => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
-            cat: r.category ?? 'All', emoji: r.emoji ?? '', active: r.active,
+            cat: r.category ?? 'All', emoji: r.emoji ?? '', active: r.is_available ?? true,
+            module: r.module,
           }))
           const mappedAddons: Addon[] = addonRows.map(r => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
-            icon: r.emoji ?? '✨', active: r.active,
+            icon: r.emoji ?? '', active: r.is_available ?? true,
           }))
 
           setLiveMenuItems(mappedItems)
@@ -212,7 +213,14 @@ export default function POSPage() {
     ...seedMod,
     items: (() => {
       if (activeModule === 'restaurant' || activeModule === 'bar') {
-        if (liveMenuItems && liveMenuItems.length > 0) return liveMenuItems
+        if (liveMenuItems && liveMenuItems.length > 0) {
+          const modItems = liveMenuItems.filter(i =>
+            activeModule === 'bar'
+              ? i.module === 'bar'
+              : (i.module === 'restaurant' || !i.module)
+          )
+          return modItems
+        }
         return supabaseConfigured ? [] : seedMod.items
       }
       if (activeModule === 'carwash') {
@@ -231,18 +239,26 @@ export default function POSPage() {
       return seedMod.addons
     })(),
     categories: (() => {
-      const items = (() => {
-        if (activeModule === 'restaurant' || activeModule === 'bar') {
-          return (liveMenuItems && liveMenuItems.length > 0) ? liveMenuItems : null
+      if (activeModule === 'restaurant' || activeModule === 'bar') {
+        if (liveMenuItems && liveMenuItems.length > 0) {
+          const modItems = liveMenuItems.filter(i =>
+            activeModule === 'bar'
+              ? i.module === 'bar'
+              : (i.module === 'restaurant' || !i.module)
+          )
+          const cats = Array.from(new Set(modItems.map(i => i.cat).filter(Boolean)))
+          return ['All', ...cats]
         }
-        if (activeModule === 'carwash') {
-          return (liveCarwashItems && liveCarwashItems.length > 0) ? liveCarwashItems : null
+        return supabaseConfigured ? ['All'] : seedMod.categories
+      }
+      if (activeModule === 'carwash') {
+        if (liveCarwashItems && liveCarwashItems.length > 0) {
+          const cats = Array.from(new Set(liveCarwashItems.map(i => i.cat).filter(Boolean)))
+          return ['All', ...cats]
         }
-        return null
-      })()
-      if (!items) return supabaseConfigured ? ['All'] : seedMod.categories
-      const cats = Array.from(new Set(items.map(i => i.cat).filter(Boolean)))
-      return ['All', ...cats]
+        return supabaseConfigured ? ['All'] : seedMod.categories
+      }
+      return supabaseConfigured ? ['All'] : seedMod.categories
     })(),
   }
 

@@ -31,6 +31,7 @@ export interface MenuItem {
   cat: string
   emoji: string
   active: boolean
+  module?: string
   duration?: string
   gradient?: string
   accent?: string
@@ -162,6 +163,9 @@ export interface CartItem {
   module: ModuleKey
   note?: string
   plate?: string    // carwash only
+  flavour?: string  // selected flavour name
+  size?: string     // selected size name
+  sides?: string[]  // selected side names
 }
 
 // ── Transactions ──────────────────────────────────────────────

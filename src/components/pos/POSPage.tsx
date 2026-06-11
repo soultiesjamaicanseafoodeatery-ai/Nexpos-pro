@@ -68,7 +68,7 @@ export default function POSPage() {
 
     // ── Step 1: Load from localStorage immediately (works offline) ──
     // Handles both raw Supabase format (description/category) and mapped format (desc/cat)
-    type RawItem = MenuItem & { description?: string; category?: string }
+    type RawItem = MenuItem & { description?: string; category?: string; is_available?: boolean }
     type RawAddon = Addon & { description?: string }
 
     const normMenuItem = (r: RawItem): MenuItem => ({
@@ -77,7 +77,8 @@ export default function POSPage() {
       price: Number(r.price),
       cat: r.cat ?? r.category ?? 'All',
       emoji: r.emoji ?? '',
-      active: r.active ?? true,
+      active: r.active ?? r.is_available ?? true,
+      module: r.module,
       duration: r.duration ?? undefined,
     })
     const normAddon = (r: RawAddon): Addon => ({

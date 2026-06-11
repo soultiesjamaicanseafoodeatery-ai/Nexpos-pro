@@ -10,11 +10,44 @@ import StaffPage from '@/components/admin/StaffPage'
 import PlaceholderPage from '@/components/shared/PlaceholderPage'
 import MenuPage from '@/components/admin/MenuPage'
 
+// Roles allowed per page — must match Sidebar NAV_ITEMS
+const PAGE_ROLES: Record<string, string[]> = {
+  pos:          ['admin','manager','supervisor','cashier','bartender','attendant'],
+  tables:       ['admin','manager','supervisor','cashier'],
+  transactions: ['admin','manager','supervisor','cashier','bartender','attendant'],
+  reports:      ['admin','manager'],
+  staff:        ['admin','manager'],
+  menu:         ['admin','manager'],
+  settings:     ['admin'],
+  audit:        ['admin'],
+  shifts:       ['admin','manager'],
+  members:      ['admin','manager'],
+  fleet:        ['admin','manager'],
+  loyalty:      ['admin','manager'],
+  promos:       ['admin','manager'],
+  bookings:     ['admin','manager','supervisor'],
+  inventory:    ['admin','manager'],
+  satisfaction: ['admin','manager'],
+  targets:      ['admin','manager'],
+}
+
+const ACCESS_DENIED = (
+  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--txt3)' }}>
+    <div style={{ fontSize: 40 }}>🔒</div>
+    <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>Access Denied</div>
+    <div style={{ fontSize: 13 }}>You do not have permission to view this page.</div>
+  </div>
+)
+
 export default function AppShell() {
   const { state } = useApp()
-  const { activePage } = state
+  const { activePage, currentUser } = state
+
+  const role = currentUser?.role ?? ''
+  const allowed = (page: string) => (PAGE_ROLES[page] ?? ['admin']).includes(role)
 
   function renderPage() {
+    if (!allowed(activePage)) return ACCESS_DENIED
     switch (activePage) {
       case 'pos':          return <POSPage />
       case 'transactions': return <TransactionsPage />

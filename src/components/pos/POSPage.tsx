@@ -115,37 +115,41 @@ export default function POSPage() {
     if (cachedSizes?.length)     setLiveSizesDefs(cachedSizes)
     if (cachedAssign && Object.keys(cachedAssign).length) setLiveAssignments(cachedAssign)
 
-    // ── Step 2: Background sync with Supabase ──
+    // ── Step 2: Background sync ──
     async function syncFromSupabase() {
-      if (!supabase) return
+      const WAPI = 'https://www.soultiesseafoodjm.com'
       try {
-        // Fetch menu items (restaurant + bar + addons)
-        const { data: menuData } = await supabase
-          .from('menu_items')
-          .select('*')
-          .eq('is_available', true)
-        if (menuData && menuData.length > 0) {
-          type MenuRow = { id: string; name: string; description: string; price: number; category: string; emoji: string; is_available: boolean; module?: string }
-          const addonRows = (menuData as MenuRow[]).filter(r => r.category === 'addon')
-          const itemRows  = (menuData as MenuRow[]).filter(r => r.category !== 'addon')
+        // ── Menu items via website API (same source as Menu Manager) ──
+        const menuRes = await fetch(`${WAPI}/api/menu`)
+        if (menuRes.ok) {
+          type ApiItem = { id: string; name: string; description?: string; price: number; category: string; emoji?: string; active?: boolean; is_available?: boolean; module?: string }
+          const allItems: ApiItem[] = await menuRes.json()
+          const addonRows = allItems.filter(r => r.category === 'addon')
+          const itemRows  = allItems.filter(r => r.category !== 'addon')
 
           const mappedItems: MenuItem[] = itemRows.map(r => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
-            cat: r.category ?? 'All', emoji: r.emoji ?? '', active: r.is_available ?? true,
+            cat: r.category ?? 'All', emoji: r.emoji ?? '',
+            active: r.active ?? r.is_available ?? true,
             module: r.module,
           }))
           const mappedAddons: Addon[] = addonRows.map(r => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
-            icon: r.emoji ?? '', active: r.is_available ?? true,
+            icon: r.emoji ?? '', active: r.active ?? r.is_available ?? true,
           }))
 
-          setLiveMenuItems(mappedItems)
-          setLiveRestAddons(mappedAddons)
-          storage.set('menu_items', mappedItems)
-          storage.set('menu_addons', mappedAddons)
+          if (mappedItems.length > 0) {
+            setLiveMenuItems(mappedItems)
+            setLiveRestAddons(mappedAddons)
+            storage.set('menu_items', mappedItems)
+            storage.set('menu_addons', mappedAddons)
+          }
         }
 
-        // Fetch carwash services
+        // ── Carwash services via Supabase (no website API for these yet) ──
+        if (!supabase) {
+          // Skip carwash Supabase sync if client not configured
+        } else {
         const { data: cwData } = await supabase
           .from('carwash_services')
           .select('*')
@@ -174,8 +178,9 @@ export default function POSPage() {
           storage.set('carwash_addons', mapped)
         }
 
-        // Fetch flavours, sides, addons, sizes, assignments from website API
-        const WAPI = 'https://www.soultiesseafoodjm.com'
+        } // end supabase carwash block
+
+        // ── Relational data (flavours, sides, addons, sizes, assignments) ──
         const [flvRes, sideRes, addRes, szRes, asgRes] = await Promise.allSettled([
           fetch(`${WAPI}/api/flavours`).then(r => r.ok ? r.json() : []),
           fetch(`${WAPI}/api/sides`).then(r => r.ok ? r.json() : []),
@@ -210,6 +215,7 @@ export default function POSPage() {
   // If Supabase IS configured, show live data (or empty) — never show demo items in production.
   const seedMod = MODULE_DATA[activeModule]
   const supabaseConfigured = !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+  // Menu items always come from website API now — supabaseConfigured only governs carwash/addon fallbacks
   const mod: ModuleData = {
     ...seedMod,
     items: (() => {
@@ -220,15 +226,16 @@ export default function POSPage() {
               ? i.module === 'bar'
               : (i.module === 'restaurant' || !i.module)
           )
-          return modItems
+          // If module filter returns nothing, show all live items so POS is never blank
+          return modItems.length > 0 ? modItems : liveMenuItems
         }
-        return supabaseConfigured ? [] : seedMod.items
+        return []  // loading — show empty grid, not fake seed data
       }
       if (activeModule === 'carwash') {
         if (liveCarwashItems && liveCarwashItems.length > 0) return liveCarwashItems
-        return supabaseConfigured ? [] : seedMod.items
+        return []
       }
-      return supabaseConfigured ? [] : seedMod.items
+      return []
     })(),
     addons: (() => {
       if (activeModule === 'carwash') {

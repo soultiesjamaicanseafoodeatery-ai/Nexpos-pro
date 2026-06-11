@@ -121,7 +121,7 @@ export default function POSPage() {
         const { data: menuData } = await supabase
           .from('menu_items')
           .select('*')
-          .eq('active', true)
+          .eq('is_available', true)
         if (menuData && menuData.length > 0) {
           type MenuRow = { id: string; name: string; description: string; price: number; category: string; emoji: string; active: boolean }
           const addonRows = (menuData as MenuRow[]).filter(r => r.category === 'addon')

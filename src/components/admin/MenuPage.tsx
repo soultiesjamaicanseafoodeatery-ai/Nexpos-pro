@@ -526,8 +526,13 @@ function ItemModal({ item, categories, flavours, sides, addons, sizes, assignmen
                   )}
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={lbl}>Route</label>
-                  <input type="text" value={form.route ?? ''} onChange={e => setForm(p => ({ ...p, route: e.target.value }))} style={{ ...inp, boxSizing: 'border-box' }} placeholder="e.g. kitchen, bar, carwash" />
+                  <label style={lbl}>Route (where this item goes)</label>
+                  <select value={form.route ?? ''} onChange={e => setForm(p => ({ ...p, route: e.target.value }))} style={{ ...inp, boxSizing: 'border-box' }}>
+                    <option value="">— Select —</option>
+                    <option value="kitchen">Kitchen</option>
+                    <option value="bar">Bar</option>
+                    <option value="carwash">Car Wash Bay</option>
+                  </select>
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={lbl}>Active</label>

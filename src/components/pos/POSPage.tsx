@@ -341,16 +341,15 @@ export default function POSPage() {
     toast(`Added: ${item.name}`, 'success')
   }
 
-  // Handle item click — open modal if addons/flavours/sizes/sides exist, else add directly
+  // Handle item click — open modal only if the item has assigned add-ons/flavours/sizes/sides
   const handleItemClick = (item: MenuItem) => {
     const assignment = liveAssignments[item.id]
     const hasFlavours  = (assignment?.flavour_ids?.length ?? 0) > 0
     const hasSides     = (assignment?.side_ids?.length ?? 0) > 0
     const hasSizes     = (assignment?.sizes?.length ?? 0) > 0
     const hasNewAddons = (assignment?.addon_ids?.length ?? 0) > 0
-    const hasOldAddons = mod.addons.filter((a: Addon) => a.active).length > 0 && !assignment
 
-    if (hasFlavours || hasSides || hasSizes || hasNewAddons || hasOldAddons) {
+    if (hasFlavours || hasSides || hasSizes || hasNewAddons) {
       setModalItem(item)
       setModalAddons([])
       setModalFlavourId(null)
@@ -799,7 +798,7 @@ export default function POSPage() {
                     return { id: a.id, name: a.name, desc: a.description, price: a.price, icon: a.icon ?? '', active: a.active } as Addon
                   }).filter(Boolean) as Addon[]
                 } else {
-                  displayAddons = activeAddons
+                  displayAddons = []
                 }
                 if (displayAddons.length === 0) return null
                 return (

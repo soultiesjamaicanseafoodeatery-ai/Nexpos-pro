@@ -5,9 +5,9 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import type { ModuleKey } from '@/types'
 
 const MOD_LABEL: Record<ModuleKey, string> = {
-  restaurant: '🍽️ Restaurant',
-  bar:        '🍺 Bar',
-  carwash:    '🚗 Car Wash',
+  restaurant: 'Restaurant',
+  bar:        'Bar',
+  carwash:    'Car Wash',
 }
 const MOD_COLOR: Record<ModuleKey, { color: string; bg: string }> = {
   restaurant: { color: 'var(--ora)', bg: 'var(--ora-bg)' },
@@ -56,7 +56,7 @@ export default function Topbar() {
         {/* Offline badge */}
         {!isOnline && (
           <div style={{ fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 'var(--r2)', background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid rgba(245,101,101,.3)' }}>
-            ⚡ Offline
+            Offline
           </div>
         )}
 
@@ -75,7 +75,7 @@ export default function Topbar() {
         {/* Clock out (if active shift) */}
         {currentShift && (currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
           <button className="btn btn-gh btn-sm" onClick={() => dispatch({ type: 'CLOCK_OUT' })}>
-            ⏻ Clock Out
+            Clock Out
           </button>
         )}
 

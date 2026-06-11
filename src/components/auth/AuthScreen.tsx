@@ -12,9 +12,9 @@ const MOD_TAG_CLS: Record<string, string> = {
   carwash:    'mod-wash',
 }
 const MOD_TAG_LBL: Record<string, string> = {
-  restaurant: '🍽️ Rest',
-  bar:        '🍺 Bar',
-  carwash:    '🚗 Wash',
+  restaurant: 'Rest',
+  bar:        'Bar',
+  carwash:    'Wash',
 }
 
 export default function AuthScreen() {
@@ -131,7 +131,6 @@ export default function AuthScreen() {
             borderBottom: '1px solid var(--bdr)',
             background: 'linear-gradient(180deg,var(--bg3),var(--bg2))',
           }}>
-            <div style={{ fontSize: 30, marginBottom: 6 }}>🏢</div>
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>NexPOS Pro</div>
             <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 3 }}>Select your name to begin</div>
           </div>
@@ -183,7 +182,6 @@ export default function AuthScreen() {
         <div style={{ display: 'flex', flexDirection: 'column', padding: 20 }}>
           {!selectedUser ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--txt3)', textAlign: 'center', gap: 12 }}>
-              <div style={{ fontSize: 40, opacity: .4 }}>👈</div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>Select a user to continue</div>
             </div>
           ) : (
@@ -221,7 +219,7 @@ export default function AuthScreen() {
               </div>
               {/* Keyboard hint */}
               <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--txt3)', opacity: .6, marginBottom: 12, letterSpacing: '.2px' }}>
-                ⌨ Type PIN on keyboard
+                Type PIN on keyboard
               </div>
 
               {/* PIN pad */}

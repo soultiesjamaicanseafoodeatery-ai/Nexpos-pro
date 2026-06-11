@@ -33,7 +33,6 @@ const PAGE_ROLES: Record<string, string[]> = {
 
 const ACCESS_DENIED = (
   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--txt3)' }}>
-    <div style={{ fontSize: 40 }}>🔒</div>
     <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>Access Denied</div>
     <div style={{ fontSize: 13 }}>You do not have permission to view this page.</div>
   </div>

@@ -17,9 +17,9 @@ interface SizeRow { id: string; name: string; sort_order: number; active: boolea
 interface ItemAssignment { flavour_ids: string[]; side_ids: string[]; addon_ids: string[]; sizes: { size_id: string; price: number }[] }
 
 const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  restaurant: { bg: 'var(--ora-bg, #78350f22)', color: 'var(--ora, #f97316)', label: '🍽 Food' },
-  bar:        { bg: 'var(--pur-bg, #4c1d9522)', color: 'var(--pur, #a855f7)', label: '🍺 Bar' },
-  carwash:    { bg: 'var(--blue-bg)',            color: 'var(--blue)',          label: '🚗 Wash' },
+  restaurant: { bg: 'var(--ora-bg, #78350f22)', color: 'var(--ora, #f97316)', label: 'Food' },
+  bar:        { bg: 'var(--pur-bg, #4c1d9522)', color: 'var(--pur, #a855f7)', label: 'Bar' },
+  carwash:    { bg: 'var(--blue-bg)',            color: 'var(--blue)',          label: 'Wash' },
 }
 
 export default function POSPage() {
@@ -76,7 +76,7 @@ export default function POSPage() {
       desc: r.desc ?? r.description ?? '',
       price: Number(r.price),
       cat: r.cat ?? r.category ?? 'All',
-      emoji: r.emoji ?? '🍽️',
+      emoji: r.emoji ?? '',
       active: r.active ?? true,
       duration: r.duration ?? undefined,
     })
@@ -84,7 +84,7 @@ export default function POSPage() {
       id: r.id, name: r.name,
       desc: r.desc ?? r.description ?? '',
       price: Number(r.price),
-      icon: r.icon ?? '✨',
+      icon: r.icon ?? '',
       active: r.active ?? true,
     })
 
@@ -130,7 +130,7 @@ export default function POSPage() {
 
           const mappedItems: MenuItem[] = itemRows.map(r => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
-            cat: r.category ?? 'All', emoji: r.emoji ?? '🍽️', active: r.active,
+            cat: r.category ?? 'All', emoji: r.emoji ?? '', active: r.active,
           }))
           const mappedAddons: Addon[] = addonRows.map(r => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
@@ -152,7 +152,7 @@ export default function POSPage() {
           const mapped: MenuItem[] = cwData.map((r: { id: string; name: string; description: string; price: number; duration: string; active: boolean; vehicle_type: string }) => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
             cat: r.vehicle_type ? (r.vehicle_type.charAt(0).toUpperCase() + r.vehicle_type.slice(1)) : 'All',
-            emoji: '🚗', active: r.active, duration: r.duration ?? '',
+            emoji: '', active: r.active, duration: r.duration ?? '',
           }))
           setLiveCarwashItems(mapped)
           storage.set('carwash_services', mapped)
@@ -166,7 +166,7 @@ export default function POSPage() {
         if (addData && addData.length > 0) {
           const mapped: Addon[] = addData.map((r: { id: string; name: string; description: string; price: number; active: boolean }) => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
-            icon: '✨', active: r.active,
+            icon: '', active: r.active,
           }))
           setLiveAddons(mapped)
           storage.set('carwash_addons', mapped)
@@ -411,7 +411,7 @@ export default function POSPage() {
               color: cwTab === t ? '#fff' : 'var(--txt2)',
               display: 'flex', alignItems: 'center', gap: 6, transition: 'all .12s', minHeight: 36,
             }}>
-              {t === 'pos' ? '🛒 New Sale' : '📋 Outside Orders'}
+              {t === 'pos' ? 'New Sale' : 'Outside Orders'}
               {t === 'orders' && pendingCount > 0 && (
                 <span style={{ background: '#ef4444', color: '#fff', borderRadius: 10, fontSize: 11, fontWeight: 800, padding: '1px 6px', minWidth: 18, textAlign: 'center' }}>
                   {pendingCount}
@@ -430,7 +430,7 @@ export default function POSPage() {
               >
                 <option value="">— Bay —</option>
                 {(mod.bays as string[])?.map((b: string) => (
-                  <option key={b} value={b}>{b} {mod.bayStatus?.[b] === 'occupied' ? '🔴' : '🟢'}</option>
+                  <option key={b} value={b}>{b} {mod.bayStatus?.[b] === 'occupied' ? '(Busy)' : '(Open)'}</option>
                 ))}
               </select>
               <input
@@ -478,13 +478,9 @@ export default function POSPage() {
                     overflow: 'hidden', transition: 'all .18s', minHeight: 150,
                     display: 'flex', flexDirection: 'column',
                   }}>
-                    <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0, overflow: 'hidden' }}>
-                      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,transparent 40%,rgba(0,0,0,.5))', zIndex: 1 }} />
-                      <span style={{ fontSize: 38, zIndex: 2, filter: 'drop-shadow(0 2px 8px rgba(0,0,0,.5))' }}>{item.emoji}</span>
-                      {item.duration && (
-                        <div style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 20, zIndex: 2 }}>{item.duration}</div>
-                      )}
-                    </div>
+                    {item.duration && (
+                      <div style={{ padding: '4px 10px', background: 'var(--surf2)', borderBottom: '1px solid var(--bdr)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)' }}>{item.duration}</div>
+                    )}
                     <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', lineHeight: 1.2 }}>{item.name}</div>
                       <div style={{ marginTop: 4 }}>
@@ -514,7 +510,6 @@ export default function POSPage() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
               {cart.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '36px 10px', color: 'var(--txt3)' }}>
-                  <div style={{ fontSize: 32, marginBottom: 8, opacity: .4 }}>🛒</div>
                   <div style={{ fontSize: 12 }}>No items yet — add from any module</div>
                 </div>
               ) : (
@@ -535,18 +530,17 @@ export default function POSPage() {
                         {/* Addons */}
                         {ci.addons.map(a => (
                           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-                            <span style={{ fontSize: 11 }}>{a.icon}</span>
                             <span style={{ fontSize: 11, color: 'var(--txt3)', flex: 1 }}>{a.name}</span>
                             <span style={{ fontSize: 11, color: 'var(--txt3)', fontFamily: 'var(--mono)' }}>+{fmt(a.price, sym)}</span>
                           </div>
                         ))}
                         {/* Flavour / Size / Sides */}
-                        {ci.flavour && <div style={{ fontSize: 11, color: 'var(--ora)', marginBottom: 2 }}>🌶️ {ci.flavour}</div>}
-                        {ci.size    && <div style={{ fontSize: 11, color: 'var(--pur)', marginBottom: 2 }}>📏 {ci.size}</div>}
-                        {ci.sides && ci.sides.length > 0 && <div style={{ fontSize: 11, color: 'var(--grn)', marginBottom: 2 }}>🍚 {ci.sides.join(', ')}</div>}
+                        {ci.flavour && <div style={{ fontSize: 11, color: 'var(--ora)', marginBottom: 2 }}>Flavour: {ci.flavour}</div>}
+                        {ci.size    && <div style={{ fontSize: 11, color: 'var(--pur)', marginBottom: 2 }}>Size: {ci.size}</div>}
+                        {ci.sides && ci.sides.length > 0 && <div style={{ fontSize: 11, color: 'var(--grn)', marginBottom: 2 }}>Sides: {ci.sides.join(', ')}</div>}
                         {/* Plate */}
                         {ci.plate && (
-                          <div style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--mono)', fontWeight: 700, marginTop: 2 }}>🚗 {ci.plate}</div>
+                          <div style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--mono)', fontWeight: 700, marginTop: 2 }}>Plate: {ci.plate}</div>
                         )}
                         {/* Qty controls + remove */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
@@ -556,7 +550,7 @@ export default function POSPage() {
                           <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty + 1 })}
                             style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>+</button>
                           <button onClick={() => dispatch({ type: 'REMOVE_FROM_CART', id: ci.id })}
-                            style={{ marginLeft: 'auto', width: 26, height: 26, borderRadius: 6, background: 'var(--red-bg, #7f1d1d22)', border: '1px solid var(--red-bdr, #ef444433)', color: 'var(--red, #ef4444)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🗑</button>
+                            style={{ marginLeft: 'auto', width: 26, height: 26, borderRadius: 6, background: 'var(--red-bg, #7f1d1d22)', border: '1px solid var(--red-bdr, #ef444433)', color: 'var(--red, #ef4444)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>×</button>
                         </div>
                       </div>
                     </div>
@@ -581,7 +575,7 @@ export default function POSPage() {
                         color: cartOrderType === ot ? 'var(--ora, #f97316)' : 'var(--txt2)',
                         fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all .12s',
                       }}>
-                        {ot === 'dine-in' ? '🍽 Dine-in' : ot === 'takeout' ? '🥡 Takeout' : '🛵 Delivery'}
+                        {ot === 'dine-in' ? 'Dine-in' : ot === 'takeout' ? 'Takeout' : 'Delivery'}
                       </button>
                     ))}
                   </div>
@@ -629,17 +623,16 @@ export default function POSPage() {
 
               {/* Payment method */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, margin: '10px 0' }}>
-                {[['cash','💵','Cash'],['card','💳','Card'],['tab','📑','Tab'],['qr','📱','QR Pay']].map(([key, ic, lbl]) => (
+                {[['cash','Cash'],['card','Card'],['tab','Tab'],['qr','QR Pay']].map(([key, lbl]) => (
                   <button key={key} onClick={() => dispatch({ type: 'SET_CART_PAY', method: key })} style={{
                     padding: '13px 4px', borderRadius: 'var(--r)',
                     border: `2px solid ${cartPayMethod === key ? 'var(--blue)' : 'var(--bdr2)'}`,
                     background: cartPayMethod === key ? 'var(--blue-bg)' : 'var(--surf)',
                     color: cartPayMethod === key ? 'var(--blue)' : 'var(--txt2)',
-                    fontSize: 12, fontWeight: 700, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                    cursor: 'pointer', transition: 'all .12s', minHeight: 60,
+                    fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', transition: 'all .12s', minHeight: 44,
                   }}>
-                    <span style={{ fontSize: 16 }}>{ic}</span>
-                    <span style={{ fontSize: 10 }}>{lbl}</span>
+                    {lbl}
                   </button>
                 ))}
               </div>
@@ -660,7 +653,7 @@ export default function POSPage() {
                 background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', marginTop: 7,
                 cursor: 'pointer', transition: 'all .12s', minHeight: 42,
               }}>
-                🗑 Clear Order
+                Clear Order
               </button>
             </div>
           </div>
@@ -691,7 +684,6 @@ export default function POSPage() {
           >
             {/* Modal header — item name + price */}
             <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 28 }}>{modalItem.emoji}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{modalItem.name}</div>
               </div>
@@ -780,7 +772,7 @@ export default function POSPage() {
                   displayAddons = assignment.addon_ids.map(id => {
                     const a = livePosAddons.find(x => x.id === id)
                     if (!a) return null
-                    return { id: a.id, name: a.name, desc: a.description, price: a.price, icon: a.icon ?? '✨', active: a.active } as Addon
+                    return { id: a.id, name: a.name, desc: a.description, price: a.price, icon: a.icon ?? '', active: a.active } as Addon
                   }).filter(Boolean) as Addon[]
                 } else {
                   displayAddons = activeAddons
@@ -795,7 +787,6 @@ export default function POSPage() {
                         <div key={addon.id} onClick={() => toggleModalAddon(addon)}
                           style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 'var(--r)', marginBottom: 6, cursor: 'pointer', background: checked ? 'var(--surf2)' : 'var(--surf)', border: `2px solid ${checked ? mod.color : 'var(--bdr)'}`, transition: 'all .14s' }}>
                           <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? mod.color : 'var(--bdr2)'}`, background: checked ? mod.color : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>{checked ? '✓' : ''}</div>
-                          <span style={{ fontSize: 17 }}>{addon.icon}</span>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{addon.name}</div>
                             {addon.desc && <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{addon.desc}</div>}

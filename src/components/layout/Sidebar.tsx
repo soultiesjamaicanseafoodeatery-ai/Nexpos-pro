@@ -61,7 +61,7 @@ export default function Sidebar() {
   if (!currentUser) return null
 
   const { active, bg, border } = MOD_COLORS[activeModule]
-  const modData = { restaurant: { label:'Restaurant',icon:'🍽️' }, bar: { label:'Bar',icon:'🍺' }, carwash: { label:'Car Wash',icon:'🚗' } }
+  const modData = { restaurant: { label:'Restaurant' }, bar: { label:'Bar' }, carwash: { label:'Car Wash' } }
   const navItems = NAV_ITEMS[activeModule] ?? []
   const accessibleMods = currentUser.allowedModules
   const canAccess = (item: NavItem) => item.roles.includes(currentUser.role)
@@ -71,8 +71,8 @@ export default function Sidebar() {
     <div style={{ width: 214, background: 'var(--bg2)', borderRight: '1px solid var(--bdr)', display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'hidden' }}>
       {/* Brand */}
       <div style={{ padding: 13, borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0 }}>
-        <div style={{ width: 33, height: 33, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0, background: bg }}>
-          🏢
+        <div style={{ width: 33, height: 33, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0, background: bg, color: active }}>
+          POS
         </div>
         <div>
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.3px' }}>NexPOS Pro</div>
@@ -97,7 +97,7 @@ export default function Sidebar() {
                 transition: 'all .13s', textAlign: 'left', opacity: canUse ? 1 : .25,
               }}>
               <div style={{ width: 7, height: 7, borderRadius: '50%', background: isOn ? colors.active : 'var(--bdr2)', flexShrink: 0 }} />
-              {modData[mod].icon} {modData[mod].label}
+              {modData[mod].label}
             </button>
           )
         })}
@@ -120,7 +120,6 @@ export default function Sidebar() {
                 background: isOn ? 'var(--surf2)' : 'transparent',
                 opacity: accessible ? 1 : .28,
               }}>
-              <span style={{ fontSize: 14, width: 17, textAlign: 'center', flexShrink: 0 }}>{item.ic}</span>
               <span>{item.lbl}</span>
             </div>
           )
@@ -140,7 +139,6 @@ export default function Sidebar() {
                   fontWeight: activePage === item.id ? 700 : 500, marginBottom: 2, transition: 'all .12s',
                   background: activePage === item.id ? 'var(--surf2)' : 'transparent',
                 }}>
-                <span style={{ fontSize: 14, width: 17, textAlign: 'center', flexShrink: 0 }}>{item.ic}</span>
                 <span>{item.lbl}</span>
               </div>
             ))}

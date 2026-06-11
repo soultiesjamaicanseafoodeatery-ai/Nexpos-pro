@@ -30,6 +30,7 @@ export default function POSPage() {
 
   const [cwTab,        setCwTab]        = useState<'pos' | 'orders'>('pos')
   const [pendingCount, setPendingCount] = useState(0)
+  const [discPct,      setDiscPct]      = useState(0)
 
   // Modal state
   const [modalItem,   setModalItem]   = useState<MenuItem | null>(null)
@@ -343,7 +344,7 @@ export default function POSPage() {
     if (cart.length === 0) { toast('Add items first', 'warn'); return }
     if (!currentUser) return
 
-    const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null })
+    const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null, manualDiscPct: discPct || undefined })
 
     const modules = Array.from(new Set(cart.map(ci => ci.module)))
     const mod2 = modules.length === 1 ? modules[0] : 'mixed' as const
@@ -381,6 +382,7 @@ export default function POSPage() {
 
     dispatch({ type: 'ADD_TRANSACTION', tx })
     dispatch({ type: 'CLEAR_CART' })
+    setDiscPct(0)
     audit('CHECKOUT', `${itemSummary} — ${fmt(tx.total, sym)}`)
     toast(`✓ ${fmt(tx.total, sym)} charged`, 'success')
     dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: null } })
@@ -389,7 +391,7 @@ export default function POSPage() {
 
   // Cart totals
   const hasRestaurantItems = cart.some(ci => ci.module === 'restaurant')
-  const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null })
+  const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null, manualDiscPct: discPct || undefined })
 
   // Active add-ons for modal display
   const activeAddons = mod.addons.filter((a: Addon) => a.active)
@@ -586,18 +588,37 @@ export default function POSPage() {
                 </div>
               )}
 
+              {/* Discount */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: 'var(--txt3)', flex: 1 }}>Discount</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={discPct || ''}
+                  onChange={e => setDiscPct(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+                  placeholder="0"
+                  style={{ width: 56, background: 'var(--surf2)', border: `1px solid ${discPct > 0 ? 'var(--grn)' : 'var(--bdr2)'}`, borderRadius: 'var(--r)', padding: '5px 8px', fontSize: 13, color: discPct > 0 ? 'var(--grn)' : 'var(--txt)', textAlign: 'right' }}
+                />
+                <span style={{ fontSize: 11, color: 'var(--txt3)' }}>%</span>
+                {discPct > 0 && (
+                  <button onClick={() => setDiscPct(0)} style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+                )}
+              </div>
+
               {/* Divider */}
               <div style={{ height: 1, background: 'var(--bdr)', margin: '6px 0 10px' }} />
 
               {/* Totals */}
               {([
-                { label: 'Subtotal',                                                    value: fmt(calc.sub, sym) },
-                calc.gct > 0           && { label: `GCT (${(calc.gctRate * 100).toFixed(0)}%)`,    value: fmt(calc.gct, sym) },
-                calc.serviceCharge > 0 && { label: `Service (${(calc.scRate * 100).toFixed(0)}%)`, value: fmt(calc.serviceCharge, sym) },
-              ].filter(Boolean) as { label: string; value: string }[]).map((row, i) => (
+                { label: 'Subtotal',                                                                                   value: fmt(calc.sub, sym) },
+                calc.disc > 0          && { label: `Discount (${discPct}%)`,                                           value: `−${fmt(calc.disc, sym)}`, color: 'var(--grn)' },
+                calc.gct > 0           && { label: `GCT (${(calc.gctRate * 100).toFixed(0)}%)`,                        value: fmt(calc.gct, sym) },
+                calc.serviceCharge > 0 && { label: `Service (${(calc.scRate * 100).toFixed(0)}%)`,                     value: fmt(calc.serviceCharge, sym) },
+              ].filter(Boolean) as { label: string; value: string; color?: string }[]).map((row, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: 13 }}>
-                  <span style={{ color: 'var(--txt3)' }}>{row.label}</span>
-                  <span style={{ fontWeight: 700, color: 'var(--txt2)', fontFamily: 'var(--mono)' }}>{row.value}</span>
+                  <span style={{ color: row.color ?? 'var(--txt3)' }}>{row.label}</span>
+                  <span style={{ fontWeight: 700, color: row.color ?? 'var(--txt2)', fontFamily: 'var(--mono)' }}>{row.value}</span>
                 </div>
               ))}
 

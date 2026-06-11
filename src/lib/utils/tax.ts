@@ -74,17 +74,15 @@ export function calcOrder(
 
 export function calcCart(
   cart: CartItem[],
-  opts: { orderType?: string; taxOverride?: boolean | null }
+  opts: { orderType?: string; taxOverride?: boolean | null; manualDiscPct?: number; manualDiscFlat?: number }
 ): OrderCalc {
   const cfg = getTaxConfig()
 
-  // Total subtotal across all modules
   const sub = cart.reduce((sum, ci) => {
     const addonsTotal = ci.addons.reduce((s, a) => s + a.price, 0)
     return sum + (ci.price + addonsTotal) * ci.qty
   }, 0)
 
-  // GCT + service charge apply only to restaurant items
   const restaurantSub = cart
     .filter(ci => ci.module === 'restaurant')
     .reduce((sum, ci) => {
@@ -92,24 +90,29 @@ export function calcCart(
       return sum + (ci.price + addonsTotal) * ci.qty
     }, 0)
 
+  const disc = opts.manualDiscPct
+    ? sub * (opts.manualDiscPct / 100)
+    : (opts.manualDiscFlat ?? 0)
+
+  const taxableBase       = Math.max(0, sub - disc)
+  const taxableRestSub    = Math.max(0, restaurantSub - disc)
+
   const gctApplies = cfg.enabled
     && isGCTApplicable(opts.orderType ?? 'dine-in', opts.taxOverride ?? null)
     && restaurantSub > 0
   const gctRate = gctApplies ? cfg.rate : 0
-  const gct = restaurantSub * gctRate
+  const gct = taxableRestSub * gctRate
 
   const scApplies = (opts.orderType ?? 'dine-in') === 'dine-in'
     && cfg.serviceChargeEnabled
     && restaurantSub > 0
   const scRate = scApplies ? cfg.serviceChargeRate : 0
-  const serviceCharge = restaurantSub * scRate
+  const serviceCharge = taxableRestSub * scRate
 
-  const disc = 0
-  const taxableBase = sub - disc
   const total = Math.max(0, taxableBase + gct + serviceCharge)
 
   return {
-    sub, disc, memberDiscAmt: 0, manualDiscAmt: 0,
+    sub, disc, memberDiscAmt: 0, manualDiscAmt: disc,
     taxableBase, gct, gctRate, gctApplies,
     serviceCharge, scRate,
     gratuity: 0, deliveryFee: 0, legacyTax: 0,

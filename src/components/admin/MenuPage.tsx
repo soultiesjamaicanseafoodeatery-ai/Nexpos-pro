@@ -400,11 +400,11 @@ function ItemModal({ item, categories, flavours, sides, addons, sizes, assignmen
   const [saving, setSaving] = useState(false)
 
   const moduleFilter = form.module ?? 'restaurant'
-  const filteredCats = categories.filter(c => c.active && (c.module === moduleFilter || !c.module))
-  const activeFlavours = flavours.filter(f => f.active)
-  const activeSides    = sides.filter(s => s.active)
-  const activeAddons   = addons.filter(a => a.active)
-  const activeSizes    = sizes.filter(s => s.active).sort((a, b) => a.sort_order - b.sort_order)
+  const filteredCats = categories.filter(c => c.active !== false && (c.module === moduleFilter || !c.module))
+  const activeFlavours = flavours.filter(f => f.active !== false)
+  const activeSides    = sides.filter(s => s.active !== false)
+  const activeAddons   = addons.filter(a => a.active !== false)
+  const activeSizes    = sizes.filter(s => s.active !== false).sort((a, b) => a.sort_order - b.sort_order)
 
   const toggleFlavour = (id: string) => {
     setAsgn(prev => ({
@@ -512,12 +512,18 @@ function ItemModal({ item, categories, flavours, sides, addons, sizes, assignmen
                 </div>
                 <div>
                   <label style={lbl}>Category</label>
-                  <select value={form.category ?? ''} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={{ ...inp, boxSizing: 'border-box' }}>
-                    <option value="">— Select —</option>
-                    {filteredCats.map(c => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
+                  {filteredCats.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--red)', padding: '8px 10px', background: 'var(--red-bg)', borderRadius: 'var(--r2)', border: '1px solid var(--bdr2)' }}>
+                      No categories found for <strong>{form.module ?? 'restaurant'}</strong>. Create one in the Categories tab first.
+                    </div>
+                  ) : (
+                    <select value={form.category ?? ''} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={{ ...inp, boxSizing: 'border-box' }}>
+                      <option value="">— Select —</option>
+                      {filteredCats.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={lbl}>Route</label>

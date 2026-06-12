@@ -981,8 +981,8 @@ export default function POSPage() {
         /* ── Redesigned 2-panel POS ── */
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-          {/* ── LEFT: Menu panel (65%) ── */}
-          <div style={{ flex: '0 0 65%', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--bdr)' }}>
+          {/* ── LEFT: Menu panel (40%) ── */}
+          <div style={{ flex: '0 0 40%', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--bdr)' }}>
 
             {/* Category tabs + search bar */}
             <div style={{ borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
@@ -1040,29 +1040,29 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Item grid — 4 columns */}
+              {/* Item grid — 3 columns */}
               {searchFiltered.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--txt3)', fontSize: 13 }}>
                   No items match &ldquo;{searchQuery}&rdquo;
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                   {searchFiltered.map((item: MenuItem) => (
                     <div key={item.id} onClick={() => handleItemClick(item)} style={{
                       background: item.gradient ?? 'var(--surf)',
                       border: '2px solid var(--bdr)',
                       borderRadius: 'var(--r3)', cursor: 'pointer', overflow: 'hidden',
-                      transition: 'all .15s', display: 'flex', flexDirection: 'column', minHeight: 110,
+                      transition: 'all .15s', display: 'flex', flexDirection: 'column', minHeight: 130,
                     }}>
                       {item.duration && (
                         <div style={{ padding: '3px 8px', background: 'var(--surf2)', borderBottom: '1px solid var(--bdr)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)' }}>{item.duration}</div>
                       )}
-                      <div style={{ padding: '9px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div style={{ padding: '11px 12px 12px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                         <div>
-                          {item.emoji && <div style={{ fontSize: 22, marginBottom: 3, lineHeight: 1 }}>{item.emoji}</div>}
-                          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--txt)', lineHeight: 1.25 }}>{item.name}</div>
+                          {item.emoji && <div style={{ fontSize: 26, marginBottom: 4, lineHeight: 1 }}>{item.emoji}</div>}
+                          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', lineHeight: 1.25 }}>{item.name}</div>
                         </div>
-                        <div style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--mono)', color: item.accent ?? mod.color, marginTop: 6, letterSpacing: '-.3px' }}>{fmt(item.price, sym)}</div>
+                        <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--mono)', color: item.accent ?? mod.color, marginTop: 8, letterSpacing: '-.3px' }}>{fmt(item.price, sym)}</div>
                       </div>
                     </div>
                   ))}
@@ -1071,8 +1071,8 @@ export default function POSPage() {
             </div>
           </div>
 
-          {/* ── RIGHT: Order ticket (35%) ── */}
-          <div style={{ flex: '0 0 35%', minWidth: 290, maxWidth: 440, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* ── RIGHT: Order ticket (60%) ── */}
+          <div style={{ flex: '0 0 60%', minWidth: 340, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
             {/* Table / Server / Status header */}
             <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
@@ -1312,8 +1312,8 @@ export default function POSPage() {
 
                 {/* TOTAL */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 8, borderTop: '2px solid var(--bdr)' }}>
-                  <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--txt)', letterSpacing: '-.3px' }}>TOTAL</span>
-                  <span style={{ fontSize: 22, fontWeight: 900, fontFamily: 'var(--mono)', color: cart.length > 0 ? 'var(--blue)' : 'var(--txt3)', letterSpacing: '-.5px' }}>{fmt(calc.total, sym)}</span>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--txt)', letterSpacing: '-.3px' }}>TOTAL</span>
+                  <span style={{ fontSize: 18, fontWeight: 900, fontFamily: 'var(--mono)', color: cart.length > 0 ? 'var(--blue)' : 'var(--txt3)', letterSpacing: '-.5px' }}>{fmt(calc.total, sym)}</span>
                 </div>
               </div>
 
@@ -1322,18 +1322,18 @@ export default function POSPage() {
 
                 {/* Send Order + Add to Order */}
                 <div style={{ display: 'grid', gridTemplateColumns: openOrders.length > 0 ? '1fr 1fr' : '1fr', gap: 6 }}>
-                  <button onClick={sendOrder} disabled={activeCart.length === 0} style={{ minHeight: 56, borderRadius: 'var(--r)', fontSize: 14, fontWeight: 900, border: 'none', cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', color: activeCart.length > 0 ? '#fff' : 'var(--txt3)', background: activeCart.length > 0 ? 'var(--grn)' : 'var(--surf3)', letterSpacing: '.2px', transition: 'all .15s' }}>
+                  <button onClick={sendOrder} disabled={activeCart.length === 0} style={{ minHeight: 44, borderRadius: 'var(--r)', fontSize: 13, fontWeight: 900, border: 'none', cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', color: activeCart.length > 0 ? '#fff' : 'var(--txt3)', background: activeCart.length > 0 ? 'var(--grn)' : 'var(--surf3)', letterSpacing: '.2px', transition: 'all .15s' }}>
                     Send Order
                   </button>
                   {openOrders.length > 0 && (
-                    <button onClick={() => { setAddToOrderMode(true); setShowOpen(true) }} disabled={activeCart.length === 0} style={{ minHeight: 56, borderRadius: 'var(--r)', fontSize: 12, fontWeight: 800, color: activeCart.length > 0 ? 'var(--grn)' : 'var(--txt3)', background: activeCart.length > 0 ? '#14532d22' : 'var(--surf3)', border: `1.5px solid ${activeCart.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`, cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', transition: 'all .15s' }}>
+                    <button onClick={() => { setAddToOrderMode(true); setShowOpen(true) }} disabled={activeCart.length === 0} style={{ minHeight: 44, borderRadius: 'var(--r)', fontSize: 12, fontWeight: 800, color: activeCart.length > 0 ? 'var(--grn)' : 'var(--txt3)', background: activeCart.length > 0 ? '#14532d22' : 'var(--surf3)', border: `1.5px solid ${activeCart.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`, cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', transition: 'all .15s' }}>
                       Add to Order
                     </button>
                   )}
                 </div>
 
                 {/* Pay */}
-                <button onClick={() => { if (cart.length===0){toast('Add items first','warn');return}; setShowPayment(true) }} disabled={cart.length === 0} style={{ width: '100%', minHeight: 62, borderRadius: 'var(--r)', fontSize: 18, fontWeight: 900, border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', color: cart.length > 0 ? '#fff' : 'var(--txt3)', background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)', letterSpacing: '.3px', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <button onClick={() => { if (cart.length===0){toast('Add items first','warn');return}; setShowPayment(true) }} disabled={cart.length === 0} style={{ width: '100%', minHeight: 50, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 900, border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', color: cart.length > 0 ? '#fff' : 'var(--txt3)', background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)', letterSpacing: '.3px', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   ✓ Pay {cart.length > 0 ? fmt(calc.total, sym) : '—'}
                 </button>
 

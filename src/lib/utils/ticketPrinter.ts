@@ -41,13 +41,18 @@ function wrap(text: string, indent: number, w: number): string[] {
 }
 
 // ── Smart print — tries QZ Tray first, falls back to browser ─
-export function smartPrint(
+export async function smartPrint(
   html: string,
   title: string,
-  _printerName?: string,
-  _width: PrintWidth = 80,
-): void {
+  printerName?: string,
+  width: PrintWidth = 80,
+): Promise<void> {
   if (!html) return
+  if (printerName?.trim()) {
+    const { qzPrint } = await import('./qzTray')
+    const ok = await qzPrint(printerName.trim(), html, width)
+    if (ok) return
+  }
   printTicket(html, title)
 }
 

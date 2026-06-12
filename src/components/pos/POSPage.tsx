@@ -72,6 +72,10 @@ export default function POSPage() {
   // Transfer table: { ticketId }
   const [transferTarget,  setTransferTarget]  = useState<string | null>(null)
 
+  // POS UI enhancements
+  const [searchQuery,   setSearchQuery]   = useState('')
+  const [showFloorPlan, setShowFloorPlan] = useState(false)
+
   // Modal state
   const [modalItem,   setModalItem]   = useState<MenuItem | null>(null)
   const [modalAddons, setModalAddons] = useState<Addon[]>([])
@@ -889,11 +893,42 @@ export default function POSPage() {
   // Active add-ons for modal display
   const activeAddons = mod.addons.filter((a: Addon) => a.active)
 
+  // Floor plan: map table → open ticket
+  const tableOrderMap: Record<string, OrderTicket> = {}
+  openOrders.forEach(t => { if (t.table) tableOrderMap[t.table] = t })
+
+  // Quick picks: top 8 most ordered items in this module (from transaction history)
+  const quickPicks: MenuItem[] = (() => {
+    const counts: Record<string, number> = {}
+    state.transactions.slice(-300).forEach(tx => {
+      if (tx.items) tx.items.forEach(ci => {
+        if (ci.module === activeModule && !ci.voided)
+          counts[ci.itemId] = (counts[ci.itemId] ?? 0) + ci.qty
+      })
+    })
+    return mod.items
+      .filter((i: MenuItem) => i.active && (counts[i.id] ?? 0) > 0)
+      .sort((a: MenuItem, b: MenuItem) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0))
+      .slice(0, 8)
+  })()
+
+  // Filtered items — applies search on top of category filter
+  const searchFiltered = filteredItems.filter((i: MenuItem) =>
+    !searchQuery || i.name.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  // Selected table for current module
+  const selTable = posState['restaurant'].selTable ?? posState['bar'].selTable
+
+  // Active table's open order (for kitchen status display)
+  const activeTableOrder = selTable ? openOrders.find(t => t.table === selTable) ?? null : null
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
 
       {/* ── Carwash toolbar (bay, plate, tabs) ── */}
       {activeModule === 'carwash' && (
+
         <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, background: 'var(--bg2)' }}>
           {/* Tab switcher */}
           {(['pos','orders'] as const).map(t => (
@@ -943,122 +978,218 @@ export default function POSPage() {
         <OutsideOrders onCountChange={setPendingCount} />
       ) : (
 
-        /* ── Main POS grid (2-column) ── */
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', flex: 1, overflow: 'hidden' }}>
+        /* ── Redesigned 2-panel POS ── */
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-          {/* Col 1 — Item browser */}
-          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--bdr)' }}>
-            {/* Category tabs */}
-            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--bdr)', display: 'flex', gap: 6, overflowX: 'auto', flexShrink: 0 }}>
-              {cats.map((cat: string) => (
-                <button key={cat} onClick={() => setPOS({ cat })} style={{
-                  padding: '8px 18px', borderRadius: 20, fontSize: 13, fontWeight: 700,
-                  cursor: 'pointer', border: `1.5px solid ${ps.cat === cat ? 'transparent' : 'var(--bdr)'}`,
-                  color: ps.cat === cat ? '#fff' : 'var(--txt2)', whiteSpace: 'nowrap', minHeight: 40,
-                  background: ps.cat === cat ? mod.color : 'transparent', transition: 'all .12s',
-                }}>{cat}</button>
-              ))}
-            </div>
+          {/* ── LEFT: Menu panel (65%) ── */}
+          <div style={{ flex: '0 0 65%', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--bdr)' }}>
 
-            {/* Item grid — 3 columns */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                {filteredItems.map((item: MenuItem) => (
-                  <div key={item.id} onClick={() => handleItemClick(item)} style={{
-                    background: item.gradient ?? 'var(--surf)',
-                    border: '2px solid var(--bdr)',
-                    borderRadius: 'var(--r3)', cursor: 'pointer', position: 'relative',
-                    overflow: 'hidden', transition: 'all .18s', minHeight: 150,
-                    display: 'flex', flexDirection: 'column',
-                  }}>
-                    {item.duration && (
-                      <div style={{ padding: '4px 10px', background: 'var(--surf2)', borderBottom: '1px solid var(--bdr)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)' }}>{item.duration}</div>
-                    )}
-                    <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', lineHeight: 1.2 }}>{item.name}</div>
-                      <div style={{ marginTop: 4 }}>
-                        <span style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--mono)', letterSpacing: '-.5px', color: item.accent ?? mod.color }}>{fmt(item.price, sym)}</span>
-                      </div>
-                    </div>
-                  </div>
+            {/* Category tabs + search bar */}
+            <div style={{ borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
+              <div style={{ padding: '8px 12px 0', display: 'flex', gap: 6, overflowX: 'auto' }}>
+                {cats.map((cat: string) => (
+                  <button key={cat} onClick={() => { setPOS({ cat }); setSearchQuery('') }} style={{
+                    padding: '8px 18px', borderRadius: '20px 20px 0 0', fontSize: 13, fontWeight: 700,
+                    cursor: 'pointer', border: `1.5px solid ${ps.cat === cat ? mod.color : 'var(--bdr)'}`,
+                    borderBottom: ps.cat === cat ? `2px solid ${mod.color}` : '1.5px solid var(--bdr)',
+                    color: ps.cat === cat ? mod.color : 'var(--txt2)', whiteSpace: 'nowrap', minHeight: 40,
+                    background: ps.cat === cat ? mod.color + '15' : 'transparent', transition: 'all .12s', flexShrink: 0,
+                  }}>{cat}</button>
                 ))}
               </div>
+              <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--txt3)', pointerEvents: 'none' }}>🔍</span>
+                  <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search menu..."
+                    style={{ width: '100%', padding: '8px 10px 8px 34px', borderRadius: 10, border: `1.5px solid ${searchQuery ? mod.color : 'var(--bdr)'}`, background: 'var(--surf2)', color: 'var(--txt)', fontSize: 13, fontWeight: 500, boxSizing: 'border-box' }} />
+                </div>
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 20, padding: '0 4px', lineHeight: 1 }}>×</button>
+                )}
+              </div>
+            </div>
+
+            {/* Menu content */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+
+              {/* Quick Picks */}
+              {quickPicks.length > 0 && !searchQuery && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: mod.color, textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 8 }}>⚡ Quick Picks</div>
+                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                    {quickPicks.map((item: MenuItem) => (
+                      <button key={item.id} onClick={() => handleItemClick(item)} style={{
+                        padding: '7px 14px', borderRadius: 20, border: `1.5px solid ${mod.color}44`,
+                        background: 'var(--surf)', color: 'var(--txt)', cursor: 'pointer',
+                        fontSize: 12, fontWeight: 700, display: 'flex', gap: 6, alignItems: 'center',
+                        whiteSpace: 'nowrap', transition: 'all .12s',
+                      }}>
+                        {item.emoji && <span style={{ fontSize: 15 }}>{item.emoji}</span>}
+                        {item.name}
+                        <span style={{ color: mod.color, fontFamily: 'var(--mono)', fontSize: 11 }}>{fmt(item.price, sym)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Search result count */}
+              {searchQuery && (
+                <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 10 }}>
+                  {searchFiltered.length} result{searchFiltered.length !== 1 ? 's' : ''} for &ldquo;{searchQuery}&rdquo;
+                </div>
+              )}
+
+              {/* Item grid — 4 columns */}
+              {searchFiltered.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--txt3)', fontSize: 13 }}>
+                  No items match &ldquo;{searchQuery}&rdquo;
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                  {searchFiltered.map((item: MenuItem) => (
+                    <div key={item.id} onClick={() => handleItemClick(item)} style={{
+                      background: item.gradient ?? 'var(--surf)',
+                      border: '2px solid var(--bdr)',
+                      borderRadius: 'var(--r3)', cursor: 'pointer', overflow: 'hidden',
+                      transition: 'all .15s', display: 'flex', flexDirection: 'column', minHeight: 110,
+                    }}>
+                      {item.duration && (
+                        <div style={{ padding: '3px 8px', background: 'var(--surf2)', borderBottom: '1px solid var(--bdr)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)' }}>{item.duration}</div>
+                      )}
+                      <div style={{ padding: '9px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div>
+                          {item.emoji && <div style={{ fontSize: 22, marginBottom: 3, lineHeight: 1 }}>{item.emoji}</div>}
+                          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--txt)', lineHeight: 1.25 }}>{item.name}</div>
+                        </div>
+                        <div style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--mono)', color: item.accent ?? mod.color, marginTop: 6, letterSpacing: '-.3px' }}>{fmt(item.price, sym)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Col 2 — Global Cart (340px, unchanged) */}
-          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* ── RIGHT: Order ticket (35%) ── */}
+          <div style={{ flex: '0 0 35%', minWidth: 290, maxWidth: 440, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            {/* Cart header */}
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>Bill</span>
-                {cart.length > 0 && (
-                  <span style={{ background: 'var(--blue)', color: '#fff', borderRadius: 12, fontSize: 11, fontWeight: 800, padding: '1px 8px', minWidth: 22, textAlign: 'center' }}>
-                    {cart.length}
-                  </span>
-                )}
-                {/* Open orders + held orders buttons */}
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 5 }}>
-                  <button onClick={() => setShowOpen(true)} style={{
-                    padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                    border: `1.5px solid ${openOrders.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`,
-                    background: openOrders.length > 0 ? 'var(--grn-bg, #14532d22)' : 'transparent',
-                    color: openOrders.length > 0 ? 'var(--grn)' : 'var(--txt3)',
-                    display: 'flex', alignItems: 'center', gap: 4,
-                  }}>
-                    Open {openOrders.length > 0 && <span style={{ background: 'var(--grn)', color: '#fff', borderRadius: 8, fontSize: 10, padding: '0 5px', fontWeight: 800 }}>{openOrders.length}</span>}
-                  </button>
-                  <button onClick={() => setShowHeld(true)} style={{
-                    padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                    border: `1.5px solid ${state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--bdr)'}`,
-                    background: state.heldOrders.length > 0 ? 'var(--ora-bg, #78350f22)' : 'transparent',
-                    color: state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--txt3)',
-                    display: 'flex', alignItems: 'center', gap: 4,
-                  }}>
-                    Held {state.heldOrders.length > 0 && <span style={{ background: 'var(--ora)', color: '#fff', borderRadius: 8, fontSize: 10, padding: '0 5px', fontWeight: 800 }}>{state.heldOrders.length}</span>}
-                  </button>
+            {/* Table / Server / Status header */}
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div>
+                  {selTable ? (
+                    <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--txt)', lineHeight: 1, letterSpacing: '-.5px' }}>Table {selTable}</div>
+                  ) : (
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--txt3)' }}>No Table Selected</div>
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>
+                    {currentUser?.name}{guestCount > 1 ? ` · ${guestCount} guests` : ' · 1 guest'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
+                  {cart.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 8, background: '#14532d22', color: 'var(--grn)', border: '1px solid #16a34a44', whiteSpace: 'nowrap' }}>OPEN ORDER</span>}
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => setShowOpen(true)} style={{ padding: '3px 9px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${openOrders.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`, background: openOrders.length > 0 ? '#14532d22' : 'transparent', color: openOrders.length > 0 ? 'var(--grn)' : 'var(--txt3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      Open{openOrders.length > 0 && <span style={{ background: 'var(--grn)', color: '#fff', borderRadius: 6, fontSize: 9, padding: '0 4px', fontWeight: 800 }}>{openOrders.length}</span>}
+                    </button>
+                    <button onClick={() => setShowHeld(true)} style={{ padding: '3px 9px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--bdr)'}`, background: state.heldOrders.length > 0 ? '#78350f22' : 'transparent', color: state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--txt3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      Held{state.heldOrders.length > 0 && <span style={{ background: 'var(--ora)', color: '#fff', borderRadius: 6, fontSize: 9, padding: '0 4px', fontWeight: 800 }}>{state.heldOrders.length}</span>}
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Customer name + guest count */}
-              {(activeModule === 'restaurant' || activeModule === 'bar') && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginTop: 8 }}>
-                  <input value={customerName} onChange={e => setCustomerName(e.target.value)}
-                    placeholder="Customer name (optional)"
-                    style={{ padding: '6px 9px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 11, fontWeight: 600 }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
-                    <span style={{ color: 'var(--txt3)', whiteSpace: 'nowrap' }}>👥</span>
-                    <input type="number" min={1} max={20} value={guestCount}
-                      onChange={e => setGuestCount(Math.max(1, parseInt(e.target.value) || 1))}
-                      style={{ width: 38, padding: '6px 6px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 12, fontWeight: 700, textAlign: 'center' }} />
-                  </div>
+              {/* Kitchen status tracker */}
+              {activeTableOrder && (
+                <div style={{ display: 'flex', gap: 5, marginBottom: 8, flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Kitchen Sent ✓', done: true },
+                    { label: 'Food Ready', done: activeTableOrder.kitchenStatus === 'ready' || activeTableOrder.status === 'ready' || activeTableOrder.status === 'served' },
+                    { label: 'Served', done: activeTableOrder.status === 'served' },
+                  ].map(step => (
+                    <div key={step.label} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8, color: step.done ? 'var(--grn)' : 'var(--txt3)', background: step.done ? '#14532d22' : 'var(--surf)', border: `1px solid ${step.done ? '#16a34a44' : 'var(--bdr)'}` }}>{step.label}</div>
+                  ))}
                 </div>
               )}
 
-              {/* Table selector for restaurant / bar */}
+              {/* Table selector — floor plan or dropdown */}
               {(activeModule === 'restaurant' || activeModule === 'bar') && (mod.tables as string[])?.length > 0 && (
-                <div style={{ marginTop: 6 }}>
-                  <select
-                    value={ps.selTable ?? ''}
-                    onChange={e => setPOS({ selTable: e.target.value || null })}
-                    style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: ps.selTable ? 'var(--txt)' : 'var(--txt3)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    <option value="">— Select Table —</option>
-                    {(mod.tables as string[]).map((t: string) => {
-                      const status = (mod.tableStatus as Record<string, string>)?.[t] ?? 'free'
-                      return <option key={t} value={t}>{t} {status === 'occupied' ? '(Occupied)' : status === 'reserved' ? '(Reserved)' : '(Free)'}</option>
-                    })}
-                  </select>
-                </div>
+                showFloorPlan ? (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: mod.color, textTransform: 'uppercase', letterSpacing: '.5px' }}>Floor Plan</span>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 9, color: 'var(--txt3)' }}>
+                        <span style={{ color: 'var(--grn)' }}>● Free</span>
+                        <span style={{ color: 'var(--ora)' }}>● Occupied</span>
+                        <span style={{ color: '#ef4444' }}>● Pay Now</span>
+                        <button onClick={() => setShowFloorPlan(false)} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer', fontWeight: 700 }}>List ▾</button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, maxHeight: 160, overflowY: 'auto' }}>
+                      {(mod.tables as string[]).map((tbl: string) => {
+                        const tOrder = tableOrderMap[tbl]
+                        const tStatus = tOrder ? ((tOrder.status === 'ready' || tOrder.status === 'served') ? 'paying' : 'occupied') : 'free'
+                        const tColors = tStatus === 'free' ? { bg: '#14532d22', border: '#16a34a55', color: 'var(--grn)' }
+                          : tStatus === 'occupied' ? { bg: '#78350f22', border: '#d9770055', color: 'var(--ora)' }
+                          : { bg: '#7f1d1d22', border: '#ef444455', color: '#ef4444' }
+                        const isSel = selTable === tbl
+                        return (
+                          <button key={tbl} onClick={() => setPOS({ selTable: isSel ? null : tbl })} style={{ padding: '7px 4px', borderRadius: 'var(--r2)', textAlign: 'center', cursor: 'pointer', border: `2px solid ${isSel ? mod.color : tColors.border}`, background: isSel ? mod.color + '33' : tColors.bg, color: isSel ? mod.color : tColors.color }}>
+                            <div style={{ fontSize: 11, fontWeight: 800 }}>{tbl}</div>
+                            <div style={{ fontSize: 8, opacity: .75, marginTop: 1 }}>{tStatus === 'free' ? 'Free' : tStatus === 'occupied' ? `#${tOrder!.orderNum}` : 'Pay'}</div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <select value={ps.selTable ?? ''} onChange={e => setPOS({ selTable: e.target.value || null })}
+                      style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: ps.selTable ? 'var(--txt)' : 'var(--txt3)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      <option value="">— Select Table —</option>
+                      {(mod.tables as string[]).map((tbl: string) => {
+                        const tOrder = tableOrderMap[tbl]
+                        const tStatus = (mod.tableStatus as Record<string, string>)?.[tbl] ?? 'free'
+                        return <option key={tbl} value={tbl}>{tbl}{tOrder ? ` (Order #${tOrder.orderNum})` : tStatus === 'reserved' ? ' (Reserved)' : ''}</option>
+                      })}
+                    </select>
+                    <button onClick={() => setShowFloorPlan(true)} title="Floor plan view" style={{ flexShrink: 0, padding: '7px 11px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt3)', cursor: 'pointer', fontSize: 15 }}>⊞</button>
+                  </div>
+                )
               )}
             </div>
 
-            {/* Cart item list */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+            {/* Customer / order type / guests */}
+            {(activeModule === 'restaurant' || activeModule === 'bar') && (
+              <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginBottom: 6 }}>
+                  <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name (optional)"
+                    style={{ padding: '6px 9px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 11, fontWeight: 600 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button onClick={() => setGuestCount(g => Math.max(1, g-1))} style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                    <span style={{ fontSize: 14, fontWeight: 800, minWidth: 20, textAlign: 'center', color: 'var(--txt)' }}>{guestCount}</span>
+                    <button onClick={() => setGuestCount(g => g+1)} style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                  </div>
+                </div>
+                {hasRestaurantItems && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                    {(['dine-in', 'takeout', 'delivery'] as OrderType[]).map(ot => (
+                      <button key={ot} onClick={() => dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: ot })} style={{ padding: '5px 4px', borderRadius: 'var(--r)', border: `2px solid ${cartOrderType===ot?'var(--ora)':'var(--bdr2)'}`, background: cartOrderType===ot?'#78350f22':'var(--surf)', color: cartOrderType===ot?'var(--ora)':'var(--txt2)', fontSize: 10, fontWeight: 700, cursor: 'pointer', transition: 'all .12s' }}>
+                        {ot==='dine-in'?'Dine-in':ot==='takeout'?'Takeout':'Delivery'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cart items — scrollable */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
               {cart.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '36px 10px', color: 'var(--txt3)' }}>
-                  <div style={{ fontSize: 12 }}>No items yet — add from any module</div>
+                <div style={{ textAlign: 'center', padding: '28px 10px', color: 'var(--txt3)' }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>🍽</div>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>Tap menu items to add</div>
                 </div>
               ) : (
                 cart.map((ci: CartItem) => {
@@ -1066,50 +1197,43 @@ export default function POSPage() {
                   const lineTotal = (ci.price + ci.addons.reduce((s, a) => s + a.price, 0)) * ci.qty
                   const isVoided = !!ci.voided
                   return (
-                    <div key={ci.id} style={{ background: isVoided ? 'var(--surf3)' : 'var(--surf)', borderRadius: 'var(--r)', marginBottom: 8, display: 'flex', gap: 0, overflow: 'hidden', border: `1px solid ${isVoided ? '#ef444433' : 'var(--bdr)'}`, opacity: isVoided ? .6 : 1 }}>
-                      {/* Module color bar */}
+                    <div key={ci.id} style={{ background: isVoided ? 'var(--surf3)' : 'var(--surf)', borderRadius: 'var(--r)', marginBottom: 7, overflow: 'hidden', border: `1px solid ${isVoided ? '#ef444433' : 'var(--bdr)'}`, opacity: isVoided ? .55 : 1, display: 'flex' }}>
                       <div style={{ width: 4, background: isVoided ? '#ef4444' : badge.color, flexShrink: 0 }} />
                       <div style={{ flex: 1, padding: '9px 10px' }}>
-                        {/* Module badge + name row */}
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginBottom: 4 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 8, background: isVoided ? '#7f1d1d33' : badge.bg, color: isVoided ? '#ef4444' : badge.color, flexShrink: 0 }}>{isVoided ? 'VOID' : badge.label}</span>
-                          <span style={{ fontSize: 13, fontWeight: 800, color: isVoided ? 'var(--txt3)' : 'var(--txt)', flex: 1, lineHeight: 1.2, textDecoration: isVoided ? 'line-through' : 'none' }}>{ci.name} <span style={{ color: 'var(--txt3)', fontWeight: 600 }}>×{ci.qty}</span></span>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: isVoided ? 'var(--txt3)' : 'var(--txt)', textDecoration: isVoided ? 'line-through' : 'none', lineHeight: 1.2 }}>{ci.name}</span>
+                            <span style={{ fontSize: 11, color: 'var(--txt3)', marginLeft: 5 }}>×{ci.qty}</span>
+                            {isVoided && <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', marginLeft: 6 }}>VOID</span>}
+                          </div>
                           <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: isVoided ? 'var(--txt3)' : 'var(--txt)', flexShrink: 0, textDecoration: isVoided ? 'line-through' : 'none' }}>{fmt(lineTotal, sym)}</span>
                         </div>
-                        {/* Void reason tag */}
                         {isVoided && ci.voidReason && (
-                          <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 4 }}>
-                            Void: {ci.voidReasonText || VOID_REASON_LABELS[ci.voidReason]} · {ci.voidedBy} {ci.voidedAt}
-                          </div>
+                          <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 3 }}>{ci.voidReasonText || VOID_REASON_LABELS[ci.voidReason]} · {ci.voidedBy}</div>
                         )}
-                        {/* Addons */}
-                        {!isVoided && ci.addons.map(a => (
-                          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-                            <span style={{ fontSize: 11, color: 'var(--txt3)', flex: 1 }}>{a.name}</span>
-                            <span style={{ fontSize: 11, color: 'var(--txt3)', fontFamily: 'var(--mono)' }}>+{fmt(a.price, sym)}</span>
-                          </div>
-                        ))}
-                        {/* Flavour / Size / Sides */}
-                        {!isVoided && ci.flavour && <div style={{ fontSize: 11, color: 'var(--ora)', marginBottom: 2 }}>Flavour: {ci.flavour}</div>}
-                        {!isVoided && ci.size    && <div style={{ fontSize: 11, color: 'var(--pur)', marginBottom: 2 }}>Size: {ci.size}</div>}
-                        {!isVoided && ci.sides && ci.sides.length > 0 && <div style={{ fontSize: 11, color: 'var(--grn)', marginBottom: 2 }}>Sides: {ci.sides.join(', ')}</div>}
-                        {/* Plate */}
-                        {!isVoided && ci.plate && (
-                          <div style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--mono)', fontWeight: 700, marginTop: 2 }}>Plate: {ci.plate}</div>
+                        {!isVoided && (
+                          <>
+                            {ci.flavour && <div style={{ fontSize: 11, color: 'var(--ora)', marginBottom: 1 }}>Flavour: {ci.flavour}</div>}
+                            {ci.size    && <div style={{ fontSize: 11, color: 'var(--pur)', marginBottom: 1 }}>Size: {ci.size}</div>}
+                            {ci.sides && ci.sides.length > 0 && <div style={{ fontSize: 11, color: 'var(--grn)', marginBottom: 1 }}>Sides: {ci.sides.join(', ')}</div>}
+                            {ci.addons.map(a => (
+                              <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--txt3)', marginBottom: 1 }}>
+                                <span>{a.name}</span><span>+{fmt(a.price, sym)}</span>
+                              </div>
+                            ))}
+                            {ci.plate && <div style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--mono)', fontWeight: 700 }}>Plate: {ci.plate}</div>}
+                          </>
                         )}
-                        {/* Qty controls + void/remove */}
                         {!isVoided && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
                             <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty - 1 })}
-                              style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>−</button>
-                            <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, minWidth: 18, textAlign: 'center' }}>{ci.qty}</span>
+                              style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800 }}>−</button>
+                            <span style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 800, minWidth: 22, textAlign: 'center', color: 'var(--txt)' }}>{ci.qty}</span>
                             <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty + 1 })}
-                              style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>+</button>
+                              style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800 }}>+</button>
                             {canVoidCartItem && (
                               <button onClick={() => setVoidTarget({ item: ci })}
-                                style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, background: 'var(--red-bg, #7f1d1d22)', border: '1px solid var(--red-bdr, #ef444433)', color: 'var(--red, #ef4444)', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
-                                VOID
-                              </button>
+                                style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, background: '#7f1d1d22', border: '1px solid #ef444433', color: '#ef4444', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>VOID</button>
                             )}
                           </div>
                         )}
@@ -1120,187 +1244,116 @@ export default function POSPage() {
               )}
             </div>
 
-            {/* Totals + payment + checkout */}
-            <div style={{ padding: '12px 14px', borderTop: '1px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
-
-              {/* Order type selector — only if restaurant items in cart */}
-              {hasRestaurantItems && (
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--txt3)', marginBottom: 5 }}>Order Type</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
-                    {(['dine-in', 'takeout', 'delivery'] as OrderType[]).map(ot => (
-                      <button key={ot} onClick={() => dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: ot })} style={{
-                        padding: '7px 4px', borderRadius: 'var(--r)',
-                        border: `2px solid ${cartOrderType === ot ? 'var(--ora, #f97316)' : 'var(--bdr2)'}`,
-                        background: cartOrderType === ot ? 'var(--ora-bg, #78350f22)' : 'var(--surf)',
-                        color: cartOrderType === ot ? 'var(--ora, #f97316)' : 'var(--txt2)',
-                        fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all .12s',
-                      }}>
-                        {ot === 'dine-in' ? 'Dine-in' : ot === 'takeout' ? 'Takeout' : 'Delivery'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+            {/* ── STICKY TOTALS + ACTIONS ── */}
+            <div style={{ borderTop: '2px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
 
               {/* Discount */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <div style={{ padding: '7px 12px', borderBottom: '1px solid var(--bdr2)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 11, color: 'var(--txt3)', flex: 1 }}>Discount</span>
-                {/* Mode toggle */}
                 <button onClick={() => { setDiscMode(m => m === 'pct' ? 'flat' : 'pct'); setDiscPct(0); setDiscFlat(0) }}
-                  style={{ fontSize: 10, padding: '3px 7px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt3)', cursor: 'pointer', fontWeight: 700 }}>
+                  style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt3)', cursor: 'pointer', fontWeight: 700 }}>
                   {discMode === 'pct' ? '%' : sym}
                 </button>
                 {discMode === 'pct' ? (
                   <>
-                    <input type="number" min={0} max={100} value={discPct || ''}
-                      onChange={e => {
-                        const v = Math.min(100, Math.max(0, Number(e.target.value) || 0))
-                        if (v > 20 && !isManager) { toast('Large discounts require manager access', 'warn'); return }
-                        setDiscPct(v)
-                      }}
-                      placeholder="0"
-                      style={{ width: 52, background: 'var(--surf2)', border: `1px solid ${discPct > 0 ? 'var(--grn)' : 'var(--bdr2)'}`, borderRadius: 'var(--r)', padding: '5px 8px', fontSize: 13, color: discPct > 0 ? 'var(--grn)' : 'var(--txt)', textAlign: 'right' }} />
+                    <input type="number" min={0} max={100} value={discPct || ''} onChange={e => { const v = Math.min(100, Math.max(0, Number(e.target.value)||0)); if (v > 20 && !isManager) { toast('Large discounts require manager access', 'warn'); return }; setDiscPct(v) }} placeholder="0"
+                      style={{ width: 46, background: 'var(--surf2)', border: `1px solid ${discPct>0?'var(--grn)':'var(--bdr2)'}`, borderRadius: 6, padding: '4px 6px', fontSize: 13, color: discPct>0?'var(--grn)':'var(--txt)', textAlign: 'right' }} />
                     <span style={{ fontSize: 11, color: 'var(--txt3)' }}>%</span>
                   </>
                 ) : (
                   <>
-                    <input type="number" min={0} value={discFlat || ''}
-                      onChange={e => {
-                        const v = Math.max(0, Number(e.target.value) || 0)
-                        if (v > calc.sub * 0.2 && !isManager) { toast('Large discounts require manager access', 'warn'); return }
-                        setDiscFlat(v)
-                      }}
-                      placeholder="0"
-                      style={{ width: 70, background: 'var(--surf2)', border: `1px solid ${discFlat > 0 ? 'var(--grn)' : 'var(--bdr2)'}`, borderRadius: 'var(--r)', padding: '5px 8px', fontSize: 13, color: discFlat > 0 ? 'var(--grn)' : 'var(--txt)', textAlign: 'right' }} />
+                    <input type="number" min={0} value={discFlat || ''} onChange={e => { const v = Math.max(0, Number(e.target.value)||0); if (v > calc.sub*0.2 && !isManager) { toast('Large discounts require manager access', 'warn'); return }; setDiscFlat(v) }} placeholder="0"
+                      style={{ width: 60, background: 'var(--surf2)', border: `1px solid ${discFlat>0?'var(--grn)':'var(--bdr2)'}`, borderRadius: 6, padding: '4px 6px', fontSize: 13, color: discFlat>0?'var(--grn)':'var(--txt)', textAlign: 'right' }} />
                     <span style={{ fontSize: 11, color: 'var(--txt3)' }}>{sym}</span>
                   </>
                 )}
                 {(discPct > 0 || discFlat > 0) && (
-                  <button onClick={() => { setDiscPct(0); setDiscFlat(0) }} style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+                  <button onClick={() => { setDiscPct(0); setDiscFlat(0) }} style={{ fontSize: 14, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
                 )}
               </div>
 
-              {/* Divider */}
-              <div style={{ height: 1, background: 'var(--bdr)', margin: '6px 0 10px' }} />
-
               {/* Totals */}
-              {([
-                { label: 'Subtotal', value: fmt(calc.sub, sym) },
-                calc.disc > 0 && { label: discMode === 'pct' ? `Discount (${discPct}%)` : `Discount (${sym}${discFlat})`, value: `−${fmt(calc.disc, sym)}`, color: 'var(--grn)' },
-                calc.gct > 0  && { label: `GCT (${(calc.gctRate * 100).toFixed(0)}%)`,  value: fmt(calc.gct, sym) },
-                calc.serviceCharge > 0 && { label: `Service (${(calc.scRate * 100).toFixed(0)}%)`, value: fmt(calc.serviceCharge, sym) },
-              ].filter(Boolean) as { label: string; value: string; color?: string }[]).map((row, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: 13 }}>
-                  <span style={{ color: row.color ?? 'var(--txt3)' }}>{row.label}</span>
-                  <span style={{ fontWeight: 700, color: row.color ?? 'var(--txt2)', fontFamily: 'var(--mono)' }}>{row.value}</span>
-                </div>
-              ))}
-
-              {/* Gratuity row — auto-set, manager can remove/override */}
-              {hasRestaurantItems && (cartOrderType === 'dine-in') && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: 13 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ color: gratuityPct > 0 ? 'var(--txt3)' : 'var(--txt4, var(--txt3))' }}>
-                      Gratuity ({gratuityPct}%)
-                    </span>
-                    {isManager && !showGratEdit && (
-                      <button onClick={() => { setGratInput(String(gratuityPct)); setShowGratEdit(true) }}
-                        style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer' }}>
-                        edit
-                      </button>
-                    )}
-                    {isManager && showGratEdit && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <input type="number" min={0} max={50} value={gratInput}
-                          onChange={e => setGratInput(e.target.value)}
-                          style={{ width: 42, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 12, textAlign: 'center' }} />
-                        <span style={{ fontSize: 10, color: 'var(--txt3)' }}>%</span>
-                        <button onClick={() => {
-                          const v = Math.max(0, Math.min(50, parseFloat(gratInput) || 0))
-                          setGratuityPct(v)
-                          setGratuityOverride(true)
-                          setShowGratEdit(false)
-                          audit('GRATUITY_OVERRIDE', `Set gratuity to ${v}%`, 'warn')
-                        }} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--grn)', background: '#14532d22', color: 'var(--grn)', cursor: 'pointer', fontWeight: 700 }}>✓</button>
-                        <button onClick={() => setShowGratEdit(false)}
-                          style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer' }}>✕</button>
-                      </div>
-                    )}
+              <div style={{ padding: '8px 14px' }}>
+                {([
+                  { label: 'Subtotal', value: fmt(calc.sub, sym), color: 'var(--txt3)' },
+                  calc.disc > 0 && { label: discMode==='pct' ? `Discount (${discPct}%)` : 'Discount', value: `−${fmt(calc.disc,sym)}`, color: 'var(--grn)' },
+                  calc.gct > 0  && { label: `GCT (${(calc.gctRate*100).toFixed(0)}%)`, value: fmt(calc.gct,sym), color: 'var(--txt3)' },
+                  calc.serviceCharge > 0 && { label: `Service (${(calc.scRate*100).toFixed(0)}%)`, value: fmt(calc.serviceCharge,sym), color: 'var(--txt3)' },
+                ].filter(Boolean) as {label:string;value:string;color:string}[]).map((row, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 }}>
+                    <span style={{ color: row.color }}>{row.label}</span>
+                    <span style={{ fontWeight: 700, color: row.color, fontFamily: 'var(--mono)' }}>{row.value}</span>
                   </div>
-                  <span style={{ fontWeight: 700, color: gratuityPct > 0 ? 'var(--txt2)' : 'var(--txt3)', fontFamily: 'var(--mono)' }}>
-                    {gratuityPct > 0 ? fmt(calc.gratuity, sym) : '—'}
-                  </span>
-                </div>
-              )}
+                ))}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0', fontSize: 18, fontWeight: 800 }}>
-                <span style={{ color: 'var(--txt)' }}>TOTAL</span>
-                <span style={{ fontFamily: 'var(--mono)', color: cart.length > 0 ? 'var(--blue)' : 'var(--txt3)' }}>{fmt(calc.total, sym)}</span>
+                {/* Gratuity */}
+                {hasRestaurantItems && cartOrderType === 'dine-in' && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ color: 'var(--txt3)' }}>Gratuity ({gratuityPct}%)</span>
+                      {isManager && !showGratEdit && (
+                        <button onClick={() => { setGratInput(String(gratuityPct)); setShowGratEdit(true) }}
+                          style={{ fontSize: 9, padding: '1px 5px', borderRadius: 5, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer' }}>edit</button>
+                      )}
+                      {isManager && showGratEdit && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <input type="number" min={0} max={50} value={gratInput} onChange={e => setGratInput(e.target.value)}
+                            style={{ width: 38, padding: '1px 5px', borderRadius: 5, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 11, textAlign: 'center' }} />
+                          <span style={{ fontSize: 9, color: 'var(--txt3)' }}>%</span>
+                          <button onClick={() => { const v = Math.max(0, Math.min(50, parseFloat(gratInput)||0)); setGratuityPct(v); setGratuityOverride(true); setShowGratEdit(false); audit('GRATUITY_OVERRIDE',`Set gratuity to ${v}%`,'warn') }}
+                            style={{ fontSize: 9, padding: '1px 5px', borderRadius: 5, border: '1px solid var(--grn)', background: '#14532d22', color: 'var(--grn)', cursor: 'pointer', fontWeight: 700 }}>✓</button>
+                          <button onClick={() => setShowGratEdit(false)} style={{ fontSize: 9, padding: '1px 5px', borderRadius: 5, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer' }}>✕</button>
+                        </div>
+                      )}
+                    </div>
+                    <span style={{ fontWeight: 700, color: gratuityPct>0?'var(--txt2)':'var(--txt3)', fontFamily: 'var(--mono)', fontSize: 12 }}>{gratuityPct>0?fmt(calc.gratuity,sym):'—'}</span>
+                  </div>
+                )}
+
+                {/* TOTAL */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 8, borderTop: '2px solid var(--bdr)' }}>
+                  <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--txt)', letterSpacing: '-.3px' }}>TOTAL</span>
+                  <span style={{ fontSize: 22, fontWeight: 900, fontFamily: 'var(--mono)', color: cart.length > 0 ? 'var(--blue)' : 'var(--txt3)', letterSpacing: '-.5px' }}>{fmt(calc.total, sym)}</span>
+                </div>
               </div>
 
-              {/* ── Send Order / Add to Order ── */}
-              <div style={{ display: 'grid', gridTemplateColumns: openOrders.length > 0 ? '1fr 1fr' : '1fr', gap: 6, marginBottom: 7 }}>
-                <button onClick={sendOrder} disabled={activeCart.length === 0} style={{
-                  padding: 14, borderRadius: 'var(--r)', fontSize: 13, fontWeight: 800,
-                  color: activeCart.length > 0 ? '#fff' : 'var(--txt3)',
-                  background: activeCart.length > 0 ? 'var(--grn)' : 'var(--surf3)',
-                  border: 'none', cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed',
-                  minHeight: 50, transition: 'all .15s',
-                }}>
-                  Send Order
+              {/* Action buttons */}
+              <div style={{ padding: '4px 12px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+
+                {/* Send Order + Add to Order */}
+                <div style={{ display: 'grid', gridTemplateColumns: openOrders.length > 0 ? '1fr 1fr' : '1fr', gap: 6 }}>
+                  <button onClick={sendOrder} disabled={activeCart.length === 0} style={{ minHeight: 56, borderRadius: 'var(--r)', fontSize: 14, fontWeight: 900, border: 'none', cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', color: activeCart.length > 0 ? '#fff' : 'var(--txt3)', background: activeCart.length > 0 ? 'var(--grn)' : 'var(--surf3)', letterSpacing: '.2px', transition: 'all .15s' }}>
+                    Send Order
+                  </button>
+                  {openOrders.length > 0 && (
+                    <button onClick={() => { setAddToOrderMode(true); setShowOpen(true) }} disabled={activeCart.length === 0} style={{ minHeight: 56, borderRadius: 'var(--r)', fontSize: 12, fontWeight: 800, color: activeCart.length > 0 ? 'var(--grn)' : 'var(--txt3)', background: activeCart.length > 0 ? '#14532d22' : 'var(--surf3)', border: `1.5px solid ${activeCart.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`, cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', transition: 'all .15s' }}>
+                      Add to Order
+                    </button>
+                  )}
+                </div>
+
+                {/* Pay */}
+                <button onClick={() => { if (cart.length===0){toast('Add items first','warn');return}; setShowPayment(true) }} disabled={cart.length === 0} style={{ width: '100%', minHeight: 62, borderRadius: 'var(--r)', fontSize: 18, fontWeight: 900, border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', color: cart.length > 0 ? '#fff' : 'var(--txt3)', background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)', letterSpacing: '.3px', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  ✓ Pay {cart.length > 0 ? fmt(calc.total, sym) : '—'}
                 </button>
-                {openOrders.length > 0 && (
-                  <button onClick={() => { setAddToOrderMode(true); setShowOpen(true) }} disabled={activeCart.length === 0} style={{
-                    padding: 14, borderRadius: 'var(--r)', fontSize: 13, fontWeight: 800,
-                    color: activeCart.length > 0 ? 'var(--grn)' : 'var(--txt3)',
-                    background: activeCart.length > 0 ? 'var(--grn-bg, #14532d22)' : 'var(--surf3)',
-                    border: `1.5px solid ${activeCart.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`,
-                    cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed',
-                    minHeight: 50, transition: 'all .15s',
-                  }}>
-                    Add to Order
+
+                {/* Split / Hold / Clear */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                  <button onClick={() => { if (cart.length===0){toast('Add items first','warn');return}; setShowSplitBill(true) }}
+                    style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Split</button>
+                  <button onClick={holdOrder}
+                    style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Hold</button>
+                  <button onClick={() => dispatch({ type: 'CLEAR_CART' })}
+                    style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Clear</button>
+                </div>
+
+                {/* Reprint */}
+                {lastTx && lastTicket && (
+                  <button onClick={() => setShowTicket(true)} style={{ width: '100%', padding: '8px 0', borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px dashed var(--bdr)', cursor: 'pointer' }}>
+                    Reprint Last Receipt
                   </button>
                 )}
               </div>
-
-              {/* ── Pay (direct from cart) ── */}
-              <button onClick={() => { if (cart.length === 0) { toast('Add items first', 'warn'); return }; setShowPayment(true) }}
-                disabled={cart.length === 0} style={{
-                  width: '100%', padding: 14, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
-                  color: cart.length > 0 ? '#fff' : 'var(--txt3)',
-                  background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)',
-                  border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  minHeight: 54, transition: 'all .15s', marginBottom: 7,
-                }}>
-                ✓ Pay {cart.length > 0 ? fmt(calc.total, sym) : '—'}
-              </button>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 7 }}>
-                <button onClick={() => { if (cart.length === 0) { toast('Add items first', 'warn'); return }; setShowSplitBill(true) }}
-                  style={{ padding: 9, borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 38 }}>
-                  Split
-                </button>
-                <button onClick={holdOrder}
-                  style={{ padding: 9, borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 38 }}>
-                  Hold
-                </button>
-                <button onClick={() => dispatch({ type: 'CLEAR_CART' })}
-                  style={{ padding: 9, borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 38 }}>
-                  Clear
-                </button>
-              </div>
-
-              {lastTx && lastTicket && (
-                <button onClick={() => setShowTicket(true)} style={{
-                  width: '100%', padding: 9, borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700,
-                  background: 'transparent', color: 'var(--txt3)', border: '1.5px dashed var(--bdr)',
-                  cursor: 'pointer',
-                }}>
-                  Reprint Last Receipt
-                </button>
-              )}
             </div>
           </div>
 

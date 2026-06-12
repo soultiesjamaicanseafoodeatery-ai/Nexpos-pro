@@ -16,12 +16,28 @@ interface DbStaffRow {
   role: string
   pin_hash: string
   color: string
-  allowed_modules: string[]
+  allowed_modules: string[] | string | null | undefined
   active: boolean
   staff_id: string | null
 }
 
 function dbStaffToUser(row: DbStaffRow): User {
+  const rawMods = row.allowed_modules
+  let allowedModules: ModuleKey[]
+  if (Array.isArray(rawMods) && rawMods.length > 0) {
+    allowedModules = rawMods as ModuleKey[]
+  } else if (typeof rawMods === 'string' && rawMods.length > 0) {
+    // Handle PostgreSQL literal "{restaurant,bar}" or JSON string "["restaurant"]"
+    try {
+      const parsed = JSON.parse(rawMods)
+      allowedModules = Array.isArray(parsed) && parsed.length > 0 ? parsed : ['restaurant']
+    } catch {
+      const stripped = rawMods.replace(/^\{|\}$/g, '').split(',').map(s => s.trim()).filter(Boolean)
+      allowedModules = stripped.length > 0 ? (stripped as ModuleKey[]) : ['restaurant']
+    }
+  } else {
+    allowedModules = ['restaurant']
+  }
   return {
     id: row.id,
     name: row.name,
@@ -29,7 +45,7 @@ function dbStaffToUser(row: DbStaffRow): User {
     pin_hash: row.pin_hash,
     role: row.role as UserRole,
     color: row.color,
-    allowedModules: (row.allowed_modules ?? ['restaurant']) as ModuleKey[],
+    allowedModules,
     active: row.active,
     staffId: row.staff_id ?? undefined,
   }

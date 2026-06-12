@@ -9,27 +9,8 @@ export default class ErrorBoundary extends React.Component<
 > {
   state: State = { error: null }
 
-  // Catch errors inside the React tree
   static getDerivedStateFromError(error: Error): State {
     return { error }
-  }
-
-  // Also catch unhandled errors/rejections outside the React tree (setTimeout, async, etc.)
-  private _onError = (e: ErrorEvent) => {
-    this.setState({ error: e.error ?? new Error(e.message) })
-  }
-  private _onUnhandled = (e: PromiseRejectionEvent) => {
-    const err = e.reason instanceof Error ? e.reason : new Error(String(e.reason))
-    this.setState({ error: err })
-  }
-
-  componentDidMount() {
-    window.addEventListener('error', this._onError)
-    window.addEventListener('unhandledrejection', this._onUnhandled)
-  }
-  componentWillUnmount() {
-    window.removeEventListener('error', this._onError)
-    window.removeEventListener('unhandledrejection', this._onUnhandled)
   }
 
   render() {

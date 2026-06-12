@@ -227,13 +227,14 @@ export default function StaffPage() {
   const [editUser, setEditUser]     = useState<User | null>(null)
   const [confirmDel, setConfirmDel] = useState<User | null>(null)
   const [saving, setSaving]         = useState(false)
+  const [supabaseStatus, setSupabaseStatus] = useState<'checking' | 'empty' | 'ready' | 'error'>('checking')
 
   const isAdmin = currentUser?.role === 'admin'
 
   const refetchStaff = useCallback(async () => {
     try {
       const res = await fetch(API)
-      if (!res.ok) throw new Error('HTTP ' + res.status)
+      if (!res.ok) { setSupabaseStatus('error'); return }
       const rows = await res.json()
       if (Array.isArray(rows) && rows.length > 0) {
         const updated: User[] = rows.map((r: { id: string; name: string; ini: string; pin_hash: string; role: UserRole; color: string; allowed_modules: string[]; active: boolean; staff_id?: string }) => ({
@@ -243,9 +244,14 @@ export default function StaffPage() {
           active: r.active, staffId: r.staff_id ?? undefined,
         }))
         dispatch({ type: 'SET_USERS', users: updated })
+        setSupabaseStatus('ready')
+      } else {
+        setSupabaseStatus('empty')
       }
-    } catch { /* ignore */ }
+    } catch { setSupabaseStatus('error') }
   }, [dispatch])
+
+  useEffect(() => { refetchStaff() }, [refetchStaff])
 
   const saveStaff = async (form: StaffForm): Promise<string | null> => {
     try {
@@ -313,8 +319,6 @@ export default function StaffPage() {
     setSaving(false)
   }
 
-  const usingSupabase = users.some(u => u.pin_hash)
-
   return (
     <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
 
@@ -324,7 +328,9 @@ export default function StaffPage() {
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>Staff</div>
           <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>
             {users.filter(u => u.active).length} active · {users.length} total
-            {!usingSupabase && <span style={{ color: 'var(--ora)', marginLeft: 8 }}>⚠ Using demo staff — run SQL below to activate Supabase</span>}
+            {supabaseStatus === 'empty'   && <span style={{ color: 'var(--ora)', marginLeft: 8 }}>⚠ No Supabase staff yet — click + Add Staff</span>}
+            {supabaseStatus === 'error'   && <span style={{ color: 'var(--red)', marginLeft: 8 }}>⚠ Supabase unavailable — showing demo staff</span>}
+            {supabaseStatus === 'checking'&& <span style={{ color: 'var(--txt3)', marginLeft: 8 }}>Connecting…</span>}
           </div>
         </div>
         {isAdmin && (
@@ -332,11 +338,16 @@ export default function StaffPage() {
         )}
       </div>
 
-      {/* SQL notice when no Supabase staff yet */}
-      {!usingSupabase && isAdmin && (
+      {/* Status banners */}
+      {supabaseStatus === 'empty' && isAdmin && (
+        <div style={{ background: 'var(--blue-bg)', border: '1px solid rgba(79,142,247,.3)', borderRadius: 'var(--r2)', padding: '12px 16px', marginBottom: 16, fontSize: 12, color: 'var(--txt2)' }}>
+          <strong style={{ color: 'var(--blue)' }}>Supabase is connected</strong> — your staff table is ready. Click <strong>+ Add Staff</strong> to create your first real staff account. Demo staff below are local only and won&apos;t be able to log in on other devices.
+        </div>
+      )}
+      {supabaseStatus === 'error' && isAdmin && (
         <div style={{ background: 'var(--ora-bg)', border: '1px solid rgba(255,124,76,.3)', borderRadius: 'var(--r2)', padding: '12px 16px', marginBottom: 16, fontSize: 12, color: 'var(--txt2)' }}>
-          <strong style={{ color: 'var(--ora)' }}>Setup required</strong> — run this SQL in your{' '}
-          <a href="https://supabase.com/dashboard/project/zkdemtdmscanbiygtwsh/sql/new" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>Supabase SQL editor</a>, then click &quot;Add Staff&quot; to create your real staff accounts.
+          <strong style={{ color: 'var(--ora)' }}>Could not reach Supabase</strong> — if you haven&apos;t created the staff table yet, run this SQL in your{' '}
+          <a href="https://supabase.com/dashboard/project/zkdemtdmscanbiygtwsh/sql/new" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>Supabase SQL editor</a>:
           <pre style={{ marginTop: 8, background: 'var(--bg)', borderRadius: 'var(--r)', padding: '10px 12px', fontSize: 11, overflowX: 'auto', color: 'var(--grn)', lineHeight: 1.6 }}>{`CREATE TABLE IF NOT EXISTS public.staff (
   id              TEXT PRIMARY KEY,
   name            TEXT NOT NULL,

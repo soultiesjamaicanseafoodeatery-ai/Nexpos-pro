@@ -120,7 +120,7 @@ export async function qzPrint(printerName: string, html: string, width: 58 | 80 
       flavor: 'plain',
       data: `<!DOCTYPE html><html><head><style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Courier New',monospace;font-size:11px;width:${width}mm}
+        body{font-family:'Courier New',monospace;font-size:14px;width:${width}mm;padding-bottom:30mm}
         pre{white-space:pre-wrap;word-break:break-all;font-family:inherit;font-size:inherit}
       </style></head><body>${html}</body></html>`,
     }])

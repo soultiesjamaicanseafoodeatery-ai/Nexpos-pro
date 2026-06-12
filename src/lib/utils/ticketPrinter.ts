@@ -63,7 +63,7 @@ export function printTicket(html: string, title = 'Ticket'): void {
   win.document.write(
     `<!DOCTYPE html><html><head><title>${esc(title)}</title><style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Courier New',Courier,monospace;font-size:11px;background:#fff;color:#000;padding:8px}
+    body{font-family:'Courier New',Courier,monospace;font-size:14px;background:#fff;color:#000;padding:8px;padding-bottom:30mm}
     pre{white-space:pre-wrap;word-break:break-all;font-family:inherit;font-size:inherit}
     @media print{body{width:${title.startsWith('58') ? '58' : '80'}mm}@page{margin:2mm}}
     </style></head><body>${html}

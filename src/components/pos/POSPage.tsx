@@ -143,8 +143,28 @@ export default function POSPage() {
     if (cachedPosAddons?.length) setLivePosAddons(cachedPosAddons)
     if (cachedSizes?.length)     setLiveSizesDefs(cachedSizes)
     if (cachedAssign && Object.keys(cachedAssign).length) setLiveAssignments(cachedAssign)
-    const tablesConf = storage.get<{ restaurant?: string[]; bar?: string[]; status?: Record<string, string> }>('tables_config')
-    if (tablesConf) setCustomTables(tablesConf)
+    const tablesConf = storage.get<Record<string, unknown>>('tables_config')
+    if (tablesConf) {
+      // TablesPage stores entries as {id,name,seats} objects; normalize to strings
+      const toStrArr = (arr: unknown): string[] => {
+        if (!Array.isArray(arr)) return []
+        return arr.map(t => {
+          if (typeof t === 'string') return t
+          if (t && typeof t === 'object') {
+            const e = t as { name?: unknown; id?: unknown }
+            return String(e.name ?? e.id ?? '')
+          }
+          return String(t)
+        }).filter(Boolean)
+      }
+      setCustomTables({
+        restaurant: toStrArr(tablesConf.restaurant),
+        bar:        toStrArr(tablesConf.bar),
+        status:     (tablesConf.status && typeof tablesConf.status === 'object')
+                      ? tablesConf.status as Record<string, string>
+                      : undefined,
+      })
+    }
 
     // ── Step 2: Background sync ──
     async function syncFromSupabase() {

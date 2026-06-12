@@ -65,7 +65,12 @@ export default function POSPage() {
   const [splitTarget,   setSplitTarget]   = useState<{ total: number; label: string } | null>(null)
 
   // Void system
-  const [voidTarget, setVoidTarget] = useState<{ item: CartItem; ticketId?: string } | null>(null)
+  const [voidTarget,      setVoidTarget]      = useState<{ item: CartItem; ticketId?: string } | null>(null)
+  const [voidOrderTarget, setVoidOrderTarget] = useState<OrderTicket | null>(null)
+  // Add-to-existing-order mode
+  const [addToOrderMode,  setAddToOrderMode]  = useState(false)
+  // Transfer table: { ticketId }
+  const [transferTarget,  setTransferTarget]  = useState<string | null>(null)
 
   // Modal state
   const [modalItem,   setModalItem]   = useState<MenuItem | null>(null)
@@ -737,6 +742,63 @@ export default function POSPage() {
     setVoidTarget(null)
   }
 
+  // ── Void entire open order (manager/admin only) ────────────
+  const isManager = ['admin','manager'].includes(role)
+  const handleVoidEntireOrder = (ticket: OrderTicket, reason: VoidReason, reasonText: string) => {
+    if (!currentUser) return
+    const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const voidedItems = ticket.items.map(ci =>
+      ci.voided ? ci : { ...ci, voided: true, voidReason: reason, voidReasonText: reasonText, voidedBy: currentUser.name, voidedAt: nowTime }
+    )
+    dispatch({ type: 'UPDATE_ORDER_TICKET', id: ticket.id, patch: { status: 'voided', items: voidedItems } })
+    const totalAmt = ticket.items.filter(ci => !ci.voided).reduce((s, ci) => s + (ci.price + ci.addons.reduce((as, a) => as + a.price, 0)) * ci.qty, 0)
+    dispatch({ type: 'ADD_VOID_LOG', entry: {
+      id: crypto.randomUUID(), ts: new Date().toLocaleString(),
+      user: currentUser.name, userId: currentUser.id, role,
+      voidType: 'order', orderNum: ticket.orderNum, reason, reasonText,
+      amount: totalAmt, mod: activeModule,
+    }})
+    if (ticket.hasKitchen || ticket.hasBar) {
+      const html = buildVoidTicket(ticket.orderNum, `ENTIRE ORDER (${ticket.items.filter(ci => !ci.voided).length} items)`, currentUser.name, nowTime, { reason: reasonText })
+      printTicket(html, 'VOID — Entire Order')
+    }
+    audit('VOID_ORDER', `Order #${ticket.orderNum} voided — ${reasonText}`, 'warn')
+    toast(`Order #${ticket.orderNum} voided`, 'warn')
+    setVoidOrderTarget(null)
+  }
+
+  // ── Add current cart items to an existing open order ───────
+  const addToExistingOrder = (ticket: OrderTicket) => {
+    if (activeCart.length === 0) { toast('Cart is empty', 'warn'); return }
+    if (!currentUser) return
+    const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const today   = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+    const newHasKitchen = activeCart.some(ci => ci.module === 'restaurant')
+    const newHasBar     = activeCart.some(ci => ci.module === 'bar')
+    const newHasCarwash = activeCart.some(ci => ci.module === 'carwash')
+    dispatch({ type: 'UPDATE_ORDER_TICKET', id: ticket.id, patch: {
+      items: [...ticket.items, ...activeCart],
+      hasKitchen: ticket.hasKitchen || newHasKitchen,
+      hasBar: ticket.hasBar || newHasBar,
+      hasCarwash: ticket.hasCarwash || newHasCarwash,
+    }})
+    const addData = { orderNum: ticket.orderNum, table: ticket.table, server: currentUser.name, orderType: ticket.orderType, date: today, time: nowTime, items: [...activeCart], orderNote: `++ ADDITIONAL ITEMS ++` }
+    if (newHasKitchen) { const h = buildKitchenTicket(addData, { width: 80 }); if (h) printTicket(h, 'Kitchen Ticket — Addition') }
+    if (newHasBar)     { const h = buildBarTicket(addData, { width: 80 });     if (h) setTimeout(() => printTicket(h, 'Bar Ticket — Addition'), 400) }
+    dispatch({ type: 'CLEAR_CART' })
+    setAddToOrderMode(false); setShowOpen(false)
+    audit('ADD_TO_ORDER', `Added ${activeCart.length} item(s) to Order #${ticket.orderNum}`, 'info')
+    toast(`Added to Order #${ticket.orderNum}`, 'success')
+  }
+
+  // ── Transfer table ──────────────────────────────────────────
+  const transferTable = (ticketId: string, newTable: string) => {
+    dispatch({ type: 'UPDATE_ORDER_TICKET', id: ticketId, patch: { table: newTable } })
+    audit('TRANSFER_TABLE', `Order moved to Table ${newTable}`, 'info')
+    toast(`Moved to Table ${newTable}`, 'success')
+    setTransferTarget(null)
+  }
+
   const holdOrder = () => {
     if (cart.length === 0) { toast('Nothing to hold', 'warn'); return }
     if (!currentUser) return
@@ -800,7 +862,6 @@ export default function POSPage() {
     }
   }, [cartOrderType, hasRestaurantItems, gratuityOverride])
 
-  const isManager = currentUser?.role === 'admin' || currentUser?.role === 'manager'
 
   // Cart totals
   const discOpts = discMode === 'pct'
@@ -809,8 +870,11 @@ export default function POSPage() {
   const activeCart = cart.filter(ci => !ci.voided)
   const calc = calcCart(activeCart, { orderType: cartOrderType, taxOverride: null, ...discOpts, gratuityPct })
 
-  // Open (sent, unpaid) orders — excludes legacy tickets (no status = paid)
-  const openOrders = state.orderTickets.filter(t => (t.status ?? 'paid') !== 'paid')
+  // Open (sent, unpaid) orders — excludes legacy, paid, and voided tickets
+  const openOrders = state.orderTickets.filter(t => {
+    const s = t.status ?? 'paid'
+    return s !== 'paid' && s !== 'voided'
+  })
 
   // Calc to use when paying an open order vs. current cart
   const payCalc = payingTicket
@@ -1175,17 +1239,30 @@ export default function POSPage() {
                 <span style={{ fontFamily: 'var(--mono)', color: cart.length > 0 ? 'var(--blue)' : 'var(--txt3)' }}>{fmt(calc.total, sym)}</span>
               </div>
 
-              {/* ── Send Order (to kitchen/bar) ── */}
-              <button onClick={sendOrder} disabled={cart.length === 0} style={{
-                width: '100%', padding: 14, borderRadius: 'var(--r)', fontSize: 14, fontWeight: 800,
-                color: cart.length > 0 ? '#fff' : 'var(--txt3)',
-                background: cart.length > 0 ? 'var(--grn)' : 'var(--surf3)',
-                border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                minHeight: 50, transition: 'all .15s', marginBottom: 7,
-              }}>
-                Send Order {cart.length > 0 ? `(${cart.length})` : ''}
-              </button>
+              {/* ── Send Order / Add to Order ── */}
+              <div style={{ display: 'grid', gridTemplateColumns: openOrders.length > 0 ? '1fr 1fr' : '1fr', gap: 6, marginBottom: 7 }}>
+                <button onClick={sendOrder} disabled={activeCart.length === 0} style={{
+                  padding: 14, borderRadius: 'var(--r)', fontSize: 13, fontWeight: 800,
+                  color: activeCart.length > 0 ? '#fff' : 'var(--txt3)',
+                  background: activeCart.length > 0 ? 'var(--grn)' : 'var(--surf3)',
+                  border: 'none', cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed',
+                  minHeight: 50, transition: 'all .15s',
+                }}>
+                  Send Order
+                </button>
+                {openOrders.length > 0 && (
+                  <button onClick={() => { setAddToOrderMode(true); setShowOpen(true) }} disabled={activeCart.length === 0} style={{
+                    padding: 14, borderRadius: 'var(--r)', fontSize: 13, fontWeight: 800,
+                    color: activeCart.length > 0 ? 'var(--grn)' : 'var(--txt3)',
+                    background: activeCart.length > 0 ? 'var(--grn-bg, #14532d22)' : 'var(--surf3)',
+                    border: `1.5px solid ${activeCart.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`,
+                    cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed',
+                    minHeight: 50, transition: 'all .15s',
+                  }}>
+                    Add to Order
+                  </button>
+                )}
+              </div>
 
               {/* ── Pay (direct from cart) ── */}
               <button onClick={() => { if (cart.length === 0) { toast('Add items first', 'warn'); return }; setShowPayment(true) }}
@@ -1272,37 +1349,66 @@ export default function POSPage() {
 
       {/* ── Open Orders Panel ── */}
       {showOpen && (
-        <div onClick={() => setShowOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 440, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div onClick={() => { setShowOpen(false); setAddToOrderMode(false); setTransferTarget(null) }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 460, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>Open Orders</span>
-              <button onClick={() => setShowOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 22 }}>×</button>
+              <span style={{ fontSize: 15, fontWeight: 800, color: addToOrderMode ? 'var(--grn)' : 'var(--txt)', flex: 1 }}>
+                {addToOrderMode ? `Add ${activeCart.length} item(s) to Order` : 'Open Orders'}
+              </span>
+              {addToOrderMode && <button onClick={() => setAddToOrderMode(false)} style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>Cancel</button>}
+              <button onClick={() => { setShowOpen(false); setAddToOrderMode(false); setTransferTarget(null) }} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 22 }}>×</button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
               {openOrders.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 32, color: 'var(--txt3)', fontSize: 13 }}>No open orders.</div>
               ) : openOrders.map(t => {
-                const tCalc = calcCart(t.items, { orderType: t.orderType as OrderType, manualDiscPct: t.discPct, manualDiscFlat: t.discFlat, gratuityPct: t.gratuityPct ?? 0 })
+                const activeItems = t.items.filter(ci => !ci.voided)
+                const tCalc = calcCart(activeItems, { orderType: t.orderType as OrderType, manualDiscPct: t.discPct, manualDiscFlat: t.discFlat, gratuityPct: t.gratuityPct ?? 0 })
                 const statusColors: Record<string, string> = { sent: 'var(--blue)', preparing: 'var(--ora)', ready: 'var(--grn)', served: 'var(--txt2)' }
                 const statusColor = statusColors[t.status ?? 'sent'] ?? 'var(--txt3)'
+                const isTransferring = transferTarget === t.id
+                const allTables = [
+                  ...(customTables?.restaurant ?? MODULE_DATA.restaurant.tables ?? []),
+                  ...(customTables?.bar        ?? MODULE_DATA.bar.tables        ?? []),
+                ].filter(tbl => tbl !== t.table)
                 return (
                   <div key={t.id} style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: '12px 14px', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>#{t.orderNum}</span>
                           {t.table && <span style={{ fontSize: 11, color: 'var(--txt3)' }}>Table {t.table}</span>}
                           <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: statusColor + '22', borderRadius: 8, padding: '1px 7px', textTransform: 'uppercase' }}>{t.status ?? 'sent'}</span>
+                          {/* Transfer table button */}
+                          {canVoidSentItem && allTables.length > 0 && !isTransferring && (
+                            <button onClick={() => setTransferTarget(t.id)}
+                              style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 6, background: 'var(--surf3)', border: '1px solid var(--bdr)', color: 'var(--txt3)', cursor: 'pointer' }}>
+                              Transfer
+                            </button>
+                          )}
                         </div>
+                        {/* Transfer table selector */}
+                        {isTransferring && (
+                          <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <select onChange={e => { if (e.target.value) transferTable(t.id, e.target.value) }} defaultValue=""
+                              style={{ flex: 1, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--grn)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 12 }}>
+                              <option value="">— Move to table —</option>
+                              {allTables.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
+                            </select>
+                            <button onClick={() => setTransferTarget(null)} style={{ fontSize: 11, color: 'var(--txt3)', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                          </div>
+                        )}
                         <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 3 }}>
-                          {t.items.length} items · {t.server}{t.customerName ? ` · ${t.customerName}` : ''}
+                          {activeItems.length} items · {t.server}{t.customerName ? ` · ${t.customerName}` : ''}
                         </div>
                       </div>
                       <div style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 700, color: 'var(--grn)' }}>
                         {fmt(tCalc.total, sym)}
                       </div>
                     </div>
-                    <div style={{ marginBottom: 8, maxHeight: 120, overflowY: 'auto' }}>
+                    {/* Items */}
+                    <div style={{ marginBottom: 8, maxHeight: 110, overflowY: 'auto' }}>
                       {t.items.map((ci, i) => (
                         <div key={i} style={{ fontSize: 11, color: ci.voided ? '#ef444488' : 'var(--txt2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0', gap: 6, textDecoration: ci.voided ? 'line-through' : 'none' }}>
                           <span style={{ flex: 1 }}>{ci.qty}× {ci.name}{ci.voided ? ' [VOID]' : ''}</span>
@@ -1316,10 +1422,26 @@ export default function POSPage() {
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => { setPayingTicket(t); setShowOpen(false); setShowPayment(true) }}
-                      style={{ width: '100%', padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                      Pay {fmt(tCalc.total, sym)}
-                    </button>
+                    {/* Actions */}
+                    {addToOrderMode ? (
+                      <button onClick={() => addToExistingOrder(t)}
+                        style={{ width: '100%', padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--grn)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        Add {activeCart.length} Item(s) to #{t.orderNum}
+                      </button>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: isManager ? '1fr auto' : '1fr', gap: 6 }}>
+                        <button onClick={() => { setPayingTicket(t); setShowOpen(false); setShowPayment(true) }}
+                          style={{ padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                          Pay {fmt(tCalc.total, sym)}
+                        </button>
+                        {isManager && (
+                          <button onClick={() => setVoidOrderTarget(t)}
+                            style={{ padding: '9px 12px', borderRadius: 'var(--r)', background: '#7f1d1d22', color: '#ef4444', border: '1px solid #ef444433', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                            Void Order
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -1368,7 +1490,7 @@ export default function POSPage() {
         onPayAll={() => { setShowSplitBill(false); setShowPayment(true) }}
       />
 
-      {/* ── Void Reason Modal ── */}
+      {/* ── Void Item Modal ── */}
       <VoidReasonModal
         isOpen={!!voidTarget}
         itemName={voidTarget?.item.name ?? ''}
@@ -1382,6 +1504,16 @@ export default function POSPage() {
           } else {
             handleVoidCartItem(voidTarget.item, reason, reasonText)
           }
+        }}
+      />
+
+      {/* ── Void Entire Order Modal ── */}
+      <VoidReasonModal
+        isOpen={!!voidOrderTarget}
+        itemName={voidOrderTarget ? `Order #${voidOrderTarget.orderNum} (${voidOrderTarget.items.filter(ci => !ci.voided).length} items)` : ''}
+        onClose={() => setVoidOrderTarget(null)}
+        onConfirm={(reason, reasonText) => {
+          if (voidOrderTarget) handleVoidEntireOrder(voidOrderTarget, reason, reasonText)
         }}
       />
 

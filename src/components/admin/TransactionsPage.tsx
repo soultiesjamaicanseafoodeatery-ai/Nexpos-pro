@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import type { VoidReason, VoidLog } from '@/types'
+import type { VoidReason, VoidLog, RefundLog } from '@/types'
 import VoidReasonModal from '@/components/pos/VoidReasonModal'
+import RefundModal from '@/components/pos/RefundModal'
 
 const MOD_COLOR: Record<string, string> = { restaurant: 'var(--ora)', bar: 'var(--pur)', carwash: 'var(--blue)' }
 const MOD_ICON: Record<string, string>  = { restaurant: '🍽️', bar: '🍺', carwash: '🚗' }
@@ -12,7 +13,8 @@ export default function TransactionsPage() {
   const { state, dispatch, toast, audit } = useApp()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<string>('all')
-  const [voidingTxId, setVoidingTxId] = useState<number | null>(null)
+  const [voidingTxId,   setVoidingTxId]   = useState<number | null>(null)
+  const [refundingTxId, setRefundingTxId] = useState<number | null>(null)
 
   const txs = state.transactions
     .filter(t => {
@@ -28,7 +30,23 @@ export default function TransactionsPage() {
   const sym = state.biz.currencySymbol ?? 'J$'
   const currentUser = state.currentUser
 
-  const voidingTx = voidingTxId !== null ? state.transactions.find(t => t.id === voidingTxId) ?? null : null
+  const voidingTx   = voidingTxId   !== null ? state.transactions.find(t => t.id === voidingTxId)   ?? null : null
+  const refundingTx = refundingTxId !== null ? state.transactions.find(t => t.id === refundingTxId) ?? null : null
+
+  const handleRefund = (refundType: 'full' | 'partial', amount: number, reason: string) => {
+    if (!refundingTx || !currentUser) return
+    const nowStr = new Date().toLocaleString()
+    dispatch({ type: 'REFUND_TRANSACTION', id: refundingTx.id, reason, refundType, amount, by: currentUser.name, at: nowStr })
+    const logEntry: RefundLog = {
+      id: crypto.randomUUID(), ts: nowStr,
+      txId: refundingTx.id, user: currentUser.name, userId: currentUser.id, role: currentUser.role,
+      reason, refundType, amount, mod: refundingTx.mod as RefundLog['mod'],
+    }
+    dispatch({ type: 'ADD_REFUND_LOG', entry: logEntry })
+    audit('REFUND', `Tx #${refundingTx.id} refunded ${refundType} ${sym}${amount.toFixed(2)} — ${reason}`, 'warn')
+    toast(`Refund of ${sym}${amount.toFixed(2)} processed`, 'success')
+    setRefundingTxId(null)
+  }
 
   const handleVoidTx = (reason: VoidReason, reasonText: string) => {
     if (!voidingTx || !currentUser) return
@@ -100,18 +118,19 @@ export default function TransactionsPage() {
                     <span className="b b-bl">{tx.pay}</span>
                   </td>
                   <td>
-                    {tx.voided
-                      ? <span className="b b-rd">VOIDED</span>
-                      : <span className="b b-gn">Complete</span>
-                    }
+                    {tx.voided    ? <span className="b b-rd">VOIDED</span>
+                    : tx.refunded ? <span className="b b-bl">REFUNDED</span>
+                    :               <span className="b b-gn">Complete</span>}
                   </td>
-                  <td>
-                    {!tx.voided && (state.currentUser?.role === 'admin' || state.currentUser?.role === 'manager') && (
-                      <button className="btn btn-xs btn-gh" onClick={() => setVoidingTxId(tx.id)} style={{ color: '#ef4444', borderColor: '#ef444444' }}>Void</button>
+                  <td style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {!tx.voided && !tx.refunded && (state.currentUser?.role === 'admin' || state.currentUser?.role === 'manager') && (
+                      <>
+                        <button className="btn btn-xs btn-gh" onClick={() => setVoidingTxId(tx.id)} style={{ color: '#ef4444', borderColor: '#ef444444' }}>Void</button>
+                        <button className="btn btn-xs btn-gh" onClick={() => setRefundingTxId(tx.id)} style={{ color: 'var(--blue)', borderColor: 'var(--blue)44' }}>Refund</button>
+                      </>
                     )}
-                    {tx.voided && tx.voidReason && (
-                      <span style={{ fontSize: 10, color: 'var(--txt3)' }}>{tx.voidReason}</span>
-                    )}
+                    {tx.voided    && tx.voidReason   && <span style={{ fontSize: 10, color: 'var(--txt3)' }}>{tx.voidReason}</span>}
+                    {tx.refunded  && tx.refundReason  && <span style={{ fontSize: 10, color: 'var(--txt3)' }}>{tx.refundReason} ({sym}{(tx.refundAmount ?? tx.total).toFixed(2)})</span>}
                   </td>
                 </tr>
               ))}
@@ -127,6 +146,13 @@ export default function TransactionsPage() {
         itemName={voidingTx ? `Transaction #${voidingTx.id} — ${voidingTx.item}` : ''}
         onConfirm={handleVoidTx}
         onClose={() => setVoidingTxId(null)}
+      />
+      <RefundModal
+        isOpen={!!refundingTx}
+        tx={refundingTx}
+        sym={sym}
+        onConfirm={handleRefund}
+        onClose={() => setRefundingTxId(null)}
       />
     </div>
   )

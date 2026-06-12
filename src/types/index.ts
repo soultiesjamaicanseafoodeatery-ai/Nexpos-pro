@@ -214,6 +214,7 @@ export interface Transaction {
   refundReason?: string
   refundedBy?: string
   refundedAt?: string
+  refundAmount?: number
   note?: string
   items?: CartItem[]
 }
@@ -402,7 +403,20 @@ export type BarStatus      = 'pending' | 'preparing' | 'ready'
 export type CarwashStatus  = 'queued'  | 'in_progress' | 'completed'
 export type PrintWidth     = 58 | 80
 
-export type OrderStatus = 'sent' | 'preparing' | 'ready' | 'served' | 'paid'
+export type OrderStatus = 'sent' | 'preparing' | 'ready' | 'served' | 'paid' | 'voided'
+
+export interface RefundLog {
+  id: string
+  ts: string
+  txId: number
+  user: string
+  userId: string
+  role: string
+  reason: string
+  refundType: 'full' | 'partial'
+  amount: number
+  mod: ModuleKey
+}
 
 export interface OrderTimeline {
   created:           string

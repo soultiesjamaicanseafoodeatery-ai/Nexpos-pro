@@ -4,7 +4,7 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback, u
 import type {
   User, UserRole, ModuleKey, Transaction, Shift, AuditEntry,
   BusinessConfig, FleetAccount, POSState, LoyaltyMember, PromoCode,
-  CartItem, OrderType, HeldOrder, OrderTicket, VoidLog, VoidReason,
+  CartItem, OrderType, HeldOrder, OrderTicket, VoidLog, VoidReason, RefundLog,
 } from '@/types'
 
 const STAFF_API = 'https://www.soultiesseafoodjm.com/api/staff'
@@ -82,6 +82,7 @@ interface AppState {
   loyalty: LoyaltyMember[]
   promos: PromoCode[]
   voidLogs: VoidLog[]
+  refundLogs: RefundLog[]
   // UI
   toasts: { id: number; msg: string; type: string }[]
   syncQueue: unknown[]
@@ -118,6 +119,8 @@ type Action =
   | { type: 'VOID_CART_ITEM'; id: string; reason: VoidReason; reasonText?: string; by: string; at: string }
   | { type: 'VOID_TICKET_ITEM'; ticketId: string; itemId: string; reason: VoidReason; reasonText?: string; by: string; at: string }
   | { type: 'ADD_VOID_LOG'; entry: VoidLog }
+  | { type: 'REFUND_TRANSACTION'; id: number; reason: string; refundType: 'full' | 'partial'; amount: number; by: string; at: string }
+  | { type: 'ADD_REFUND_LOG'; entry: RefundLog }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -153,6 +156,7 @@ function initState(): AppState {
     loyalty: storage.get<LoyaltyMember[]>('loyalty') ?? [],
     promos: storage.get<PromoCode[]>('promos') ?? SEED_PROMOS,
     voidLogs: (() => { const v = storage.get('void_logs'); return Array.isArray(v) ? (v as VoidLog[]) : [] })(),
+    refundLogs: (() => { const v = storage.get('refund_logs'); return Array.isArray(v) ? (v as RefundLog[]) : [] })(),
     toasts: [],
     syncQueue: storage.get<unknown[]>('sync_queue') ?? [],
     isOnline: true,
@@ -316,6 +320,20 @@ function reducer(state: AppState, action: Action): AppState {
       const voidLogs = [action.entry, ...state.voidLogs].slice(0, 500)
       storage.set('void_logs', voidLogs)
       return { ...state, voidLogs }
+    }
+    case 'REFUND_TRANSACTION': {
+      const transactions = state.transactions.map(t =>
+        t.id === action.id
+          ? { ...t, refunded: true, refundReason: action.reason, refundedBy: action.by, refundedAt: action.at, refundAmount: action.amount }
+          : t
+      )
+      storage.set('tx', transactions)
+      return { ...state, transactions }
+    }
+    case 'ADD_REFUND_LOG': {
+      const refundLogs = [action.entry, ...state.refundLogs].slice(0, 500)
+      storage.set('refund_logs', refundLogs)
+      return { ...state, refundLogs }
     }
     default:
       return state

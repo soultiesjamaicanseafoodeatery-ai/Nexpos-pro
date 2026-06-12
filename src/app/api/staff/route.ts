@@ -48,14 +48,37 @@ export async function PUT(req: NextRequest) {
   const body = await req.json()
   const { id, ...patch } = body
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
-  const res = await fetch(`${SUPA_URL}/rest/v1/staff?id=eq.${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify(patch),
-  })
-  const data = await res.json()
-  if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
-  return NextResponse.json(data)
+
+  // Check if the row exists first
+  const check = await fetch(
+    `${SUPA_URL}/rest/v1/staff?id=eq.${encodeURIComponent(id)}&select=id`,
+    { headers }
+  )
+  const existing = await check.json()
+
+  if (Array.isArray(existing) && existing.length > 0) {
+    // Row exists — PATCH only changed fields
+    const res = await fetch(`${SUPA_URL}/rest/v1/staff?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(patch),
+    })
+    const data = await res.json()
+    if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
+    return NextResponse.json(data)
+  } else {
+    // Row doesn't exist (demo/seed user) — INSERT it
+    if (!patch.pin_hash) return NextResponse.json({ error: 'PIN is required to save this staff member to Supabase' }, { status: 400 })
+    const row = { id, ...patch }
+    const res = await fetch(`${SUPA_URL}/rest/v1/staff`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(row),
+    })
+    const data = await res.json()
+    if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
+    return NextResponse.json(data, { status: 201 })
+  }
 }
 
 export async function DELETE(req: NextRequest) {

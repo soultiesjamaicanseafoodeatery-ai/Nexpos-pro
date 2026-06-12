@@ -86,8 +86,12 @@ function StaffModal({
     if (!form.name.trim()) { setErr('Name is required'); return }
     if (!form.ini.trim()) { setErr('Initials are required'); return }
     if (form.allowedModules.length === 0) { setErr('Select at least one module'); return }
-    if (!editUser) {
-      if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) { setErr('PIN must be exactly 4 digits'); return }
+    const isDemo = editUser && !editUser.pin_hash
+    if (!editUser || isDemo) {
+      if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) {
+        setErr(isDemo ? 'A new PIN is required to save this account to Supabase' : 'PIN must be exactly 4 digits')
+        return
+      }
       if (form.pin !== form.confirmPin) { setErr('PINs do not match'); return }
     } else if (form.pin) {
       if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) { setErr('New PIN must be exactly 4 digits'); return }
@@ -162,7 +166,7 @@ function StaffModal({
 
           {/* PIN */}
           <div>
-            <label style={label}>{editUser ? 'New PIN (leave blank to keep current)' : 'PIN *'}</label>
+            <label style={label}>{!editUser ? 'PIN *' : editUser.pin_hash ? 'New PIN (leave blank to keep current)' : 'PIN * (required to activate Supabase account)'}</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <input
                 style={inputStyle}

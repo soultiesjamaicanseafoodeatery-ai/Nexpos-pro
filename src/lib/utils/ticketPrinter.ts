@@ -1,5 +1,4 @@
 import type { Transaction, CartItem, BusinessConfig } from '@/types'
-import { qzPrint } from './qzTray'
 
 export type PrintWidth = 58 | 80
 
@@ -42,17 +41,13 @@ function wrap(text: string, indent: number, w: number): string[] {
 }
 
 // ── Smart print — tries QZ Tray first, falls back to browser ─
-export async function smartPrint(
+export function smartPrint(
   html: string,
   title: string,
-  printerName?: string,
-  width: PrintWidth = 80,
-): Promise<void> {
+  _printerName?: string,
+  _width: PrintWidth = 80,
+): void {
   if (!html) return
-  if (printerName?.trim()) {
-    const printed = await qzPrint(printerName.trim(), html, width)
-    if (printed) return
-  }
   printTicket(html, title)
 }
 

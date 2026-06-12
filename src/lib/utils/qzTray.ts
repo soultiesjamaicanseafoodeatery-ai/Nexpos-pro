@@ -7,8 +7,6 @@
 //   3. In QZ Tray → Preferences → Site Manager, add this site to trusted sites
 //   4. Configure printer names in Settings → Printers
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 interface QZConfig { name: string }
 interface QZPrintData { type: string; format: string; flavor: string; data: string }
 

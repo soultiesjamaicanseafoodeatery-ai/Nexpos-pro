@@ -24,11 +24,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <AppProvider>
-          <ErrorBoundary>
+        <ErrorBoundary>
+          <AppProvider>
             {children}
-          </ErrorBoundary>
-        </AppProvider>
+          </AppProvider>
+        </ErrorBoundary>
       </body>
     </html>
   )

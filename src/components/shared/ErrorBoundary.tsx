@@ -9,8 +9,27 @@ export default class ErrorBoundary extends React.Component<
 > {
   state: State = { error: null }
 
+  // Catch errors inside the React tree
   static getDerivedStateFromError(error: Error): State {
     return { error }
+  }
+
+  // Also catch unhandled errors/rejections outside the React tree (setTimeout, async, etc.)
+  private _onError = (e: ErrorEvent) => {
+    this.setState({ error: e.error ?? new Error(e.message) })
+  }
+  private _onUnhandled = (e: PromiseRejectionEvent) => {
+    const err = e.reason instanceof Error ? e.reason : new Error(String(e.reason))
+    this.setState({ error: err })
+  }
+
+  componentDidMount() {
+    window.addEventListener('error', this._onError)
+    window.addEventListener('unhandledrejection', this._onUnhandled)
+  }
+  componentWillUnmount() {
+    window.removeEventListener('error', this._onError)
+    window.removeEventListener('unhandledrejection', this._onUnhandled)
   }
 
   render() {
@@ -22,19 +41,20 @@ export default class ErrorBoundary extends React.Component<
         }}>
           <div style={{
             background: '#1a0a0a', border: '1px solid #ef444455', borderRadius: 12,
-            padding: 24, maxWidth: 680, width: '100%', fontFamily: 'monospace',
+            padding: 24, maxWidth: 720, width: '100%', fontFamily: 'monospace',
           }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#ef4444', marginBottom: 12 }}>
-              App Error — please report this message:
+              App Error — please copy and report this message:
             </div>
             <div style={{
               background: '#0a0a0a', borderRadius: 8, padding: '12px 16px',
               fontSize: 12, color: '#fca5a5', marginBottom: 16, wordBreak: 'break-all',
-              lineHeight: 1.6, maxHeight: 320, overflowY: 'auto',
+              lineHeight: 1.6, maxHeight: 360, overflowY: 'auto',
+              userSelect: 'text', cursor: 'text',
             }}>
               <strong>{this.state.error.name}: {this.state.error.message}</strong>
               {this.state.error.stack && (
-                <pre style={{ marginTop: 10, fontSize: 10, color: '#888', whiteSpace: 'pre-wrap' }}>
+                <pre style={{ marginTop: 10, fontSize: 10, color: '#aaa', whiteSpace: 'pre-wrap' }}>
                   {this.state.error.stack}
                 </pre>
               )}

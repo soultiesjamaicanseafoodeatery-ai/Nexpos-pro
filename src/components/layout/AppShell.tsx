@@ -7,8 +7,19 @@ import POSPage from '@/components/pos/POSPage'
 import TransactionsPage from '@/components/admin/TransactionsPage'
 import ReportsPage from '@/components/admin/ReportsPage'
 import StaffPage from '@/components/admin/StaffPage'
-import PlaceholderPage from '@/components/shared/PlaceholderPage'
 import MenuPage from '@/components/admin/MenuPage'
+import TablesPage from '@/components/admin/TablesPage'
+import SettingsPage from '@/components/admin/SettingsPage'
+import AuditPage from '@/components/admin/AuditPage'
+import ShiftsPage from '@/components/admin/ShiftsPage'
+import PromosPage from '@/components/admin/PromosPage'
+import LoyaltyPage from '@/components/admin/LoyaltyPage'
+import MembersPage from '@/components/admin/MembersPage'
+import FleetPage from '@/components/admin/FleetPage'
+import BookingsPage from '@/components/admin/BookingsPage'
+import InventoryPage from '@/components/admin/InventoryPage'
+import SatisfactionPage from '@/components/admin/SatisfactionPage'
+import TargetsPage from '@/components/admin/TargetsPage'
 
 // Roles allowed per page — must match Sidebar NAV_ITEMS
 const PAGE_ROLES: Record<string, string[]> = {
@@ -53,18 +64,18 @@ export default function AppShell() {
       case 'reports':      return <ReportsPage />
       case 'staff':        return <StaffPage />
       case 'menu':         return <MenuPage />
-      case 'tables':       return <PlaceholderPage icon="🪑" title="Tables" desc="Table management view coming soon." />
-      case 'members':      return <PlaceholderPage icon="💳" title="Members" desc="Membership management coming soon." />
-      case 'fleet':        return <PlaceholderPage icon="🚛" title="Fleet Accounts" desc="Fleet management coming soon." />
-      case 'settings':     return <PlaceholderPage icon="⚙️" title="Settings" desc="Business settings coming soon." />
-      case 'audit':        return <PlaceholderPage icon="🔍" title="Audit Log" desc="Audit log coming soon." />
-      case 'shifts':       return <PlaceholderPage icon="🕐" title="Shifts" desc="Shift management coming soon." />
-      case 'loyalty':      return <PlaceholderPage icon="⭐" title="Loyalty Points" desc="Loyalty program coming soon." />
-      case 'promos':       return <PlaceholderPage icon="🎟" title="Promo Codes" desc="Promo code management coming soon." />
-      case 'bookings':     return <PlaceholderPage icon="📅" title="Bookings" desc="Booking system coming soon." />
-      case 'inventory':    return <PlaceholderPage icon="📦" title="Inventory" desc="Inventory management coming soon." />
-      case 'satisfaction': return <PlaceholderPage icon="😊" title="Customer Satisfaction" desc="Satisfaction reports coming soon." />
-      case 'targets':      return <PlaceholderPage icon="🎯" title="Performance Targets" desc="Target management coming soon." />
+      case 'tables':       return <TablesPage />
+      case 'settings':     return <SettingsPage />
+      case 'audit':        return <AuditPage />
+      case 'shifts':       return <ShiftsPage />
+      case 'promos':       return <PromosPage />
+      case 'loyalty':      return <LoyaltyPage />
+      case 'members':      return <MembersPage />
+      case 'fleet':        return <FleetPage />
+      case 'bookings':     return <BookingsPage />
+      case 'inventory':    return <InventoryPage />
+      case 'satisfaction': return <SatisfactionPage />
+      case 'targets':      return <TargetsPage />
       default:             return <POSPage />
     }
   }

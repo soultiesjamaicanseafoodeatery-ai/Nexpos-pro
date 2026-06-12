@@ -332,7 +332,7 @@ export default function StaffPage() {
       {!usingSupabase && isAdmin && (
         <div style={{ background: 'var(--ora-bg)', border: '1px solid rgba(255,124,76,.3)', borderRadius: 'var(--r2)', padding: '12px 16px', marginBottom: 16, fontSize: 12, color: 'var(--txt2)' }}>
           <strong style={{ color: 'var(--ora)' }}>Setup required</strong> — run this SQL in your{' '}
-          <a href="https://supabase.com/dashboard/project/uzkwpkcgzllcixjpazoo/sql/new" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>Supabase SQL editor</a>, then click "Add Staff" to create your real staff accounts.
+          <a href="https://supabase.com/dashboard/project/uzkwpkcgzllcixjpazoo/sql/new" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>Supabase SQL editor</a>, then click &quot;Add Staff&quot; to create your real staff accounts.
           <pre style={{ marginTop: 8, background: 'var(--bg)', borderRadius: 'var(--r)', padding: '10px 12px', fontSize: 11, overflowX: 'auto', color: 'var(--grn)', lineHeight: 1.6 }}>{`CREATE TABLE IF NOT EXISTS public.staff (
   id              TEXT PRIMARY KEY,
   name            TEXT NOT NULL,
@@ -366,7 +366,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
           </thead>
           <tbody>
             {users.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: 'var(--txt3)', fontSize: 13 }}>No staff found. Click "+ Add Staff" to get started.</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: 'var(--txt3)', fontSize: 13 }}>No staff found. Click &quot;+ Add Staff&quot; to get started.</td></tr>
             ) : users.map(u => {
               const role = ROLES[u.role]
               const isSelf = u.id === currentUser?.id

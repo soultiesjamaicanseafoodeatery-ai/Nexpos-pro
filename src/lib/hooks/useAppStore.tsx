@@ -90,6 +90,7 @@ type Action =
   | { type: 'CLEAR_CART' }
   | { type: 'SET_CART_PAY'; method: string }
   | { type: 'SET_CART_ORDER_TYPE'; orderType: OrderType }
+  | { type: 'SET_PROMOS'; promos: PromoCode[] }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -231,6 +232,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, cartPayMethod: action.method }
     case 'SET_CART_ORDER_TYPE':
       return { ...state, cartOrderType: action.orderType }
+    case 'SET_PROMOS':
+      return { ...state, promos: action.promos }
     default:
       return state
   }

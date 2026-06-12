@@ -21,7 +21,7 @@ export default function OutsideOrders({ onCountChange }: Props) {
     const { data } = await supabase
       .from('orders')
       .select('*, order_items(*)')
-      .in('type', ['carwash', 'mixed'])
+      .in('type', ['carwash', 'mixed', 'restaurant'])
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
     const rows = (data ?? []) as OutsideOrder[]
@@ -102,7 +102,7 @@ export default function OutsideOrders({ onCountChange }: Props) {
             <div style={{ background: 'var(--blue-bg)', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--bdr)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 38, height: 38, borderRadius: 9, background: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
-                  {order.type === 'carwash' ? '🚗' : '🍽️'}
+                  {order.type === 'carwash' ? '🚗' : order.type === 'mixed' ? '🚗🍽️' : '🍽️'}
                 </div>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)', fontFamily: 'var(--mono)', letterSpacing: 1 }}>

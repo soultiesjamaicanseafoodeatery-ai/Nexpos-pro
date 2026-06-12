@@ -60,6 +60,7 @@ export default function POSPage() {
   const [livePosAddons,   setLivePosAddons]   = useState<AddonRow[]>([])
   const [liveSizesDefs,   setLiveSizesDefs]   = useState<SizeRow[]>([])
   const [liveAssignments, setLiveAssignments] = useState<Record<string, ItemAssignment>>({})
+  const [customTables, setCustomTables] = useState<{ restaurant?: string[]; bar?: string[]; status?: Record<string, string> } | null>(null)
   const hasFetched = useRef(false)
 
   useEffect(() => {
@@ -114,6 +115,8 @@ export default function POSPage() {
     if (cachedPosAddons?.length) setLivePosAddons(cachedPosAddons)
     if (cachedSizes?.length)     setLiveSizesDefs(cachedSizes)
     if (cachedAssign && Object.keys(cachedAssign).length) setLiveAssignments(cachedAssign)
+    const tablesConf = storage.get<{ restaurant?: string[]; bar?: string[]; status?: Record<string, string> }>('tables_config')
+    if (tablesConf) setCustomTables(tablesConf)
 
     // ── Step 2: Background sync ──
     async function syncFromSupabase() {
@@ -268,6 +271,13 @@ export default function POSPage() {
       }
       return supabaseConfigured ? ['All'] : seedMod.categories
     })(),
+    tables: (() => {
+      const key = activeModule as 'restaurant' | 'bar'
+      const custom = customTables?.[key]
+      if (custom && custom.length > 0) return custom
+      return seedMod.tables ?? []
+    })(),
+    tableStatus: customTables?.status ?? seedMod.tableStatus ?? {},
   }
 
   const cats          = ['All', ...mod.categories.filter((c: string) => c !== 'All')]
@@ -520,12 +530,30 @@ export default function POSPage() {
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
             {/* Cart header */}
-            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--bdr)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>Bill</span>
-              {cart.length > 0 && (
-                <span style={{ background: 'var(--blue)', color: '#fff', borderRadius: 12, fontSize: 11, fontWeight: 800, padding: '1px 8px', minWidth: 22, textAlign: 'center' }}>
-                  {cart.length}
-                </span>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>Bill</span>
+                {cart.length > 0 && (
+                  <span style={{ background: 'var(--blue)', color: '#fff', borderRadius: 12, fontSize: 11, fontWeight: 800, padding: '1px 8px', minWidth: 22, textAlign: 'center' }}>
+                    {cart.length}
+                  </span>
+                )}
+              </div>
+              {/* Table selector for restaurant / bar */}
+              {(activeModule === 'restaurant' || activeModule === 'bar') && (mod.tables as string[])?.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <select
+                    value={ps.selTable ?? ''}
+                    onChange={e => setPOS({ selTable: e.target.value || null })}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: ps.selTable ? 'var(--txt)' : 'var(--txt3)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    <option value="">— Select Table —</option>
+                    {(mod.tables as string[]).map((t: string) => {
+                      const status = (mod.tableStatus as Record<string, string>)?.[t] ?? 'free'
+                      return <option key={t} value={t}>{t} {status === 'occupied' ? '(Occupied)' : status === 'reserved' ? '(Reserved)' : '(Free)'}</option>
+                    })}
+                  </select>
+                </div>
               )}
             </div>
 

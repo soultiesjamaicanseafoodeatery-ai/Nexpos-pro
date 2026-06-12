@@ -27,16 +27,22 @@ const CW_BADGE: Record<CarwashStatus, { bg: string; color: string }> = {
   completed:   { bg: '#14532d44',   color: 'var(--grn)' },
 }
 
-function elapsed(createdTime: string): string {
-  const now = new Date()
-  const [h, m] = createdTime.replace(/[AP]M/i, '').trim().split(':').map(Number)
-  const isPM = /pm/i.test(createdTime)
-  const hour = isPM && h !== 12 ? h + 12 : (!isPM && h === 12 ? 0 : h)
-  const created = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, m)
-  const diff = Math.floor((now.getTime() - created.getTime()) / 60000)
-  if (diff < 0) return '—'
-  if (diff < 60) return `${diff}m`
-  return `${Math.floor(diff / 60)}h ${diff % 60}m`
+function elapsed(createdTime: string | undefined): string {
+  if (!createdTime) return '—'
+  try {
+    const now = new Date()
+    const [h, m] = createdTime.replace(/[AP]M/i, '').trim().split(':').map(Number)
+    if (isNaN(h) || isNaN(m)) return '—'
+    const isPM = /pm/i.test(createdTime)
+    const hour = isPM && h !== 12 ? h + 12 : (!isPM && h === 12 ? 0 : h)
+    const created = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, m)
+    const diff = Math.floor((now.getTime() - created.getTime()) / 60000)
+    if (diff < 0) return '—'
+    if (diff < 60) return `${diff}m`
+    return `${Math.floor(diff / 60)}h ${diff % 60}m`
+  } catch {
+    return '—'
+  }
 }
 
 export default function KitchenDisplay() {
@@ -70,8 +76,13 @@ export default function KitchenDisplay() {
     dispatch({ type: 'UPDATE_ORDER_TICKET', id: ticket.id, patch: { carwashStatus: status } })
   }
 
+  const isTicketPaid = (t: OrderTicket) =>
+    (t.status ?? (t.txId ? 'paid' : 'sent')) === 'paid'
+
+  const activeTickets = useMemo(() => orderTickets.filter(t => !isTicketPaid(t)), [orderTickets])
+
   const filtered = useMemo(() => {
-    return orderTickets.filter(t => {
+    return activeTickets.filter(t => {
       // Module filter
       if (filter === 'kitchen' && !t.hasKitchen) return false
       if (filter === 'bar'     && !t.hasBar)     return false
@@ -98,11 +109,11 @@ export default function KitchenDisplay() {
         (t.customerName ?? '').toLowerCase().includes(q) ||
         t.server.toLowerCase().includes(q)
     })
-  }, [orderTickets, filter, statusFilter, searchQ])
+  }, [activeTickets, filter, statusFilter, searchQ])
 
-  const pending   = orderTickets.filter(t => (t.hasKitchen && t.kitchenStatus === 'pending') || (t.hasBar && t.barStatus === 'pending')).length
-  const preparing = orderTickets.filter(t => (t.hasKitchen && t.kitchenStatus === 'preparing') || (t.hasBar && t.barStatus === 'preparing')).length
-  const ready     = orderTickets.filter(t => (t.hasKitchen && t.kitchenStatus === 'ready') || (t.hasBar && t.barStatus === 'ready')).length
+  const pending   = activeTickets.filter(t => (t.hasKitchen && t.kitchenStatus === 'pending') || (t.hasBar && t.barStatus === 'pending')).length
+  const preparing = activeTickets.filter(t => (t.hasKitchen && t.kitchenStatus === 'preparing') || (t.hasBar && t.barStatus === 'preparing')).length
+  const ready     = activeTickets.filter(t => (t.hasKitchen && t.kitchenStatus === 'ready') || (t.hasBar && t.barStatus === 'ready')).length
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
@@ -112,7 +123,7 @@ export default function KitchenDisplay() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--txt)' }}>Kitchen Display</div>
-            <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 1 }}>{orderTickets.length} total orders tracked</div>
+            <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 1 }}>{activeTickets.length} open · {orderTickets.length} total</div>
           </div>
 
           {/* Live counters */}
@@ -174,11 +185,12 @@ export default function KitchenDisplay() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
             {filtered.map(ticket => {
               const live = state.orderTickets.find(t => t.id === ticket.id) ?? ticket
-              const elapsedTime = elapsed(live.timeline.created)
+              const elapsedTime = elapsed(live.timeline?.created)
               const isUrgent = (() => {
                 const mins = parseInt(elapsedTime)
                 return !isNaN(mins) && mins > 20 && (live.kitchenStatus === 'pending' || live.kitchenStatus === 'preparing')
               })()
+              const awaitingPayment = (live.kitchenStatus === 'ready' || live.kitchenStatus === 'served') && !isTicketPaid(live)
 
               return (
                 <div key={ticket.id} style={{
@@ -198,7 +210,12 @@ export default function KitchenDisplay() {
                         {live.guestCount && live.guestCount > 1 ? ` · ${live.guestCount} guests` : ''}
                       </div>
                     </div>
-                    <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                    <div style={{ marginLeft: 'auto', textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                      {awaitingPayment && (
+                        <span style={{ fontSize: 9, fontWeight: 800, color: '#f59e0b', background: '#78350f33', border: '1px solid #f59e0b55', borderRadius: 6, padding: '2px 6px', letterSpacing: '.4px', textTransform: 'uppercase' }}>
+                          Awaiting Payment
+                        </span>
+                      )}
                       <div style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: isUrgent ? 'var(--red, #ef4444)' : 'var(--txt3)' }}>{elapsedTime}</div>
                       <div style={{ fontSize: 10, color: 'var(--txt3)' }}>{live.timeline.created}</div>
                     </div>
@@ -206,7 +223,7 @@ export default function KitchenDisplay() {
 
                   {/* Items list */}
                   <div style={{ padding: '10px 14px', flex: 1 }}>
-                    {live.items.map((ci, i) => (
+                    {(live.items ?? []).map((ci, i) => (
                       <div key={ci.id + i} style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 4, display: 'flex', gap: 6 }}>
                         <span style={{ fontWeight: 700, minWidth: 18, color: 'var(--txt)' }}>{ci.qty}×</span>
                         <div>

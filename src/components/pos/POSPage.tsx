@@ -53,9 +53,11 @@ export default function POSPage() {
   const [showTicket,    setShowTicket]    = useState(false)
   const [showSplitBill, setShowSplitBill] = useState(false)
   const [showHeld,      setShowHeld]      = useState(false)
+  const [showOpen,      setShowOpen]      = useState(false)
   const [lastTx,        setLastTx]        = useState<Transaction | null>(null)
   const [lastTicket,    setLastTicket]    = useState<OrderTicket | null>(null)
   const [orderNote,     setOrderNote]     = useState('')
+  const [payingTicket,  setPayingTicket]  = useState<OrderTicket | null>(null)
 
   // Split bill target (when paying one split at a time)
   const [splitTarget,   setSplitTarget]   = useState<{ total: number; label: string } | null>(null)
@@ -422,33 +424,88 @@ export default function POSPage() {
   }
 
   const completeCheckout = (payData: { method: string; tender?: number; changeDue?: number; payments?: PaymentEntry[] }, overrideCalc?: ReturnType<typeof calcCart>) => {
-    if (cart.length === 0 && !overrideCalc) return
     if (!currentUser) return
 
-    const finalCalc = overrideCalc ?? calc
-
-    const modules = Array.from(new Set(cart.map(ci => ci.module)))
-    const mod2 = modules.length === 1 ? modules[0] : 'mixed' as const
-
-    const plates    = Array.from(new Set(cart.filter(ci => ci.plate).map(ci => ci.plate!)))
-    const selTable  = posState['restaurant'].selTable ?? posState['bar'].selTable
-    const tableInfo = selTable ? `Table ${selTable}` : ''
-    const customer  = customerName || (plates.length > 0
-      ? plates.join(', ') + (tableInfo ? ` · ${tableInfo}` : '')
-      : (tableInfo || 'Walk-in'))
-
-    const itemSummary = cart.length === 1
-      ? `${cart[0].name}${cart[0].qty > 1 ? ` ×${cart[0].qty}` : ''}`
-      : `${cart.length} items (${modules.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(' + ')})`
-
+    const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const today   = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
     const payMethodLabel = payData.method === 'gift_card' ? 'Gift Card'
       : payData.method === 'tab' ? 'Tab'
       : payData.method
 
+    // ── Path A: Paying an existing open (sent) order ─────────────
+    if (payingTicket) {
+      const finalCalc = overrideCalc ?? payCalc
+      const modules = Array.from(new Set(payingTicket.items.map(ci => ci.module)))
+      const mod2 = modules.length === 1 ? modules[0] : 'mixed' as const
+
+      const tx: Transaction = {
+        id: Date.now(),
+        ts: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' + nowTime,
+        mod: mod2,
+        cashier:  currentUser.name,
+        userId:   currentUser.id,
+        customer: payingTicket.customerName || (payingTicket.table ? `Table ${payingTicket.table}` : 'Walk-in'),
+        item:     `Order #${payingTicket.orderNum} · ${payingTicket.items.length} items`,
+        addons:   payingTicket.items.flatMap(ci => ci.addons.map(a => a.name)),
+        sub:      finalCalc.sub,
+        disc:     finalCalc.disc,
+        tax:      finalCalc.gct + finalCalc.serviceCharge,
+        total:    finalCalc.total,
+        pay:      payMethodLabel,
+        orderType: payingTicket.orderType,
+        gct:           finalCalc.gct,
+        serviceCharge: finalCalc.serviceCharge,
+        gratuity:      finalCalc.gratuity,
+        gratuityPct:   payingTicket.gratuityPct ?? 0,
+        guestCount:    payingTicket.guestCount,
+        customerName:  payingTicket.customerName,
+        tableNum:      payingTicket.table,
+        tender:    payData.tender,
+        changeDue: payData.changeDue,
+        payments:  payData.payments,
+        items: [...payingTicket.items],
+      }
+
+      const updatedTimeline = { ...payingTicket.timeline, paid: nowTime }
+      dispatch({ type: 'ADD_TRANSACTION', tx })
+      dispatch({ type: 'UPDATE_ORDER_TICKET', id: payingTicket.id, patch: {
+        status: 'paid' as const, txId: tx.id, timeline: updatedTimeline,
+      }})
+      dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: null } })
+      dispatch({ type: 'SET_POS_STATE', mod: 'bar',        patch: { selTable: null } })
+
+      const paidTicket = { ...payingTicket, status: 'paid' as const, txId: tx.id, timeline: updatedTimeline }
+      setPayingTicket(null)
+      setShowPayment(false)
+      setShowOpen(false)
+      setLastTx(tx)
+      setLastTicket(paidTicket)
+      setSplitTarget(null)
+      audit('PAYMENT', `Order #${payingTicket.orderNum} — ${fmt(finalCalc.total, sym)} · ${payMethodLabel}`, 'success')
+      toast(`Order #${payingTicket.orderNum} paid — ${fmt(finalCalc.total, sym)}`, 'success')
+      setTimeout(() => setShowTicket(true), 200)
+      return
+    }
+
+    // ── Path B: Direct pay from current cart (quick / counter sale) ──
+    if (cart.length === 0 && !overrideCalc) return
+
+    const finalCalc  = overrideCalc ?? calc
+    const modules    = Array.from(new Set(cart.map(ci => ci.module)))
+    const mod2       = modules.length === 1 ? modules[0] : 'mixed' as const
+    const plates     = Array.from(new Set(cart.filter(ci => ci.plate).map(ci => ci.plate!)))
+    const selTable   = posState['restaurant'].selTable ?? posState['bar'].selTable
+    const tableInfo  = selTable ? `Table ${selTable}` : ''
+    const customer   = customerName || (plates.length > 0
+      ? plates.join(', ') + (tableInfo ? ` · ${tableInfo}` : '')
+      : (tableInfo || 'Walk-in'))
+    const itemSummary = cart.length === 1
+      ? `${cart[0].name}${cart[0].qty > 1 ? ` ×${cart[0].qty}` : ''}`
+      : `${cart.length} items (${modules.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(' + ')})`
+
     const tx: Transaction = {
       id: Date.now(),
-      ts: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' +
-          new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      ts: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' + nowTime,
       mod: mod2,
       cashier:  currentUser.name,
       userId:   currentUser.id,
@@ -474,40 +531,40 @@ export default function POSPage() {
       items: cart,
     }
 
-    // Build order ticket
-    const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-    const orderNum = String(tx.id).slice(-4).padStart(4, '0')
+    const orderNum   = String(tx.id).slice(-4).padStart(4, '0')
     const hasKitchen = cart.some(ci => ci.module === 'restaurant')
     const hasBar     = cart.some(ci => ci.module === 'bar')
     const hasCarwash = cart.some(ci => ci.module === 'carwash')
+
     const newTicket: OrderTicket = {
-      id:            crypto.randomUUID(),
+      id: crypto.randomUUID(),
       orderNum,
-      txId:          tx.id,
-      table:         selTable ?? undefined,
-      server:        currentUser.name,
+      txId:   tx.id,
+      table:  selTable ?? undefined,
+      server: currentUser.name,
       guestCount:    guestCount > 1 ? guestCount : undefined,
       customerName:  customerName || undefined,
       orderType:     cartOrderType,
+      status:        'paid',
       hasKitchen,
       hasBar,
       hasCarwash,
       kitchenStatus: 'pending',
       barStatus:     'pending',
       carwashStatus: 'queued',
-      items:         [...cart],
-      orderNote:     orderNote || undefined,
+      items:    [...cart],
+      orderNote: orderNote || undefined,
+      discPct, discFlat, gratuityPct,
       timeline: {
-        created:       nowTime,
+        created: nowTime,
         sentToKitchen: hasKitchen ? nowTime : undefined,
-        paid:          nowTime,
+        paid: nowTime,
       },
       reprints: [],
     }
     dispatch({ type: 'ADD_ORDER_TICKET', ticket: newTicket })
 
-    // Auto-print production tickets immediately
-    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+    // Print production tickets so kitchen receives the order
     const ticketData = {
       orderNum,
       table:        selTable ?? undefined,
@@ -525,7 +582,6 @@ export default function POSPage() {
       if (html) printTicket(html, 'Kitchen Ticket')
     }
     if (hasBar) {
-      // Stagger slightly so browser doesn't block second popup
       const html = buildBarTicket(ticketData, { width: 80 })
       if (html) setTimeout(() => printTicket(html, 'Bar Ticket'), 400)
     }
@@ -539,11 +595,8 @@ export default function POSPage() {
     setLastTx(tx)
     setLastTicket(newTicket)
     setShowPayment(false)
-    setDiscPct(0)
-    setDiscFlat(0)
-    setGuestCount(1)
-    setCustomerName('')
-    setOrderNote('')
+    setDiscPct(0); setDiscFlat(0)
+    setGuestCount(1); setCustomerName(''); setOrderNote('')
     setGratuityOverride(false)
     setSplitTarget(null)
     audit('PAYMENT', `${itemSummary} — ${fmt(tx.total, sym)} · ${payMethodLabel}`, 'success')
@@ -551,9 +604,83 @@ export default function POSPage() {
     dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: null } })
     dispatch({ type: 'SET_POS_STATE', mod: 'bar',        patch: { selTable: null } })
     dispatch({ type: 'SET_POS_STATE', mod: 'carwash',    patch: { plate: '' } })
-
-    // Auto-show ticket modal
     setTimeout(() => setShowTicket(true), 200)
+  }
+
+  // ── Send Order: print kitchen/bar tickets, keep order open ────
+  const sendOrder = () => {
+    if (cart.length === 0) { toast('Add items before sending', 'warn'); return }
+    if (!currentUser) return
+
+    const selTable   = posState['restaurant'].selTable ?? posState['bar'].selTable
+    const nowTime    = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const today      = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+    const orderNum   = String(Date.now()).slice(-4).padStart(4, '0')
+    const hasKitchen = cart.some(ci => ci.module === 'restaurant')
+    const hasBar     = cart.some(ci => ci.module === 'bar')
+    const hasCarwash = cart.some(ci => ci.module === 'carwash')
+
+    const newTicket: OrderTicket = {
+      id: crypto.randomUUID(),
+      orderNum,
+      table:  selTable ?? undefined,
+      server: currentUser.name,
+      guestCount:    guestCount > 1 ? guestCount : undefined,
+      customerName:  customerName || undefined,
+      orderType:     cartOrderType,
+      status:        'sent',
+      hasKitchen,
+      hasBar,
+      hasCarwash,
+      kitchenStatus: 'pending',
+      barStatus:     'pending',
+      carwashStatus: 'queued',
+      items:    [...cart],
+      orderNote: orderNote || undefined,
+      discPct, discFlat, gratuityPct,
+      timeline: {
+        created: nowTime,
+        sentToKitchen: hasKitchen ? nowTime : undefined,
+      },
+      reprints: [],
+    }
+
+    const ticketData = {
+      orderNum,
+      table:        selTable ?? undefined,
+      server:       currentUser.name,
+      guestCount:   guestCount > 1 ? guestCount : undefined,
+      orderType:    cartOrderType,
+      date:         today,
+      time:         nowTime,
+      items:        [...cart],
+      orderNote:    orderNote || undefined,
+      customerName: customerName || undefined,
+    }
+    if (hasKitchen) {
+      const html = buildKitchenTicket(ticketData, { width: 80 })
+      if (html) printTicket(html, 'Kitchen Ticket')
+    }
+    if (hasBar) {
+      const html = buildBarTicket(ticketData, { width: 80 })
+      if (html) setTimeout(() => printTicket(html, 'Bar Ticket'), 400)
+    }
+    if (hasCarwash) {
+      const html = buildCarwashWorkOrder(ticketData, { width: 80 })
+      if (html) setTimeout(() => printTicket(html, 'Car Wash Work Order'), hasBar ? 800 : 400)
+    }
+
+    dispatch({ type: 'ADD_ORDER_TICKET', ticket: newTicket })
+    dispatch({ type: 'CLEAR_CART' })
+    dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: null } })
+    dispatch({ type: 'SET_POS_STATE', mod: 'bar',        patch: { selTable: null } })
+    dispatch({ type: 'SET_POS_STATE', mod: 'carwash',    patch: { plate: '' } })
+    setDiscPct(0); setDiscFlat(0); setGuestCount(1); setCustomerName(''); setOrderNote(''); setGratuityOverride(false)
+
+    const sentTo = [hasKitchen && 'Kitchen', hasBar && 'Bar', hasCarwash && 'Car Wash'].filter(Boolean).join(' + ')
+    audit('SEND_ORDER', `Order #${orderNum} sent to ${sentTo}`, 'info')
+    toast(`Order #${orderNum} sent to ${sentTo}`, 'success')
+    setShowOpen(true)
   }
 
   const holdOrder = () => {
@@ -626,6 +753,19 @@ export default function POSPage() {
     ? { manualDiscPct: discPct || undefined }
     : { manualDiscFlat: discFlat || undefined }
   const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null, ...discOpts, gratuityPct })
+
+  // Open (sent, unpaid) orders — excludes legacy tickets (no status = paid)
+  const openOrders = state.orderTickets.filter(t => (t.status ?? 'paid') !== 'paid')
+
+  // Calc to use when paying an open order vs. current cart
+  const payCalc = payingTicket
+    ? calcCart(payingTicket.items, {
+        orderType: payingTicket.orderType as OrderType,
+        manualDiscPct: payingTicket.discPct || undefined,
+        manualDiscFlat: payingTicket.discFlat || undefined,
+        gratuityPct: payingTicket.gratuityPct ?? 0,
+      })
+    : calc
 
   // Active add-ons for modal display
   const activeAddons = mod.addons.filter((a: Addon) => a.active)
@@ -739,16 +879,27 @@ export default function POSPage() {
                     {cart.length}
                   </span>
                 )}
-                {/* Held orders button */}
-                <button onClick={() => setShowHeld(true)} style={{
-                  marginLeft: 'auto', padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                  border: `1.5px solid ${state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--bdr)'}`,
-                  background: state.heldOrders.length > 0 ? 'var(--ora-bg, #78350f22)' : 'transparent',
-                  color: state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--txt3)',
-                  display: 'flex', alignItems: 'center', gap: 4,
-                }}>
-                  On Hold {state.heldOrders.length > 0 && <span style={{ background: 'var(--ora)', color: '#fff', borderRadius: 8, fontSize: 10, padding: '0 5px', fontWeight: 800 }}>{state.heldOrders.length}</span>}
-                </button>
+                {/* Open orders + held orders buttons */}
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 5 }}>
+                  <button onClick={() => setShowOpen(true)} style={{
+                    padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                    border: `1.5px solid ${openOrders.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`,
+                    background: openOrders.length > 0 ? 'var(--grn-bg, #14532d22)' : 'transparent',
+                    color: openOrders.length > 0 ? 'var(--grn)' : 'var(--txt3)',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    Open {openOrders.length > 0 && <span style={{ background: 'var(--grn)', color: '#fff', borderRadius: 8, fontSize: 10, padding: '0 5px', fontWeight: 800 }}>{openOrders.length}</span>}
+                  </button>
+                  <button onClick={() => setShowHeld(true)} style={{
+                    padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                    border: `1.5px solid ${state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--bdr)'}`,
+                    background: state.heldOrders.length > 0 ? 'var(--ora-bg, #78350f22)' : 'transparent',
+                    color: state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--txt3)',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    Held {state.heldOrders.length > 0 && <span style={{ background: 'var(--ora)', color: '#fff', borderRadius: 8, fontSize: 10, padding: '0 5px', fontWeight: 800 }}>{state.heldOrders.length}</span>}
+                  </button>
+                </div>
               </div>
 
               {/* Customer name + guest count */}
@@ -956,41 +1107,50 @@ export default function POSPage() {
                 <span style={{ fontFamily: 'var(--mono)', color: cart.length > 0 ? 'var(--blue)' : 'var(--txt3)' }}>{fmt(calc.total, sym)}</span>
               </div>
 
-              {/* Action buttons: Charge + Split + Hold */}
-              <button onClick={() => { if (cart.length === 0) { toast('Add items first', 'warn'); return }; setShowPayment(true) }}
-                disabled={cart.length === 0} style={{
-                  width: '100%', padding: 16, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
-                  color: cart.length > 0 ? '#fff' : 'var(--txt3)',
-                  background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  cursor: cart.length > 0 ? 'pointer' : 'not-allowed', border: 'none', transition: 'all .15s', minHeight: 54,
-                }}>
-                ✓ Charge {cart.length > 0 ? fmt(calc.total, sym) : '—'}
+              {/* ── Send Order (to kitchen/bar) ── */}
+              <button onClick={sendOrder} disabled={cart.length === 0} style={{
+                width: '100%', padding: 14, borderRadius: 'var(--r)', fontSize: 14, fontWeight: 800,
+                color: cart.length > 0 ? '#fff' : 'var(--txt3)',
+                background: cart.length > 0 ? 'var(--grn)' : 'var(--surf3)',
+                border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                minHeight: 50, transition: 'all .15s', marginBottom: 7,
+              }}>
+                Send Order {cart.length > 0 ? `(${cart.length})` : ''}
               </button>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginTop: 7 }}>
+              {/* ── Pay (direct from cart) ── */}
+              <button onClick={() => { if (cart.length === 0) { toast('Add items first', 'warn'); return }; setShowPayment(true) }}
+                disabled={cart.length === 0} style={{
+                  width: '100%', padding: 14, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
+                  color: cart.length > 0 ? '#fff' : 'var(--txt3)',
+                  background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)',
+                  border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  minHeight: 54, transition: 'all .15s', marginBottom: 7,
+                }}>
+                ✓ Pay {cart.length > 0 ? fmt(calc.total, sym) : '—'}
+              </button>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 7 }}>
                 <button onClick={() => { if (cart.length === 0) { toast('Add items first', 'warn'); return }; setShowSplitBill(true) }}
-                  style={{ padding: 10, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 40 }}>
-                  Split Bill
+                  style={{ padding: 9, borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 38 }}>
+                  Split
                 </button>
-                <button onClick={holdOrder} style={{ padding: 10, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 40 }}>
-                  Hold Order
+                <button onClick={holdOrder}
+                  style={{ padding: 9, borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 38 }}>
+                  Hold
+                </button>
+                <button onClick={() => dispatch({ type: 'CLEAR_CART' })}
+                  style={{ padding: 9, borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 38 }}>
+                  Clear
                 </button>
               </div>
 
-              <button onClick={() => dispatch({ type: 'CLEAR_CART' })} style={{
-                width: '100%', padding: 9, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700,
-                background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', marginTop: 7,
-                cursor: 'pointer', transition: 'all .12s', minHeight: 38,
-              }}>
-                Clear Order
-              </button>
-
-              {/* Reprint last ticket if available */}
               {lastTx && lastTicket && (
                 <button onClick={() => setShowTicket(true)} style={{
                   width: '100%', padding: 9, borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700,
-                  background: 'transparent', color: 'var(--txt3)', border: '1.5px dashed var(--bdr)', marginTop: 7,
+                  background: 'transparent', color: 'var(--txt3)', border: '1.5px dashed var(--bdr)',
                   cursor: 'pointer',
                 }}>
                   Reprint Last Receipt
@@ -1042,16 +1202,68 @@ export default function POSPage() {
         </div>
       )}
 
+      {/* ── Open Orders Panel ── */}
+      {showOpen && (
+        <div onClick={() => setShowOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 440, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>Open Orders</span>
+              <button onClick={() => setShowOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 22 }}>×</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+              {openOrders.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 32, color: 'var(--txt3)', fontSize: 13 }}>No open orders.</div>
+              ) : openOrders.map(t => {
+                const tCalc = calcCart(t.items, { orderType: t.orderType as OrderType, manualDiscPct: t.discPct, manualDiscFlat: t.discFlat, gratuityPct: t.gratuityPct ?? 0 })
+                const statusColors: Record<string, string> = { sent: 'var(--blue)', preparing: 'var(--ora)', ready: 'var(--grn)', served: 'var(--txt2)' }
+                const statusColor = statusColors[t.status ?? 'sent'] ?? 'var(--txt3)'
+                return (
+                  <div key={t.id} style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: '12px 14px', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>#{t.orderNum}</span>
+                          {t.table && <span style={{ fontSize: 11, color: 'var(--txt3)' }}>Table {t.table}</span>}
+                          <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: statusColor + '22', borderRadius: 8, padding: '1px 7px', textTransform: 'uppercase' }}>{t.status ?? 'sent'}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 3 }}>
+                          {t.items.length} items · {t.server}{t.customerName ? ` · ${t.customerName}` : ''}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 700, color: 'var(--grn)' }}>
+                        {fmt(tCalc.total, sym)}
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 8, maxHeight: 80, overflowY: 'auto' }}>
+                      {t.items.map((ci, i) => (
+                        <div key={i} style={{ fontSize: 11, color: 'var(--txt2)', display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                          <span>{ci.qty}× {ci.name}</span>
+                          <span style={{ fontFamily: 'var(--mono)' }}>{fmt(ci.price * ci.qty, sym)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => { setPayingTicket(t); setShowOpen(false); setShowPayment(true) }}
+                      style={{ width: '100%', padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                      Pay {fmt(tCalc.total, sym)}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Payment Modal ── */}
       <PaymentModal
         isOpen={showPayment}
-        onClose={() => setShowPayment(false)}
-        calc={splitTarget ? calcCart(cart, { orderType: cartOrderType, ...discOpts, gratuityPct: splitTarget.total / calc.total * gratuityPct }) : calc}
-        gratuityPct={gratuityPct}
+        onClose={() => { setShowPayment(false); setPayingTicket(null) }}
+        calc={splitTarget ? calcCart(payingTicket ? payingTicket.items : cart, { orderType: (payingTicket?.orderType ?? cartOrderType) as OrderType, ...(payingTicket ? { manualDiscPct: payingTicket.discPct, manualDiscFlat: payingTicket.discFlat } : discOpts), gratuityPct: splitTarget.total / (payingTicket ? calcCart(payingTicket.items, { orderType: payingTicket.orderType as OrderType, manualDiscPct: payingTicket.discPct, manualDiscFlat: payingTicket.discFlat, gratuityPct: payingTicket.gratuityPct ?? 0 }).total : calc.total) * (payingTicket?.gratuityPct ?? gratuityPct) }) : payCalc}
+        gratuityPct={payingTicket ? (payingTicket.gratuityPct ?? 0) : gratuityPct}
         sym={sym}
-        selTable={posState['restaurant'].selTable ?? posState['bar'].selTable}
-        guestCount={guestCount}
-        customerName={customerName}
+        selTable={payingTicket?.table ?? posState['restaurant'].selTable ?? posState['bar'].selTable}
+        guestCount={payingTicket?.guestCount ?? guestCount}
+        customerName={payingTicket?.customerName ?? customerName}
         onComplete={payData => completeCheckout(payData)}
       />
 
@@ -1070,9 +1282,9 @@ export default function POSPage() {
       <SplitBillModal
         isOpen={showSplitBill}
         onClose={() => setShowSplitBill(false)}
-        cart={cart}
-        orderType={cartOrderType}
-        gratuityPct={gratuityPct}
+        cart={payingTicket ? payingTicket.items : cart}
+        orderType={(payingTicket?.orderType ?? cartOrderType) as OrderType}
+        gratuityPct={payingTicket?.gratuityPct ?? gratuityPct}
         sym={sym}
         onPaySplit={split => {
           setShowSplitBill(false)

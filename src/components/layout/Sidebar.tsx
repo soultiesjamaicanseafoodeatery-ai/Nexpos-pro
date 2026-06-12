@@ -70,11 +70,12 @@ const MOD_LABELS: Record<ModuleKey, string> = {
 export default function Sidebar() {
   const { state, dispatch } = useApp()
   const { currentUser, activeModule, activePage } = state
-  if (!currentUser) return null
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem('sidebar_collapsed') === '1' } catch { return false }
   })
+
+  if (!currentUser) return null
 
   const toggleCollapse = () => {
     setCollapsed(c => {

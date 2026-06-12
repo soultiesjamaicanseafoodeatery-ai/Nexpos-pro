@@ -87,6 +87,7 @@ interface AppState {
   toasts: { id: number; msg: string; type: string }[]
   syncQueue: unknown[]
   isOnline: boolean
+  uiMode: 'pos' | 'admin'
 }
 
 type Action =
@@ -121,6 +122,7 @@ type Action =
   | { type: 'ADD_VOID_LOG'; entry: VoidLog }
   | { type: 'REFUND_TRANSACTION'; id: number; reason: string; refundType: 'full' | 'partial'; amount: number; by: string; at: string }
   | { type: 'ADD_REFUND_LOG'; entry: RefundLog }
+  | { type: 'SET_UI_MODE'; mode: 'pos' | 'admin' }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -160,6 +162,7 @@ function initState(): AppState {
     toasts: [],
     syncQueue: storage.get<unknown[]>('sync_queue') ?? [],
     isOnline: true,
+    uiMode: 'pos',
   }
 }
 
@@ -364,9 +367,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
       .then((rows: unknown) => {
         if (!Array.isArray(rows) || rows.length === 0) return
-        const users = (rows as DbStaffRow[]).map(dbStaffToUser)
-        dispatch({ type: 'SET_USERS', users })
-        storage.set('users', users)
+        const fromSupabase = (rows as DbStaffRow[]).map(dbStaffToUser)
+        const supabaseIds = new Set(fromSupabase.map(u => u.id))
+        // Preserve locally-created users not yet in Supabase
+        const localOnly = (storage.get<User[]>('users') ?? []).filter(u => !supabaseIds.has(u.id))
+        const merged = [...fromSupabase, ...localOnly]
+        dispatch({ type: 'SET_USERS', users: merged })
+        storage.set('users', merged)
       })
       .catch(() => { /* keep localStorage cache / seed users */ })
   }, [])

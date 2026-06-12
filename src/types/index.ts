@@ -1,5 +1,5 @@
 // ── Users & Auth ──────────────────────────────────────────────
-export type UserRole = 'admin' | 'manager' | 'supervisor' | 'cashier' | 'bartender' | 'attendant'
+export type UserRole = 'admin' | 'manager' | 'supervisor' | 'cashier' | 'server' | 'bartender' | 'attendant' | 'kitchen'
 
 export interface User {
   id: string

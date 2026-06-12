@@ -14,6 +14,7 @@ interface NavItem {
 const NAV_ITEMS: Record<ModuleKey, NavItem[]> = {
   restaurant: [
     { id:'pos',          ic:'🧾', lbl:'Point of Sale',  roles:['admin','manager','supervisor','cashier'] },
+    { id:'kitchen',      ic:'🍳', lbl:'Kitchen Display', roles:['admin','manager','supervisor','cashier'] },
     { id:'tables',       ic:'🪑', lbl:'Tables',          roles:['admin','manager','supervisor','cashier'] },
     { id:'transactions', ic:'📋', lbl:'Transactions',    roles:['admin','manager','supervisor','cashier'] },
     { id:'reports',      ic:'📊', lbl:'Reports',         roles:['admin','manager'] },
@@ -25,6 +26,7 @@ const NAV_ITEMS: Record<ModuleKey, NavItem[]> = {
   ],
   bar: [
     { id:'pos',          ic:'🧾', lbl:'Point of Sale',  roles:['admin','manager','supervisor','cashier','bartender'] },
+    { id:'kitchen',      ic:'🍳', lbl:'Kitchen Display', roles:['admin','manager','supervisor','cashier','bartender'] },
     { id:'transactions', ic:'📋', lbl:'Transactions',    roles:['admin','manager','supervisor','cashier','bartender'] },
     { id:'reports',      ic:'📊', lbl:'Reports',         roles:['admin','manager'] },
     { id:'menu',         ic:'🍽', lbl:'Menu Manager',    roles:['admin','manager'] },

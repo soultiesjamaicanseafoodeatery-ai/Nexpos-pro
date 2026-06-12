@@ -2,9 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData } from '@/types'
+import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData, HeldOrder, PaymentEntry, OrderTicket } from '@/types'
 import { calcCart, fmt } from '@/lib/utils/tax'
+import { buildKitchenTicket, buildBarTicket, buildCarwashWorkOrder, printTicket } from '@/lib/utils/ticketPrinter'
 import OutsideOrders from './OutsideOrders'
+import PaymentModal from './PaymentModal'
+import TicketModal from './TicketModal'
+import SplitBillModal from './SplitBillModal'
 import { MODULE_DATA } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
 import { storage } from '@/lib/utils/storage'
@@ -31,6 +35,30 @@ export default function POSPage() {
   const [cwTab,        setCwTab]        = useState<'pos' | 'orders'>('pos')
   const [pendingCount, setPendingCount] = useState(0)
   const [discPct,      setDiscPct]      = useState(0)
+  const [discFlat,     setDiscFlat]     = useState(0)
+  const [discMode,     setDiscMode]     = useState<'pct' | 'flat'>('pct')
+
+  // Gratuity
+  const [gratuityPct,      setGratuityPct]      = useState(0)
+  const [gratuityOverride, setGratuityOverride] = useState(false)
+  const [showGratEdit,     setShowGratEdit]     = useState(false)
+  const [gratInput,        setGratInput]        = useState('15')
+
+  // Guest & customer
+  const [guestCount,    setGuestCount]    = useState(1)
+  const [customerName,  setCustomerName]  = useState('')
+
+  // Payment / receipt modals
+  const [showPayment,   setShowPayment]   = useState(false)
+  const [showTicket,    setShowTicket]    = useState(false)
+  const [showSplitBill, setShowSplitBill] = useState(false)
+  const [showHeld,      setShowHeld]      = useState(false)
+  const [lastTx,        setLastTx]        = useState<Transaction | null>(null)
+  const [lastTicket,    setLastTicket]    = useState<OrderTicket | null>(null)
+  const [orderNote,     setOrderNote]     = useState('')
+
+  // Split bill target (when paying one split at a time)
+  const [splitTarget,   setSplitTarget]   = useState<{ total: number; label: string } | null>(null)
 
   // Modal state
   const [modalItem,   setModalItem]   = useState<MenuItem | null>(null)
@@ -373,58 +401,211 @@ export default function POSPage() {
     }
   }
 
-  const checkout = () => {
-    if (cart.length === 0) { toast('Add items first', 'warn'); return }
+  const completeCheckout = (payData: { method: string; tender?: number; changeDue?: number; payments?: PaymentEntry[] }, overrideCalc?: ReturnType<typeof calcCart>) => {
+    if (cart.length === 0 && !overrideCalc) return
     if (!currentUser) return
 
-    const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null, manualDiscPct: discPct || undefined })
+    const finalCalc = overrideCalc ?? calc
 
     const modules = Array.from(new Set(cart.map(ci => ci.module)))
     const mod2 = modules.length === 1 ? modules[0] : 'mixed' as const
 
-    const plates = Array.from(new Set(cart.filter(ci => ci.plate).map(ci => ci.plate!)))
-    const tableInfo = posState['restaurant'].selTable ? `Table ${posState['restaurant'].selTable}` : ''
-    const customer = plates.length > 0
+    const plates    = Array.from(new Set(cart.filter(ci => ci.plate).map(ci => ci.plate!)))
+    const selTable  = posState['restaurant'].selTable ?? posState['bar'].selTable
+    const tableInfo = selTable ? `Table ${selTable}` : ''
+    const customer  = customerName || (plates.length > 0
       ? plates.join(', ') + (tableInfo ? ` · ${tableInfo}` : '')
-      : (tableInfo || 'Walk-in')
+      : (tableInfo || 'Walk-in'))
 
     const itemSummary = cart.length === 1
       ? `${cart[0].name}${cart[0].qty > 1 ? ` ×${cart[0].qty}` : ''}`
       : `${cart.length} items (${modules.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(' + ')})`
+
+    const payMethodLabel = payData.method === 'gift_card' ? 'Gift Card'
+      : payData.method === 'tab' ? 'Tab'
+      : payData.method
 
     const tx: Transaction = {
       id: Date.now(),
       ts: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' +
           new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       mod: mod2,
-      cashier: currentUser.name,
-      userId:  currentUser.id,
+      cashier:  currentUser.name,
+      userId:   currentUser.id,
       customer,
-      item:    itemSummary,
-      addons:  cart.flatMap(ci => ci.addons.map(a => a.name)),
-      sub:     calc.sub,
-      disc:    calc.disc,
-      tax:     calc.gct + calc.serviceCharge,
-      total:   calc.total,
-      pay:     cartPayMethod,
+      item:     itemSummary,
+      addons:   cart.flatMap(ci => ci.addons.map(a => a.name)),
+      sub:      finalCalc.sub,
+      disc:     finalCalc.disc,
+      tax:      finalCalc.gct + finalCalc.serviceCharge,
+      total:    finalCalc.total,
+      pay:      payMethodLabel,
       orderType: cartOrderType,
-      gct:          calc.gct,
-      serviceCharge: calc.serviceCharge,
+      gct:           finalCalc.gct,
+      serviceCharge: finalCalc.serviceCharge,
+      gratuity:    finalCalc.gratuity,
+      gratuityPct: gratuityPct,
+      guestCount:  guestCount > 1 ? guestCount : undefined,
+      customerName: customerName || undefined,
+      tableNum:  selTable ?? undefined,
+      tender:    payData.tender,
+      changeDue: payData.changeDue,
+      payments:  payData.payments,
       items: cart,
+    }
+
+    // Build order ticket
+    const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const orderNum = String(tx.id).slice(-4).padStart(4, '0')
+    const hasKitchen = cart.some(ci => ci.module === 'restaurant')
+    const hasBar     = cart.some(ci => ci.module === 'bar')
+    const hasCarwash = cart.some(ci => ci.module === 'carwash')
+    const newTicket: OrderTicket = {
+      id:            crypto.randomUUID(),
+      orderNum,
+      txId:          tx.id,
+      table:         selTable ?? undefined,
+      server:        currentUser.name,
+      guestCount:    guestCount > 1 ? guestCount : undefined,
+      customerName:  customerName || undefined,
+      orderType:     cartOrderType,
+      hasKitchen,
+      hasBar,
+      hasCarwash,
+      kitchenStatus: 'pending',
+      barStatus:     'pending',
+      carwashStatus: 'queued',
+      items:         [...cart],
+      orderNote:     orderNote || undefined,
+      timeline: {
+        created:       nowTime,
+        sentToKitchen: hasKitchen ? nowTime : undefined,
+        paid:          nowTime,
+      },
+      reprints: [],
+    }
+    dispatch({ type: 'ADD_ORDER_TICKET', ticket: newTicket })
+
+    // Auto-print production tickets immediately
+    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+    const ticketData = {
+      orderNum,
+      table:        selTable ?? undefined,
+      server:       currentUser.name,
+      guestCount:   guestCount > 1 ? guestCount : undefined,
+      orderType:    cartOrderType,
+      date:         today,
+      time:         nowTime,
+      items:        [...cart],
+      orderNote:    orderNote || undefined,
+      customerName: customerName || undefined,
+    }
+    if (hasKitchen) {
+      const html = buildKitchenTicket(ticketData, { width: 80 })
+      if (html) printTicket(html, 'Kitchen Ticket')
+    }
+    if (hasBar) {
+      // Stagger slightly so browser doesn't block second popup
+      const html = buildBarTicket(ticketData, { width: 80 })
+      if (html) setTimeout(() => printTicket(html, 'Bar Ticket'), 400)
+    }
+    if (hasCarwash) {
+      const html = buildCarwashWorkOrder(ticketData, { width: 80 })
+      if (html) setTimeout(() => printTicket(html, 'Car Wash Work Order'), hasBar ? 800 : 400)
     }
 
     dispatch({ type: 'ADD_TRANSACTION', tx })
     dispatch({ type: 'CLEAR_CART' })
+    setLastTx(tx)
+    setLastTicket(newTicket)
+    setShowPayment(false)
     setDiscPct(0)
-    audit('CHECKOUT', `${itemSummary} — ${fmt(tx.total, sym)}`)
+    setDiscFlat(0)
+    setGuestCount(1)
+    setCustomerName('')
+    setOrderNote('')
+    setGratuityOverride(false)
+    setSplitTarget(null)
+    audit('PAYMENT', `${itemSummary} — ${fmt(tx.total, sym)} · ${payMethodLabel}`, 'success')
     toast(`✓ ${fmt(tx.total, sym)} charged`, 'success')
     dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: null } })
+    dispatch({ type: 'SET_POS_STATE', mod: 'bar',        patch: { selTable: null } })
     dispatch({ type: 'SET_POS_STATE', mod: 'carwash',    patch: { plate: '' } })
+
+    // Auto-show ticket modal
+    setTimeout(() => setShowTicket(true), 200)
   }
 
-  // Cart totals
+  const holdOrder = () => {
+    if (cart.length === 0) { toast('Nothing to hold', 'warn'); return }
+    if (!currentUser) return
+    const selTable = posState['restaurant'].selTable ?? posState['bar'].selTable
+    const label = customerName || (selTable ? `Table ${selTable}` : `Order ${Date.now().toString().slice(-4)}`)
+    const held: HeldOrder = {
+      id: crypto.randomUUID(),
+      label,
+      cart: [...cart],
+      orderType: cartOrderType,
+      module: activeModule,
+      selTable,
+      guestCount,
+      customerName,
+      discPct,
+      discFlat,
+      gratuityPct,
+      gratuityOverride,
+      savedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      savedBy: currentUser.name,
+    }
+    dispatch({ type: 'HOLD_ORDER', order: held })
+    dispatch({ type: 'CLEAR_CART' })
+    setDiscPct(0)
+    setDiscFlat(0)
+    setCustomerName('')
+    setGuestCount(1)
+    setGratuityOverride(false)
+    audit('HOLD_ORDER', `Held: ${label}`, 'info')
+    toast(`Order held: ${label}`, 'info')
+  }
+
+  const resumeOrder = (held: HeldOrder) => {
+    if (cart.length > 0 && !confirm('Replace current cart with held order?')) return
+    dispatch({ type: 'CLEAR_CART' })
+    held.cart.forEach(ci => dispatch({ type: 'ADD_TO_CART', item: ci }))
+    dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: held.orderType })
+    setCustomerName(held.customerName)
+    setGuestCount(held.guestCount)
+    setDiscPct(held.discPct)
+    setDiscFlat(held.discFlat)
+    setGratuityPct(held.gratuityPct)
+    setGratuityOverride(held.gratuityOverride)
+    if (held.selTable) {
+      dispatch({ type: 'SET_POS_STATE', mod: held.module as 'restaurant' | 'bar', patch: { selTable: held.selTable } })
+    }
+    dispatch({ type: 'REMOVE_HELD_ORDER', id: held.id })
+    setShowHeld(false)
+    audit('RESUME_ORDER', `Resumed: ${held.label}`, 'info')
+    toast(`Resumed: ${held.label}`, 'success')
+  }
+
+  // Auto-set gratuity: 15% for dine-in restaurant, 0 otherwise
   const hasRestaurantItems = cart.some(ci => ci.module === 'restaurant')
-  const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null, manualDiscPct: discPct || undefined })
+  useEffect(() => {
+    if (gratuityOverride) return
+    if (cartOrderType === 'dine-in' && hasRestaurantItems) {
+      setGratuityPct(15)
+    } else {
+      setGratuityPct(0)
+    }
+  }, [cartOrderType, hasRestaurantItems, gratuityOverride])
+
+  const isManager = currentUser?.role === 'admin' || currentUser?.role === 'manager'
+
+  // Cart totals
+  const discOpts = discMode === 'pct'
+    ? { manualDiscPct: discPct || undefined }
+    : { manualDiscFlat: discFlat || undefined }
+  const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null, ...discOpts, gratuityPct })
 
   // Active add-ons for modal display
   const activeAddons = mod.addons.filter((a: Addon) => a.active)
@@ -538,10 +719,36 @@ export default function POSPage() {
                     {cart.length}
                   </span>
                 )}
+                {/* Held orders button */}
+                <button onClick={() => setShowHeld(true)} style={{
+                  marginLeft: 'auto', padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  border: `1.5px solid ${state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--bdr)'}`,
+                  background: state.heldOrders.length > 0 ? 'var(--ora-bg, #78350f22)' : 'transparent',
+                  color: state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--txt3)',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}>
+                  On Hold {state.heldOrders.length > 0 && <span style={{ background: 'var(--ora)', color: '#fff', borderRadius: 8, fontSize: 10, padding: '0 5px', fontWeight: 800 }}>{state.heldOrders.length}</span>}
+                </button>
               </div>
+
+              {/* Customer name + guest count */}
+              {(activeModule === 'restaurant' || activeModule === 'bar') && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginTop: 8 }}>
+                  <input value={customerName} onChange={e => setCustomerName(e.target.value)}
+                    placeholder="Customer name (optional)"
+                    style={{ padding: '6px 9px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 11, fontWeight: 600 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                    <span style={{ color: 'var(--txt3)', whiteSpace: 'nowrap' }}>👥</span>
+                    <input type="number" min={1} max={20} value={guestCount}
+                      onChange={e => setGuestCount(Math.max(1, parseInt(e.target.value) || 1))}
+                      style={{ width: 38, padding: '6px 6px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 12, fontWeight: 700, textAlign: 'center' }} />
+                  </div>
+                </div>
+              )}
+
               {/* Table selector for restaurant / bar */}
               {(activeModule === 'restaurant' || activeModule === 'bar') && (mod.tables as string[])?.length > 0 && (
-                <div style={{ marginTop: 8 }}>
+                <div style={{ marginTop: 6 }}>
                   <select
                     value={ps.selTable ?? ''}
                     onChange={e => setPOS({ selTable: e.target.value || null })}
@@ -634,20 +841,40 @@ export default function POSPage() {
               )}
 
               {/* Discount */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: 11, color: 'var(--txt3)', flex: 1 }}>Discount</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={discPct || ''}
-                  onChange={e => setDiscPct(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
-                  placeholder="0"
-                  style={{ width: 56, background: 'var(--surf2)', border: `1px solid ${discPct > 0 ? 'var(--grn)' : 'var(--bdr2)'}`, borderRadius: 'var(--r)', padding: '5px 8px', fontSize: 13, color: discPct > 0 ? 'var(--grn)' : 'var(--txt)', textAlign: 'right' }}
-                />
-                <span style={{ fontSize: 11, color: 'var(--txt3)' }}>%</span>
-                {discPct > 0 && (
-                  <button onClick={() => setDiscPct(0)} style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+                {/* Mode toggle */}
+                <button onClick={() => { setDiscMode(m => m === 'pct' ? 'flat' : 'pct'); setDiscPct(0); setDiscFlat(0) }}
+                  style={{ fontSize: 10, padding: '3px 7px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt3)', cursor: 'pointer', fontWeight: 700 }}>
+                  {discMode === 'pct' ? '%' : sym}
+                </button>
+                {discMode === 'pct' ? (
+                  <>
+                    <input type="number" min={0} max={100} value={discPct || ''}
+                      onChange={e => {
+                        const v = Math.min(100, Math.max(0, Number(e.target.value) || 0))
+                        if (v > 20 && !isManager) { toast('Large discounts require manager access', 'warn'); return }
+                        setDiscPct(v)
+                      }}
+                      placeholder="0"
+                      style={{ width: 52, background: 'var(--surf2)', border: `1px solid ${discPct > 0 ? 'var(--grn)' : 'var(--bdr2)'}`, borderRadius: 'var(--r)', padding: '5px 8px', fontSize: 13, color: discPct > 0 ? 'var(--grn)' : 'var(--txt)', textAlign: 'right' }} />
+                    <span style={{ fontSize: 11, color: 'var(--txt3)' }}>%</span>
+                  </>
+                ) : (
+                  <>
+                    <input type="number" min={0} value={discFlat || ''}
+                      onChange={e => {
+                        const v = Math.max(0, Number(e.target.value) || 0)
+                        if (v > calc.sub * 0.2 && !isManager) { toast('Large discounts require manager access', 'warn'); return }
+                        setDiscFlat(v)
+                      }}
+                      placeholder="0"
+                      style={{ width: 70, background: 'var(--surf2)', border: `1px solid ${discFlat > 0 ? 'var(--grn)' : 'var(--bdr2)'}`, borderRadius: 'var(--r)', padding: '5px 8px', fontSize: 13, color: discFlat > 0 ? 'var(--grn)' : 'var(--txt)', textAlign: 'right' }} />
+                    <span style={{ fontSize: 11, color: 'var(--txt3)' }}>{sym}</span>
+                  </>
+                )}
+                {(discPct > 0 || discFlat > 0) && (
+                  <button onClick={() => { setDiscPct(0); setDiscFlat(0) }} style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
                 )}
               </div>
 
@@ -656,10 +883,10 @@ export default function POSPage() {
 
               {/* Totals */}
               {([
-                { label: 'Subtotal',                                                                                   value: fmt(calc.sub, sym) },
-                calc.disc > 0          && { label: `Discount (${discPct}%)`,                                           value: `−${fmt(calc.disc, sym)}`, color: 'var(--grn)' },
-                calc.gct > 0           && { label: `GCT (${(calc.gctRate * 100).toFixed(0)}%)`,                        value: fmt(calc.gct, sym) },
-                calc.serviceCharge > 0 && { label: `Service (${(calc.scRate * 100).toFixed(0)}%)`,                     value: fmt(calc.serviceCharge, sym) },
+                { label: 'Subtotal', value: fmt(calc.sub, sym) },
+                calc.disc > 0 && { label: discMode === 'pct' ? `Discount (${discPct}%)` : `Discount (${sym}${discFlat})`, value: `−${fmt(calc.disc, sym)}`, color: 'var(--grn)' },
+                calc.gct > 0  && { label: `GCT (${(calc.gctRate * 100).toFixed(0)}%)`,  value: fmt(calc.gct, sym) },
+                calc.serviceCharge > 0 && { label: `Service (${(calc.scRate * 100).toFixed(0)}%)`, value: fmt(calc.serviceCharge, sym) },
               ].filter(Boolean) as { label: string; value: string; color?: string }[]).map((row, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: 13 }}>
                   <span style={{ color: row.color ?? 'var(--txt3)' }}>{row.label}</span>
@@ -667,50 +894,173 @@ export default function POSPage() {
                 </div>
               ))}
 
+              {/* Gratuity row — auto-set, manager can remove/override */}
+              {hasRestaurantItems && (cartOrderType === 'dine-in') && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: 13 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ color: gratuityPct > 0 ? 'var(--txt3)' : 'var(--txt4, var(--txt3))' }}>
+                      Gratuity ({gratuityPct}%)
+                    </span>
+                    {isManager && !showGratEdit && (
+                      <button onClick={() => { setGratInput(String(gratuityPct)); setShowGratEdit(true) }}
+                        style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer' }}>
+                        edit
+                      </button>
+                    )}
+                    {isManager && showGratEdit && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <input type="number" min={0} max={50} value={gratInput}
+                          onChange={e => setGratInput(e.target.value)}
+                          style={{ width: 42, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 12, textAlign: 'center' }} />
+                        <span style={{ fontSize: 10, color: 'var(--txt3)' }}>%</span>
+                        <button onClick={() => {
+                          const v = Math.max(0, Math.min(50, parseFloat(gratInput) || 0))
+                          setGratuityPct(v)
+                          setGratuityOverride(true)
+                          setShowGratEdit(false)
+                          audit('GRATUITY_OVERRIDE', `Set gratuity to ${v}%`, 'warn')
+                        }} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--grn)', background: '#14532d22', color: 'var(--grn)', cursor: 'pointer', fontWeight: 700 }}>✓</button>
+                        <button onClick={() => setShowGratEdit(false)}
+                          style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer' }}>✕</button>
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontWeight: 700, color: gratuityPct > 0 ? 'var(--txt2)' : 'var(--txt3)', fontFamily: 'var(--mono)' }}>
+                    {gratuityPct > 0 ? fmt(calc.gratuity, sym) : '—'}
+                  </span>
+                </div>
+              )}
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0', fontSize: 18, fontWeight: 800 }}>
                 <span style={{ color: 'var(--txt)' }}>TOTAL</span>
                 <span style={{ fontFamily: 'var(--mono)', color: cart.length > 0 ? 'var(--blue)' : 'var(--txt3)' }}>{fmt(calc.total, sym)}</span>
               </div>
 
-              {/* Payment method */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, margin: '10px 0' }}>
-                {[['cash','Cash'],['card','Card'],['tab','Tab'],['qr','QR Pay']].map(([key, lbl]) => (
-                  <button key={key} onClick={() => dispatch({ type: 'SET_CART_PAY', method: key })} style={{
-                    padding: '13px 4px', borderRadius: 'var(--r)',
-                    border: `2px solid ${cartPayMethod === key ? 'var(--blue)' : 'var(--bdr2)'}`,
-                    background: cartPayMethod === key ? 'var(--blue-bg)' : 'var(--surf)',
-                    color: cartPayMethod === key ? 'var(--blue)' : 'var(--txt2)',
-                    fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', transition: 'all .12s', minHeight: 44,
-                  }}>
-                    {lbl}
-                  </button>
-                ))}
-              </div>
-
-              {/* Charge button */}
-              <button onClick={checkout} disabled={cart.length === 0} style={{
-                width: '100%', padding: 16, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
-                color: cart.length > 0 ? '#fff' : 'var(--txt3)',
-                background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                cursor: cart.length > 0 ? 'pointer' : 'not-allowed', border: 'none', transition: 'all .15s', minHeight: 54,
-              }}>
+              {/* Action buttons: Charge + Split + Hold */}
+              <button onClick={() => { if (cart.length === 0) { toast('Add items first', 'warn'); return }; setShowPayment(true) }}
+                disabled={cart.length === 0} style={{
+                  width: '100%', padding: 16, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
+                  color: cart.length > 0 ? '#fff' : 'var(--txt3)',
+                  background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  cursor: cart.length > 0 ? 'pointer' : 'not-allowed', border: 'none', transition: 'all .15s', minHeight: 54,
+                }}>
                 ✓ Charge {cart.length > 0 ? fmt(calc.total, sym) : '—'}
               </button>
 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginTop: 7 }}>
+                <button onClick={() => { if (cart.length === 0) { toast('Add items first', 'warn'); return }; setShowSplitBill(true) }}
+                  style={{ padding: 10, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 40 }}>
+                  Split Bill
+                </button>
+                <button onClick={holdOrder} style={{ padding: 10, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', minHeight: 40 }}>
+                  Hold Order
+                </button>
+              </div>
+
               <button onClick={() => dispatch({ type: 'CLEAR_CART' })} style={{
-                width: '100%', padding: 10, borderRadius: 'var(--r2)', fontSize: 12.5, fontWeight: 700,
+                width: '100%', padding: 9, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700,
                 background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', marginTop: 7,
-                cursor: 'pointer', transition: 'all .12s', minHeight: 42,
+                cursor: 'pointer', transition: 'all .12s', minHeight: 38,
               }}>
                 Clear Order
               </button>
+
+              {/* Reprint last ticket if available */}
+              {lastTx && lastTicket && (
+                <button onClick={() => setShowTicket(true)} style={{
+                  width: '100%', padding: 9, borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 700,
+                  background: 'transparent', color: 'var(--txt3)', border: '1.5px dashed var(--bdr)', marginTop: 7,
+                  cursor: 'pointer',
+                }}>
+                  Reprint Last Receipt
+                </button>
+              )}
             </div>
           </div>
 
         </div>
       )}
+
+      {/* ── Held Orders Panel ── */}
+      {showHeld && (
+        <div onClick={() => setShowHeld(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 400, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>Held Orders</span>
+              <button onClick={() => setShowHeld(false)} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 22 }}>×</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+              {state.heldOrders.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 32, color: 'var(--txt3)', fontSize: 13 }}>No held orders.</div>
+              ) : state.heldOrders.map(h => (
+                <div key={h.id} style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: '12px 14px', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>{h.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>
+                        {h.cart.length} items · Held at {h.savedAt} by {h.savedBy}
+                      </div>
+                    </div>
+                    <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--blue)' }}>
+                      {fmt(calcCart(h.cart, { orderType: h.orderType, gratuityPct: h.gratuityPct }).total, sym)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => resumeOrder(h)} style={{ flex: 2, padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                      Resume
+                    </button>
+                    <button onClick={() => { if (confirm(`Delete held order "${h.label}"?`)) { dispatch({ type: 'REMOVE_HELD_ORDER', id: h.id }) } }}
+                      style={{ flex: 1, padding: '9px 0', borderRadius: 'var(--r)', background: 'transparent', color: '#ef4444', border: '1px solid #ef444444', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Payment Modal ── */}
+      <PaymentModal
+        isOpen={showPayment}
+        onClose={() => setShowPayment(false)}
+        calc={splitTarget ? calcCart(cart, { orderType: cartOrderType, ...discOpts, gratuityPct: splitTarget.total / calc.total * gratuityPct }) : calc}
+        gratuityPct={gratuityPct}
+        sym={sym}
+        selTable={posState['restaurant'].selTable ?? posState['bar'].selTable}
+        guestCount={guestCount}
+        customerName={customerName}
+        onComplete={payData => completeCheckout(payData)}
+      />
+
+      {/* ── Ticket Modal ── */}
+      {lastTx && lastTicket && (
+        <TicketModal
+          isOpen={showTicket}
+          onClose={() => setShowTicket(false)}
+          ticket={lastTicket}
+          tx={lastTx}
+          biz={biz}
+        />
+      )}
+
+      {/* ── Split Bill Modal ── */}
+      <SplitBillModal
+        isOpen={showSplitBill}
+        onClose={() => setShowSplitBill(false)}
+        cart={cart}
+        orderType={cartOrderType}
+        gratuityPct={gratuityPct}
+        sym={sym}
+        onPaySplit={split => {
+          setShowSplitBill(false)
+          setSplitTarget({ total: split.calc.total, label: split.label })
+          setShowPayment(true)
+        }}
+        onPayAll={() => { setShowSplitBill(false); setShowPayment(true) }}
+      />
 
       {/* ── Add-ons Modal ── */}
       {modalItem && (

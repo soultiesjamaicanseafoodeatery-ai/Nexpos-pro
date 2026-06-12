@@ -74,7 +74,7 @@ export function calcOrder(
 
 export function calcCart(
   cart: CartItem[],
-  opts: { orderType?: string; taxOverride?: boolean | null; manualDiscPct?: number; manualDiscFlat?: number }
+  opts: { orderType?: string; taxOverride?: boolean | null; manualDiscPct?: number; manualDiscFlat?: number; gratuityPct?: number }
 ): OrderCalc {
   const cfg = getTaxConfig()
 
@@ -94,8 +94,8 @@ export function calcCart(
     ? sub * (opts.manualDiscPct / 100)
     : (opts.manualDiscFlat ?? 0)
 
-  const taxableBase       = Math.max(0, sub - disc)
-  const taxableRestSub    = Math.max(0, restaurantSub - disc)
+  const taxableBase    = Math.max(0, sub - disc)
+  const taxableRestSub = Math.max(0, restaurantSub - disc)
 
   const gctApplies = cfg.enabled
     && isGCTApplicable(opts.orderType ?? 'dine-in', opts.taxOverride ?? null)
@@ -109,13 +109,17 @@ export function calcCart(
   const scRate = scApplies ? cfg.serviceChargeRate : 0
   const serviceCharge = taxableRestSub * scRate
 
-  const total = Math.max(0, taxableBase + gct + serviceCharge)
+  // Gratuity applies only to dine-in restaurant orders, on taxable restaurant subtotal
+  const gratApplies = (opts.orderType ?? 'dine-in') === 'dine-in' && restaurantSub > 0 && (opts.gratuityPct ?? 0) > 0
+  const gratuity = gratApplies ? taxableRestSub * ((opts.gratuityPct ?? 0) / 100) : 0
+
+  const total = Math.max(0, taxableBase + gct + serviceCharge + gratuity)
 
   return {
     sub, disc, memberDiscAmt: 0, manualDiscAmt: disc,
     taxableBase, gct, gctRate, gctApplies,
     serviceCharge, scRate,
-    gratuity: 0, deliveryFee: 0, legacyTax: 0,
+    gratuity, deliveryFee: 0, legacyTax: 0,
     total,
     orderType: opts.orderType ?? 'dine-in',
   }

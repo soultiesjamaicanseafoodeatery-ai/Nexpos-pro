@@ -169,6 +169,11 @@ export interface CartItem {
 }
 
 // ── Transactions ──────────────────────────────────────────────
+export interface PaymentEntry {
+  method: string
+  amount: number
+}
+
 export interface Transaction {
   id: number
   ts: string
@@ -186,11 +191,40 @@ export interface Transaction {
   orderType?: string
   gct?: number
   serviceCharge?: number
+  gratuity?: number
+  gratuityPct?: number
+  guestCount?: number
+  customerName?: string
+  tableNum?: string
+  tender?: number
+  changeDue?: number
+  payments?: PaymentEntry[]
   customerEmail?: string
   voided?: boolean
   voidReason?: string
+  refunded?: boolean
+  refundReason?: string
+  refundedBy?: string
+  refundedAt?: string
   note?: string
   items?: CartItem[]
+}
+
+export interface HeldOrder {
+  id: string
+  label: string
+  cart: CartItem[]
+  orderType: OrderType
+  module: ModuleKey
+  selTable: string | null
+  guestCount: number
+  customerName: string
+  discPct: number
+  discFlat: number
+  gratuityPct: number
+  gratuityOverride: boolean
+  savedAt: string
+  savedBy: string
 }
 
 // ── Shifts ────────────────────────────────────────────────────
@@ -316,6 +350,50 @@ export interface LoyaltyMember {
   points: number
   tier: string
   history: { date: string; pts: number; desc: string }[]
+}
+
+// ── Order Tickets & Kitchen Status ────────────────────────────
+export type KitchenStatus  = 'pending' | 'preparing' | 'ready' | 'served'
+export type BarStatus      = 'pending' | 'preparing' | 'ready'
+export type CarwashStatus  = 'queued'  | 'in_progress' | 'completed'
+export type PrintWidth     = 58 | 80
+
+export interface OrderTimeline {
+  created:          string
+  sentToKitchen?:   string
+  kitchenPreparing?: string
+  kitchenReady?:    string
+  barPreparing?:    string
+  barReady?:        string
+  served?:          string
+  paid:             string
+}
+
+export interface ReprintLog {
+  type: 'customer' | 'kitchen' | 'bar' | 'carwash' | 'void'
+  by:   string
+  at:   string
+}
+
+export interface OrderTicket {
+  id:            string
+  orderNum:      string
+  txId:          number
+  table?:        string
+  server:        string
+  guestCount?:   number
+  customerName?: string
+  orderType:     string
+  hasKitchen:    boolean
+  hasBar:        boolean
+  hasCarwash:    boolean
+  kitchenStatus: KitchenStatus
+  barStatus:     BarStatus
+  carwashStatus: CarwashStatus
+  items:         CartItem[]
+  orderNote?:    string
+  timeline:      OrderTimeline
+  reprints:      ReprintLog[]
 }
 
 // ── Promo Codes ───────────────────────────────────────────────

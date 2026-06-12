@@ -173,7 +173,7 @@ export default function TablesPage() {
       {/* Table grid */}
       {tables.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 40, color: 'var(--txt3)', fontSize: 13 }}>
-          No tables yet — click "+ Add Table" to get started.
+          No tables yet &mdash; click &ldquo;+ Add Table&rdquo; to get started.
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>

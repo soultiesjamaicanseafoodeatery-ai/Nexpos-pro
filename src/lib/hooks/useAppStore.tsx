@@ -4,7 +4,7 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback, u
 import type {
   User, UserRole, ModuleKey, Transaction, Shift, AuditEntry,
   BusinessConfig, FleetAccount, POSState, LoyaltyMember, PromoCode,
-  CartItem, OrderType,
+  CartItem, OrderType, HeldOrder, OrderTicket,
 } from '@/types'
 
 const STAFF_API = 'https://www.soultiesseafoodjm.com/api/staff'
@@ -55,6 +55,8 @@ interface AppState {
   cart: CartItem[]
   cartPayMethod: string
   cartOrderType: OrderType
+  heldOrders: HeldOrder[]
+  orderTickets: OrderTicket[]
   // Data
   transactions: Transaction[]
   shifts: Shift[]
@@ -91,6 +93,11 @@ type Action =
   | { type: 'SET_CART_PAY'; method: string }
   | { type: 'SET_CART_ORDER_TYPE'; orderType: OrderType }
   | { type: 'SET_PROMOS'; promos: PromoCode[] }
+  | { type: 'HOLD_ORDER'; order: HeldOrder }
+  | { type: 'REMOVE_HELD_ORDER'; id: string }
+  | { type: 'UPDATE_TRANSACTION'; tx: Transaction }
+  | { type: 'ADD_ORDER_TICKET'; ticket: OrderTicket }
+  | { type: 'UPDATE_ORDER_TICKET'; id: string; patch: Partial<OrderTicket> }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -116,6 +123,8 @@ function initState(): AppState {
     cart: [],
     cartPayMethod: 'cash',
     cartOrderType: 'dine-in',
+    heldOrders: storage.get<HeldOrder[]>('held_orders') ?? [],
+    orderTickets: storage.get<OrderTicket[]>('order_tickets') ?? [],
     transactions: storage.get<Transaction[]>('tx') ?? SEED_TRANSACTIONS,
     shifts: storage.get<Shift[]>('shifts') ?? [],
     audit: storage.get<AuditEntry[]>('audit') ?? [],
@@ -234,6 +243,33 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, cartOrderType: action.orderType }
     case 'SET_PROMOS':
       return { ...state, promos: action.promos }
+    case 'HOLD_ORDER': {
+      const heldOrders = [action.order, ...state.heldOrders]
+      storage.set('held_orders', heldOrders)
+      return { ...state, heldOrders }
+    }
+    case 'REMOVE_HELD_ORDER': {
+      const heldOrders = state.heldOrders.filter(h => h.id !== action.id)
+      storage.set('held_orders', heldOrders)
+      return { ...state, heldOrders }
+    }
+    case 'UPDATE_TRANSACTION': {
+      const transactions = state.transactions.map(t => t.id === action.tx.id ? action.tx : t)
+      storage.set('tx', transactions)
+      return { ...state, transactions }
+    }
+    case 'ADD_ORDER_TICKET': {
+      const orderTickets = [action.ticket, ...state.orderTickets].slice(0, 200)
+      storage.set('order_tickets', orderTickets)
+      return { ...state, orderTickets }
+    }
+    case 'UPDATE_ORDER_TICKET': {
+      const orderTickets = state.orderTickets.map(t =>
+        t.id === action.id ? { ...t, ...action.patch } : t
+      )
+      storage.set('order_tickets', orderTickets)
+      return { ...state, orderTickets }
+    }
     default:
       return state
   }

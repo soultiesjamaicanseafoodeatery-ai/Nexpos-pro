@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import type { ModuleKey } from '@/types'
+import type { ModuleKey, HeldOrder } from '@/types'
 
 const MOD_LABEL: Record<ModuleKey, string> = {
   restaurant: 'Restaurant',
@@ -26,9 +26,36 @@ const ORDER_TYPE_LABELS = { 'dine-in': 'Dine-in', takeout: 'Takeout', delivery: 
 
 export default function Topbar() {
   const { state, dispatch } = useApp()
-  const { activeModule, activePage, currentUser, currentShift, isOnline, cartOrderType, cart } = state
+  const { activeModule, activePage, currentUser, currentShift, isOnline, cartOrderType, cart, posState } = state
   const hasRestaurantItems = cart.some(ci => (ci as { module?: string }).module === 'restaurant')
   const [clock, setClock] = useState('')
+
+  function handleLogout() {
+    if (cart.length > 0 && currentUser) {
+      const ps = posState[activeModule]
+      const selTable = posState['restaurant'].selTable ?? posState['bar'].selTable ?? null
+      const label = ps.customerName || (selTable ? `Table ${selTable}` : `Order ${Date.now().toString().slice(-4)}`)
+      const held: HeldOrder = {
+        id: crypto.randomUUID(),
+        label: `${label} (auto-saved)`,
+        cart: [...cart],
+        orderType: cartOrderType,
+        module: activeModule,
+        selTable,
+        guestCount: 1,
+        customerName: ps.customerName,
+        discPct: ps.manualDiscPct ?? 0,
+        discFlat: ps.manualDiscFlat ?? 0,
+        gratuityPct: ps.gratuityPct ?? 0,
+        gratuityOverride: false,
+        savedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        savedBy: currentUser.name,
+      }
+      dispatch({ type: 'HOLD_ORDER', order: held })
+      dispatch({ type: 'CLEAR_CART' })
+    }
+    dispatch({ type: 'LOGOUT' })
+  }
 
   useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString())
@@ -103,7 +130,7 @@ export default function Topbar() {
         )}
 
         {/* Logout */}
-        <button className="btn btn-gh btn-sm" onClick={() => dispatch({ type: 'LOGOUT' })}>
+        <button className="btn btn-gh btn-sm" onClick={handleLogout}>
           Logout
         </button>
       </div>

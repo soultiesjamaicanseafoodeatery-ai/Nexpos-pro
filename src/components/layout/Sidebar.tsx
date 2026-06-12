@@ -22,7 +22,7 @@ const NAV_ITEMS: Record<ModuleKey, NavItem[]> = {
     { id:'voids',        ic:'🚫', lbl:'Void Report',     roles:['admin','manager'] },
     { id:'staff',        ic:'👥', lbl:'Staff',           roles:['admin','manager'] },
     { id:'menu',         ic:'🍽', lbl:'Menu Manager',    roles:['admin','manager'] },
-    { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin'] },
+    { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin','manager'] },
     { id:'audit',        ic:'🔍', lbl:'Audit Log',       roles:['admin'] },
     { id:'shifts',       ic:'🕐', lbl:'Shifts',          roles:['admin','manager'] },
   ],
@@ -34,6 +34,7 @@ const NAV_ITEMS: Record<ModuleKey, NavItem[]> = {
     { id:'voids',        ic:'🚫', lbl:'Void Report',     roles:['admin','manager'] },
     { id:'menu',         ic:'🍽', lbl:'Menu Manager',    roles:['admin','manager'] },
     { id:'shifts',       ic:'🕐', lbl:'Shifts',          roles:['admin','manager'] },
+    { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin','manager'] },
   ],
   carwash: [
     { id:'pos',          ic:'🧾', lbl:'Point of Sale',  roles:['admin','manager','supervisor','cashier','attendant'] },
@@ -43,6 +44,7 @@ const NAV_ITEMS: Record<ModuleKey, NavItem[]> = {
     { id:'reports',      ic:'📊', lbl:'Reports',         roles:['admin','manager'] },
     { id:'voids',        ic:'🚫', lbl:'Void Report',     roles:['admin','manager'] },
     { id:'shifts',       ic:'🕐', lbl:'Shifts',          roles:['admin','manager'] },
+    { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin','manager'] },
   ],
 }
 

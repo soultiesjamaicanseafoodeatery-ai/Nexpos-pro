@@ -36,6 +36,7 @@ export default function POSPage() {
 
   const [cwTab,        setCwTab]        = useState<'pos' | 'orders'>('pos')
   const [pendingCount, setPendingCount] = useState(0)
+  const [showDetails,  setShowDetails]  = useState(false)
   const [discPct,      setDiscPct]      = useState(0)
   const [discFlat,     setDiscFlat]     = useState(0)
   const [discMode,     setDiscMode]     = useState<'pct' | 'flat'>('pct')
@@ -1172,20 +1173,11 @@ export default function POSPage() {
                     <button onClick={() => setGuestCount(g => g+1)} style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                   </div>
                 </div>
-                {hasRestaurantItems && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
-                    {(['dine-in', 'takeout', 'delivery'] as OrderType[]).map(ot => (
-                      <button key={ot} onClick={() => dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: ot })} style={{ padding: '5px 4px', borderRadius: 'var(--r)', border: `2px solid ${cartOrderType===ot?'var(--ora)':'var(--bdr2)'}`, background: cartOrderType===ot?'#78350f22':'var(--surf)', color: cartOrderType===ot?'var(--ora)':'var(--txt2)', fontSize: 10, fontWeight: 700, cursor: 'pointer', transition: 'all .12s' }}>
-                        {ot==='dine-in'?'Dine-in':ot==='takeout'?'Takeout':'Delivery'}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 
             {/* Cart items — scrollable */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px', minHeight: 0 }}>
               {cart.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '28px 10px', color: 'var(--txt3)' }}>
                   <div style={{ fontSize: 32, marginBottom: 8 }}>🍽</div>
@@ -1247,8 +1239,8 @@ export default function POSPage() {
             {/* ── STICKY TOTALS + ACTIONS ── */}
             <div style={{ borderTop: '2px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
 
-              {/* Discount */}
-              <div style={{ padding: '7px 12px', borderBottom: '1px solid var(--bdr2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* Discount — visible only when Pay is open */}
+              {showDetails && <div style={{ padding: '7px 12px', borderBottom: '1px solid var(--bdr2)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 11, color: 'var(--txt3)', flex: 1 }}>Discount</span>
                 <button onClick={() => { setDiscMode(m => m === 'pct' ? 'flat' : 'pct'); setDiscPct(0); setDiscFlat(0) }}
                   style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt3)', cursor: 'pointer', fontWeight: 700 }}>
@@ -1270,11 +1262,12 @@ export default function POSPage() {
                 {(discPct > 0 || discFlat > 0) && (
                   <button onClick={() => { setDiscPct(0); setDiscFlat(0) }} style={{ fontSize: 14, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
                 )}
-              </div>
+              </div>}
 
               {/* Totals */}
               <div style={{ padding: '8px 14px' }}>
-                {([
+                {/* Subtotal / disc / GCT / service — only when Pay is open */}
+                {showDetails && ([
                   { label: 'Subtotal', value: fmt(calc.sub, sym), color: 'var(--txt3)' },
                   calc.disc > 0 && { label: discMode==='pct' ? `Discount (${discPct}%)` : 'Discount', value: `−${fmt(calc.disc,sym)}`, color: 'var(--grn)' },
                   calc.gct > 0  && { label: `GCT (${(calc.gctRate*100).toFixed(0)}%)`, value: fmt(calc.gct,sym), color: 'var(--txt3)' },
@@ -1286,8 +1279,8 @@ export default function POSPage() {
                   </div>
                 ))}
 
-                {/* Gratuity */}
-                {hasRestaurantItems && cartOrderType === 'dine-in' && (
+                {/* Gratuity — only when Pay is open */}
+                {showDetails && hasRestaurantItems && cartOrderType === 'dine-in' && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       <span style={{ color: 'var(--txt3)' }}>Gratuity ({gratuityPct}%)</span>
@@ -1322,18 +1315,18 @@ export default function POSPage() {
 
                 {/* Send Order + Add to Order */}
                 <div style={{ display: 'grid', gridTemplateColumns: openOrders.length > 0 ? '1fr 1fr' : '1fr', gap: 6 }}>
-                  <button onClick={sendOrder} disabled={activeCart.length === 0} style={{ minHeight: 44, borderRadius: 'var(--r)', fontSize: 13, fontWeight: 900, border: 'none', cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', color: activeCart.length > 0 ? '#fff' : 'var(--txt3)', background: activeCart.length > 0 ? 'var(--grn)' : 'var(--surf3)', letterSpacing: '.2px', transition: 'all .15s' }}>
+                  <button onClick={sendOrder} disabled={activeCart.length === 0} style={{ minHeight: 32, borderRadius: 'var(--r)', fontSize: 11, fontWeight: 900, border: 'none', cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', color: activeCart.length > 0 ? '#fff' : 'var(--txt3)', background: activeCart.length > 0 ? 'var(--grn)' : 'var(--surf3)', letterSpacing: '.2px', transition: 'all .15s' }}>
                     Send Order
                   </button>
                   {openOrders.length > 0 && (
-                    <button onClick={() => { setAddToOrderMode(true); setShowOpen(true) }} disabled={activeCart.length === 0} style={{ minHeight: 44, borderRadius: 'var(--r)', fontSize: 12, fontWeight: 800, color: activeCart.length > 0 ? 'var(--grn)' : 'var(--txt3)', background: activeCart.length > 0 ? '#14532d22' : 'var(--surf3)', border: `1.5px solid ${activeCart.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`, cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', transition: 'all .15s' }}>
+                    <button onClick={() => { setAddToOrderMode(true); setShowOpen(true) }} disabled={activeCart.length === 0} style={{ minHeight: 32, borderRadius: 'var(--r)', fontSize: 11, fontWeight: 800, color: activeCart.length > 0 ? 'var(--grn)' : 'var(--txt3)', background: activeCart.length > 0 ? '#14532d22' : 'var(--surf3)', border: `1.5px solid ${activeCart.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`, cursor: activeCart.length > 0 ? 'pointer' : 'not-allowed', transition: 'all .15s' }}>
                       Add to Order
                     </button>
                   )}
                 </div>
 
                 {/* Pay */}
-                <button onClick={() => { if (cart.length===0){toast('Add items first','warn');return}; setShowPayment(true) }} disabled={cart.length === 0} style={{ width: '100%', minHeight: 50, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 900, border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', color: cart.length > 0 ? '#fff' : 'var(--txt3)', background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)', letterSpacing: '.3px', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <button onClick={() => { if (cart.length===0){toast('Add items first','warn');return}; setShowDetails(true); setShowPayment(true) }} disabled={cart.length === 0} style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r)', fontSize: 12, fontWeight: 900, border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', color: cart.length > 0 ? '#fff' : 'var(--txt3)', background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)', letterSpacing: '.3px', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   ✓ Pay {cart.length > 0 ? fmt(calc.total, sym) : '—'}
                 </button>
 
@@ -1506,7 +1499,7 @@ export default function POSPage() {
       {/* ── Payment Modal ── */}
       <PaymentModal
         isOpen={showPayment}
-        onClose={() => { setShowPayment(false); setPayingTicket(null) }}
+        onClose={() => { setShowPayment(false); setPayingTicket(null); setShowDetails(false) }}
         calc={splitTarget ? calcCart(payingTicket ? payingTicket.items : cart, { orderType: (payingTicket?.orderType ?? cartOrderType) as OrderType, ...(payingTicket ? { manualDiscPct: payingTicket.discPct, manualDiscFlat: payingTicket.discFlat } : discOpts), gratuityPct: splitTarget.total / (payingTicket ? calcCart(payingTicket.items, { orderType: payingTicket.orderType as OrderType, manualDiscPct: payingTicket.discPct, manualDiscFlat: payingTicket.discFlat, gratuityPct: payingTicket.gratuityPct ?? 0 }).total : calc.total) * (payingTicket?.gratuityPct ?? gratuityPct) }) : payCalc}
         gratuityPct={payingTicket ? (payingTicket.gratuityPct ?? 0) : gratuityPct}
         sym={sym}

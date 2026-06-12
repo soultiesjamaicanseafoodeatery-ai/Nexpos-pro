@@ -22,9 +22,12 @@ const PAGE_TITLES: Record<string, string> = {
   inventory:'Inventory', satisfaction:'Customer Satisfaction', targets:'Performance Targets',
 }
 
+const ORDER_TYPE_LABELS = { 'dine-in': 'Dine-in', takeout: 'Takeout', delivery: 'Delivery' } as const
+
 export default function Topbar() {
   const { state, dispatch } = useApp()
-  const { activeModule, activePage, currentUser, currentShift, isOnline } = state
+  const { activeModule, activePage, currentUser, currentShift, isOnline, cartOrderType, cart } = state
+  const hasRestaurantItems = cart.some(ci => (ci as { module?: string }).module === 'restaurant')
   const [clock, setClock] = useState('')
 
   useEffect(() => {
@@ -47,9 +50,29 @@ export default function Topbar() {
       </div>
 
       {/* Page title */}
-      <div style={{ flex: 1, fontSize: 13, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.2px' }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.2px', flexShrink: 0 }}>
         {PAGE_TITLES[activePage] ?? activePage}
       </div>
+
+      {/* Order type pills — POS page, restaurant/bar only */}
+      {activePage === 'pos' && activeModule !== 'carwash' && hasRestaurantItems && (
+        <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+          {(['dine-in', 'takeout', 'delivery'] as const).map(ot => (
+            <button key={ot} onClick={() => dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: ot })} style={{
+              padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              border: `1.5px solid ${cartOrderType === ot ? 'var(--ora)' : 'var(--bdr)'}`,
+              background: cartOrderType === ot ? '#78350f22' : 'transparent',
+              color: cartOrderType === ot ? 'var(--ora)' : 'var(--txt3)',
+              transition: 'all .12s',
+            }}>
+              {ORDER_TYPE_LABELS[ot]}
+            </button>
+          ))}
+        </div>
+      )}
+      {!(activePage === 'pos' && activeModule !== 'carwash' && hasRestaurantItems) && (
+        <div style={{ flex: 1 }} />
+      )}
 
       {/* Right side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

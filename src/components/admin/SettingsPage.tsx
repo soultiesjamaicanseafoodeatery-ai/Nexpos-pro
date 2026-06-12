@@ -1,16 +1,17 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { supabase } from '@/lib/supabase'
 import type { BusinessConfig } from '@/types'
 
-type Tab = 'business' | 'tax' | 'receipt' | 'modules'
+type Tab = 'business' | 'tax' | 'receipt' | 'modules' | 'printers'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'business', label: 'Business Info' },
   { id: 'tax',      label: 'Tax & Fees' },
   { id: 'receipt',  label: 'Receipt' },
   { id: 'modules',  label: 'Modules' },
+  { id: 'printers', label: 'Printers' },
 ]
 
 export default function SettingsPage() {
@@ -43,6 +44,35 @@ export default function SettingsPage() {
     })
     setDirty(true)
   }
+  const setPrinters = (patch: Partial<NonNullable<BusinessConfig['printers']>>) => {
+    setForm(f => ({ ...f, printers: { receipt: '', kitchen: '', bar: '', width: 80, autoPrint: false, ...f.printers, ...patch } }))
+    setDirty(true)
+  }
+
+  // QZ Tray printer discovery
+  const [qzStatus,   setQZStatus]   = useState<'idle' | 'checking' | 'connected' | 'off'>('idle')
+  const [qzPrinters, setQZPrinters] = useState<string[]>([])
+
+  const checkQZ = useCallback(async () => {
+    setQZStatus('checking')
+    try {
+      const { qzConnect, qzGetPrinters } = await import('@/lib/utils/qzTray')
+      const ok = await qzConnect()
+      if (ok) {
+        setQZStatus('connected')
+        const list = await qzGetPrinters()
+        setQZPrinters(list)
+      } else {
+        setQZStatus('off')
+      }
+    } catch {
+      setQZStatus('off')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'printers') checkQZ()
+  }, [tab, checkQZ])
 
   const handleSave = async () => {
     setSaving(true)
@@ -211,6 +241,124 @@ export default function SettingsPage() {
               <input type="checkbox" checked={form.footer.qrEnabled} onChange={e => setFooter({ qrEnabled: e.target.checked })} />
               Show QR code on receipts
             </label>
+          </div>
+        </>
+      )}
+
+      {/* ── Printers ── */}
+      {tab === 'printers' && (
+        <>
+          {/* QZ Tray status */}
+          <div style={section}>
+            <div style={sectionTitle}>QZ Tray Status</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{
+                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                background: qzStatus === 'connected' ? 'var(--grn-bg)' : qzStatus === 'off' ? 'var(--red-bg)' : 'var(--surf3)',
+                color:      qzStatus === 'connected' ? 'var(--grn)'    : qzStatus === 'off' ? 'var(--red)'    : 'var(--txt3)',
+                border: `1px solid ${qzStatus === 'connected' ? 'rgba(72,187,120,.3)' : qzStatus === 'off' ? 'rgba(245,101,101,.3)' : 'var(--bdr)'}`,
+              }}>
+                {qzStatus === 'idle' ? 'Not checked' : qzStatus === 'checking' ? 'Connecting…' : qzStatus === 'connected' ? 'Connected' : 'Not running'}
+              </div>
+              <button onClick={checkQZ} style={{ padding: '5px 14px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                Refresh
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--txt3)', lineHeight: 1.7, background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '10px 12px' }}>
+              <strong style={{ color: 'var(--txt2)' }}>Setup instructions:</strong><br />
+              1. Download &amp; install <strong>QZ Tray</strong> (free) from <strong>qz.io</strong><br />
+              2. Launch QZ Tray — look for its icon in the system tray<br />
+              3. Right-click QZ Tray icon → <strong>Site Manager</strong> → add <strong>pos.soultiesseafoodjm.com</strong> as a trusted site<br />
+              4. Click <strong>Refresh</strong> above — status should turn green<br />
+              5. Click <strong>Find Printers</strong> to see your installed printers, then type the exact name below
+            </div>
+          </div>
+
+          {/* Printer names */}
+          <div style={section}>
+            <div style={sectionTitle}>Printer Names</div>
+            <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 14 }}>
+              Use the exact printer name shown in Windows → Settings → Bluetooth &amp; devices → Printers &amp; scanners.
+            </div>
+            {qzPrinters.length > 0 && (
+              <div style={{ marginBottom: 16, padding: '10px 12px', background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Detected printers</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                  {qzPrinters.map(p => (
+                    <span key={p} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 20, background: 'var(--surf3)', border: '1px solid var(--bdr)', color: 'var(--txt2)', cursor: 'default', fontFamily: 'var(--mono)' }}>{p}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {qzStatus !== 'connected' && (
+              <button onClick={checkQZ} style={{ marginBottom: 14, padding: '6px 16px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                Find Printers
+              </button>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div>
+                <label style={lbl}>Receipt Printer</label>
+                <input style={inp} placeholder="e.g. EPSON TM-T88V Receipt" value={form.printers?.receipt ?? ''} onChange={e => setPrinters({ receipt: e.target.value })} />
+                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4 }}>Customer receipts after payment</div>
+              </div>
+              <div>
+                <label style={lbl}>Kitchen Printer</label>
+                <input style={inp} placeholder="e.g. EPSON TM-T88V Kitchen" value={form.printers?.kitchen ?? ''} onChange={e => setPrinters({ kitchen: e.target.value })} />
+                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4 }}>Food order tickets</div>
+              </div>
+              <div>
+                <label style={lbl}>Bar Printer <span style={{ fontWeight: 400, color: 'var(--txt3)' }}>(optional)</span></label>
+                <input style={inp} placeholder="Leave blank to use Kitchen printer" value={form.printers?.bar ?? ''} onChange={e => setPrinters({ bar: e.target.value })} />
+                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4 }}>Drink order tickets — falls back to kitchen</div>
+              </div>
+              <div>
+                <label style={lbl}>Paper Width</label>
+                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+                  {([58, 80] as const).map(w => (
+                    <button key={w} onClick={() => setPrinters({ width: w })} style={{
+                      flex: 1, padding: '8px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                      border: `2px solid ${(form.printers?.width ?? 80) === w ? 'var(--blue)' : 'var(--bdr)'}`,
+                      background: (form.printers?.width ?? 80) === w ? 'var(--blue-bg)' : 'var(--surf)',
+                      color: (form.printers?.width ?? 80) === w ? 'var(--blue)' : 'var(--txt3)',
+                    }}>{w}mm</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--txt2)' }}>
+                <input type="checkbox" checked={form.printers?.autoPrint ?? false} onChange={e => setPrinters({ autoPrint: e.target.checked })} />
+                Auto-print receipt after payment (skip preview modal)
+              </label>
+            </div>
+          </div>
+
+          {/* Test prints */}
+          <div style={section}>
+            <div style={sectionTitle}>Test Prints</div>
+            <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 12 }}>
+              Sends a test page directly to each configured printer via QZ Tray.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              {([
+                { label: 'Test Receipt',        printer: form.printers?.receipt,  html: '<pre>==== RECEIPT PRINTER ====\n\n  TEST PRINT\n\n=========================\n</pre>' },
+                { label: 'Test Kitchen Ticket', printer: form.printers?.kitchen,  html: '<pre>*** KITCHEN PRINTER ***\n\n  TEST PRINT\n\n***********************\n</pre>' },
+                { label: 'Test Bar Ticket',     printer: form.printers?.bar || form.printers?.kitchen, html: '<pre>### BAR PRINTER ###\n\n  TEST PRINT\n\n###################\n</pre>' },
+              ] as { label: string; printer?: string; html: string }[]).map(({ label, printer, html }) => (
+                <button key={label} disabled={!printer || qzStatus !== 'connected'} onClick={async () => {
+                  if (!printer) return
+                  const { qzPrint } = await import('@/lib/utils/qzTray')
+                  const ok = await qzPrint(printer, html, (form.printers?.width ?? 80) as 58 | 80)
+                  if (!ok) alert(`Could not print to "${printer}". Check QZ Tray is running and printer name is correct.`)
+                }} style={{
+                  padding: '10px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 12, cursor: printer && qzStatus === 'connected' ? 'pointer' : 'not-allowed',
+                  border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: printer && qzStatus === 'connected' ? 'var(--txt2)' : 'var(--txt3)',
+                }}>{label}</button>
+              ))}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--txt3)' }}>
+              {qzStatus !== 'connected' ? 'QZ Tray must be connected to test.' : !form.printers?.receipt && !form.printers?.kitchen ? 'Enter printer names above to enable test buttons.' : ''}
+            </div>
           </div>
         </>
       )}

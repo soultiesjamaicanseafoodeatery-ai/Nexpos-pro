@@ -4,7 +4,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import type { OrderTicket, Transaction, BusinessConfig, KitchenStatus, BarStatus, CarwashStatus, PrintWidth, ReprintLog } from '@/types'
 import {
   buildCustomerReceipt, buildKitchenTicket, buildBarTicket,
-  buildCarwashWorkOrder, buildVoidTicket, printTicket,
+  buildCarwashWorkOrder, smartPrint,
 } from '@/lib/utils/ticketPrinter'
 
 interface Props {
@@ -64,7 +64,14 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
       bar:      'Bar Ticket',
       carwash:  'Car Wash Work Order',
     }
-    printTicket(html, titles[type] ?? 'Ticket')
+    const pw = (biz.printers?.width ?? 80) as 58 | 80
+    const printerMap: Record<string, string | undefined> = {
+      customer: biz.printers?.receipt,
+      kitchen:  biz.printers?.kitchen,
+      bar:      biz.printers?.bar || biz.printers?.kitchen,
+      carwash:  biz.printers?.receipt,
+    }
+    smartPrint(html, titles[type] ?? 'Ticket', printerMap[type], pw)
 
     // Log reprint
     const user = state.currentUser?.name ?? 'System'

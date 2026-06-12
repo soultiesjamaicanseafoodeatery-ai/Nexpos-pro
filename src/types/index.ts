@@ -311,6 +311,13 @@ export interface BusinessConfig {
     bar: { terminalName: string; footer: string }
     carwash: { terminalName: string; footer: string }
   }
+  printers?: {
+    receipt: string   // Windows printer name for customer receipts
+    kitchen: string   // Windows printer name for kitchen tickets
+    bar: string       // Windows printer name for bar tickets (falls back to kitchen if blank)
+    width: 58 | 80    // thermal paper width in mm
+    autoPrint: boolean // auto-print after payment without showing preview
+  }
 }
 
 // ── POS State ─────────────────────────────────────────────────

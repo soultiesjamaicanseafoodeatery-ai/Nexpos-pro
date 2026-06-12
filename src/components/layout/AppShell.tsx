@@ -21,6 +21,7 @@ import InventoryPage from '@/components/admin/InventoryPage'
 import SatisfactionPage from '@/components/admin/SatisfactionPage'
 import TargetsPage from '@/components/admin/TargetsPage'
 import KitchenDisplay from '@/components/admin/KitchenDisplay'
+import VoidReport from '@/components/admin/VoidReport'
 
 // Roles allowed per page — must match Sidebar NAV_ITEMS
 const PAGE_ROLES: Record<string, string[]> = {
@@ -42,6 +43,7 @@ const PAGE_ROLES: Record<string, string[]> = {
   satisfaction: ['admin','manager'],
   targets:      ['admin','manager'],
   kitchen:      ['admin','manager','supervisor','cashier','bartender','attendant'],
+  voids:        ['admin','manager'],
 }
 
 const ACCESS_DENIED = (
@@ -79,6 +81,7 @@ export default function AppShell() {
       case 'satisfaction': return <SatisfactionPage />
       case 'targets':      return <TargetsPage />
       case 'kitchen':      return <KitchenDisplay />
+      case 'voids':        return <VoidReport />
       default:             return <POSPage />
     }
   }

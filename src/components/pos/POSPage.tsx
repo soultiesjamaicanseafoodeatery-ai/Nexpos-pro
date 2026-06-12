@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData, HeldOrder, PaymentEntry, OrderTicket } from '@/types'
+import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData, HeldOrder, PaymentEntry, OrderTicket, VoidReason, VoidLog } from '@/types'
+import { VOID_REASON_LABELS } from '@/types'
 import { calcCart, fmt } from '@/lib/utils/tax'
-import { buildKitchenTicket, buildBarTicket, buildCarwashWorkOrder, printTicket } from '@/lib/utils/ticketPrinter'
+import { buildKitchenTicket, buildBarTicket, buildCarwashWorkOrder, buildVoidTicket, printTicket } from '@/lib/utils/ticketPrinter'
 import OutsideOrders from './OutsideOrders'
 import PaymentModal from './PaymentModal'
 import TicketModal from './TicketModal'
 import SplitBillModal from './SplitBillModal'
+import VoidReasonModal from './VoidReasonModal'
 import { MODULE_DATA } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
 import { storage } from '@/lib/utils/storage'
@@ -61,6 +63,9 @@ export default function POSPage() {
 
   // Split bill target (when paying one split at a time)
   const [splitTarget,   setSplitTarget]   = useState<{ total: number; label: string } | null>(null)
+
+  // Void system
+  const [voidTarget, setVoidTarget] = useState<{ item: CartItem; ticketId?: string } | null>(null)
 
   // Modal state
   const [modalItem,   setModalItem]   = useState<MenuItem | null>(null)
@@ -609,16 +614,16 @@ export default function POSPage() {
 
   // ── Send Order: print kitchen/bar tickets, keep order open ────
   const sendOrder = () => {
-    if (cart.length === 0) { toast('Add items before sending', 'warn'); return }
+    if (activeCart.length === 0) { toast('Add items before sending', 'warn'); return }
     if (!currentUser) return
 
     const selTable   = posState['restaurant'].selTable ?? posState['bar'].selTable
     const nowTime    = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     const today      = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
     const orderNum   = String(Date.now()).slice(-4).padStart(4, '0')
-    const hasKitchen = cart.some(ci => ci.module === 'restaurant')
-    const hasBar     = cart.some(ci => ci.module === 'bar')
-    const hasCarwash = cart.some(ci => ci.module === 'carwash')
+    const hasKitchen = activeCart.some(ci => ci.module === 'restaurant')
+    const hasBar     = activeCart.some(ci => ci.module === 'bar')
+    const hasCarwash = activeCart.some(ci => ci.module === 'carwash')
 
     const newTicket: OrderTicket = {
       id: crypto.randomUUID(),
@@ -635,7 +640,7 @@ export default function POSPage() {
       kitchenStatus: 'pending',
       barStatus:     'pending',
       carwashStatus: 'queued',
-      items:    [...cart],
+      items:    [...cart],  // keep voided items for audit; active items only go to kitchen
       orderNote: orderNote || undefined,
       discPct, discFlat, gratuityPct,
       timeline: {
@@ -653,7 +658,7 @@ export default function POSPage() {
       orderType:    cartOrderType,
       date:         today,
       time:         nowTime,
-      items:        [...cart],
+      items:        [...activeCart],  // only non-voided items to kitchen/bar
       orderNote:    orderNote || undefined,
       customerName: customerName || undefined,
     }
@@ -681,6 +686,55 @@ export default function POSPage() {
     audit('SEND_ORDER', `Order #${orderNum} sent to ${sentTo}`, 'info')
     toast(`Order #${orderNum} sent to ${sentTo}`, 'success')
     setShowOpen(true)
+  }
+
+  // ── Permission helpers ─────────────────────────────────────
+  const role = currentUser?.role ?? ''
+  const canVoidCartItem  = ['admin','manager','supervisor','cashier'].includes(role)
+  const canVoidSentItem  = ['admin','manager','supervisor'].includes(role)
+
+  // ── Void a cart item (pre-send) ────────────────────────────
+  const handleVoidCartItem = (item: CartItem, reason: VoidReason, reasonText: string) => {
+    if (!currentUser) return
+    const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    dispatch({ type: 'VOID_CART_ITEM', id: item.id, reason, reasonText, by: currentUser.name, at: nowTime })
+    const logEntry: VoidLog = {
+      id: crypto.randomUUID(), ts: new Date().toLocaleString(),
+      user: currentUser.name, userId: currentUser.id, role,
+      voidType: 'item', itemName: item.name,
+      reason, reasonText,
+      amount: (item.price + item.addons.reduce((s, a) => s + a.price, 0)) * item.qty,
+      mod: item.module,
+    }
+    dispatch({ type: 'ADD_VOID_LOG', entry: logEntry })
+    audit('VOID_ITEM', `Voided ${item.name} from cart — ${reasonText}`, 'warn')
+    toast(`Voided: ${item.name}`, 'warn')
+    setVoidTarget(null)
+  }
+
+  // ── Void an item on a sent open order ─────────────────────
+  const handleVoidTicketItem = (ticket: OrderTicket, item: CartItem, reason: VoidReason, reasonText: string) => {
+    if (!currentUser) return
+    const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    dispatch({ type: 'VOID_TICKET_ITEM', ticketId: ticket.id, itemId: item.id, reason, reasonText, by: currentUser.name, at: nowTime })
+    const logEntry: VoidLog = {
+      id: crypto.randomUUID(), ts: new Date().toLocaleString(),
+      user: currentUser.name, userId: currentUser.id, role,
+      voidType: 'item', orderNum: ticket.orderNum, itemName: item.name,
+      reason, reasonText,
+      amount: (item.price + item.addons.reduce((s, a) => s + a.price, 0)) * item.qty,
+      mod: item.module,
+    }
+    dispatch({ type: 'ADD_VOID_LOG', entry: logEntry })
+    // Print void ticket to kitchen/bar
+    const html = buildVoidTicket(
+      ticket.orderNum, item.name, currentUser.name, nowTime,
+      { reason: reasonText, qty: item.qty }
+    )
+    printTicket(html, 'VOID Ticket')
+    audit('VOID_ITEM', `Voided ${item.name} from Order #${ticket.orderNum} — ${reasonText}`, 'warn')
+    toast(`Voided: ${item.name} — void ticket printed`, 'warn')
+    setVoidTarget(null)
   }
 
   const holdOrder = () => {
@@ -752,14 +806,15 @@ export default function POSPage() {
   const discOpts = discMode === 'pct'
     ? { manualDiscPct: discPct || undefined }
     : { manualDiscFlat: discFlat || undefined }
-  const calc = calcCart(cart, { orderType: cartOrderType, taxOverride: null, ...discOpts, gratuityPct })
+  const activeCart = cart.filter(ci => !ci.voided)
+  const calc = calcCart(activeCart, { orderType: cartOrderType, taxOverride: null, ...discOpts, gratuityPct })
 
   // Open (sent, unpaid) orders — excludes legacy tickets (no status = paid)
   const openOrders = state.orderTickets.filter(t => (t.status ?? 'paid') !== 'paid')
 
   // Calc to use when paying an open order vs. current cart
   const payCalc = payingTicket
-    ? calcCart(payingTicket.items, {
+    ? calcCart(payingTicket.items.filter(ci => !ci.voided), {
         orderType: payingTicket.orderType as OrderType,
         manualDiscPct: payingTicket.discPct || undefined,
         manualDiscFlat: payingTicket.discFlat || undefined,
@@ -945,42 +1000,55 @@ export default function POSPage() {
                 cart.map((ci: CartItem) => {
                   const badge = MOD_BADGE[ci.module] ?? MOD_BADGE.restaurant
                   const lineTotal = (ci.price + ci.addons.reduce((s, a) => s + a.price, 0)) * ci.qty
+                  const isVoided = !!ci.voided
                   return (
-                    <div key={ci.id} style={{ background: 'var(--surf)', borderRadius: 'var(--r)', marginBottom: 8, display: 'flex', gap: 0, overflow: 'hidden', border: '1px solid var(--bdr)' }}>
+                    <div key={ci.id} style={{ background: isVoided ? 'var(--surf3)' : 'var(--surf)', borderRadius: 'var(--r)', marginBottom: 8, display: 'flex', gap: 0, overflow: 'hidden', border: `1px solid ${isVoided ? '#ef444433' : 'var(--bdr)'}`, opacity: isVoided ? .6 : 1 }}>
                       {/* Module color bar */}
-                      <div style={{ width: 4, background: badge.color, flexShrink: 0 }} />
+                      <div style={{ width: 4, background: isVoided ? '#ef4444' : badge.color, flexShrink: 0 }} />
                       <div style={{ flex: 1, padding: '9px 10px' }}>
                         {/* Module badge + name row */}
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginBottom: 4 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 8, background: badge.bg, color: badge.color, flexShrink: 0 }}>{badge.label}</span>
-                          <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', flex: 1, lineHeight: 1.2 }}>{ci.name} <span style={{ color: 'var(--txt3)', fontWeight: 600 }}>×{ci.qty}</span></span>
-                          <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: 'var(--txt)', flexShrink: 0 }}>{fmt(lineTotal, sym)}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 8, background: isVoided ? '#7f1d1d33' : badge.bg, color: isVoided ? '#ef4444' : badge.color, flexShrink: 0 }}>{isVoided ? 'VOID' : badge.label}</span>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: isVoided ? 'var(--txt3)' : 'var(--txt)', flex: 1, lineHeight: 1.2, textDecoration: isVoided ? 'line-through' : 'none' }}>{ci.name} <span style={{ color: 'var(--txt3)', fontWeight: 600 }}>×{ci.qty}</span></span>
+                          <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: isVoided ? 'var(--txt3)' : 'var(--txt)', flexShrink: 0, textDecoration: isVoided ? 'line-through' : 'none' }}>{fmt(lineTotal, sym)}</span>
                         </div>
+                        {/* Void reason tag */}
+                        {isVoided && ci.voidReason && (
+                          <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 4 }}>
+                            Void: {ci.voidReasonText || VOID_REASON_LABELS[ci.voidReason]} · {ci.voidedBy} {ci.voidedAt}
+                          </div>
+                        )}
                         {/* Addons */}
-                        {ci.addons.map(a => (
+                        {!isVoided && ci.addons.map(a => (
                           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
                             <span style={{ fontSize: 11, color: 'var(--txt3)', flex: 1 }}>{a.name}</span>
                             <span style={{ fontSize: 11, color: 'var(--txt3)', fontFamily: 'var(--mono)' }}>+{fmt(a.price, sym)}</span>
                           </div>
                         ))}
                         {/* Flavour / Size / Sides */}
-                        {ci.flavour && <div style={{ fontSize: 11, color: 'var(--ora)', marginBottom: 2 }}>Flavour: {ci.flavour}</div>}
-                        {ci.size    && <div style={{ fontSize: 11, color: 'var(--pur)', marginBottom: 2 }}>Size: {ci.size}</div>}
-                        {ci.sides && ci.sides.length > 0 && <div style={{ fontSize: 11, color: 'var(--grn)', marginBottom: 2 }}>Sides: {ci.sides.join(', ')}</div>}
+                        {!isVoided && ci.flavour && <div style={{ fontSize: 11, color: 'var(--ora)', marginBottom: 2 }}>Flavour: {ci.flavour}</div>}
+                        {!isVoided && ci.size    && <div style={{ fontSize: 11, color: 'var(--pur)', marginBottom: 2 }}>Size: {ci.size}</div>}
+                        {!isVoided && ci.sides && ci.sides.length > 0 && <div style={{ fontSize: 11, color: 'var(--grn)', marginBottom: 2 }}>Sides: {ci.sides.join(', ')}</div>}
                         {/* Plate */}
-                        {ci.plate && (
+                        {!isVoided && ci.plate && (
                           <div style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--mono)', fontWeight: 700, marginTop: 2 }}>Plate: {ci.plate}</div>
                         )}
-                        {/* Qty controls + remove */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
-                          <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty - 1 })}
-                            style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>−</button>
-                          <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, minWidth: 18, textAlign: 'center' }}>{ci.qty}</span>
-                          <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty + 1 })}
-                            style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>+</button>
-                          <button onClick={() => dispatch({ type: 'REMOVE_FROM_CART', id: ci.id })}
-                            style={{ marginLeft: 'auto', width: 26, height: 26, borderRadius: 6, background: 'var(--red-bg, #7f1d1d22)', border: '1px solid var(--red-bdr, #ef444433)', color: 'var(--red, #ef4444)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>×</button>
-                        </div>
+                        {/* Qty controls + void/remove */}
+                        {!isVoided && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
+                            <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty - 1 })}
+                              style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>−</button>
+                            <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, minWidth: 18, textAlign: 'center' }}>{ci.qty}</span>
+                            <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty + 1 })}
+                              style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>+</button>
+                            {canVoidCartItem && (
+                              <button onClick={() => setVoidTarget({ item: ci })}
+                                style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, background: 'var(--red-bg, #7f1d1d22)', border: '1px solid var(--red-bdr, #ef444433)', color: 'var(--red, #ef4444)', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
+                                VOID
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -1234,11 +1302,17 @@ export default function POSPage() {
                         {fmt(tCalc.total, sym)}
                       </div>
                     </div>
-                    <div style={{ marginBottom: 8, maxHeight: 80, overflowY: 'auto' }}>
+                    <div style={{ marginBottom: 8, maxHeight: 120, overflowY: 'auto' }}>
                       {t.items.map((ci, i) => (
-                        <div key={i} style={{ fontSize: 11, color: 'var(--txt2)', display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-                          <span>{ci.qty}× {ci.name}</span>
-                          <span style={{ fontFamily: 'var(--mono)' }}>{fmt(ci.price * ci.qty, sym)}</span>
+                        <div key={i} style={{ fontSize: 11, color: ci.voided ? '#ef444488' : 'var(--txt2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0', gap: 6, textDecoration: ci.voided ? 'line-through' : 'none' }}>
+                          <span style={{ flex: 1 }}>{ci.qty}× {ci.name}{ci.voided ? ' [VOID]' : ''}</span>
+                          <span style={{ fontFamily: 'var(--mono)', flexShrink: 0 }}>{fmt(ci.price * ci.qty, sym)}</span>
+                          {!ci.voided && canVoidSentItem && (
+                            <button onClick={() => setVoidTarget({ item: ci, ticketId: t.id })}
+                              style={{ flexShrink: 0, padding: '2px 7px', borderRadius: 5, background: '#7f1d1d22', border: '1px solid #ef444433', color: '#ef4444', cursor: 'pointer', fontSize: 9, fontWeight: 800 }}>
+                              VOID
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1292,6 +1366,23 @@ export default function POSPage() {
           setShowPayment(true)
         }}
         onPayAll={() => { setShowSplitBill(false); setShowPayment(true) }}
+      />
+
+      {/* ── Void Reason Modal ── */}
+      <VoidReasonModal
+        isOpen={!!voidTarget}
+        itemName={voidTarget?.item.name ?? ''}
+        itemQty={voidTarget?.item.qty}
+        onClose={() => setVoidTarget(null)}
+        onConfirm={(reason, reasonText) => {
+          if (!voidTarget) return
+          if (voidTarget.ticketId) {
+            const ticket = state.orderTickets.find(t => t.id === voidTarget.ticketId)
+            if (ticket) handleVoidTicketItem(ticket, voidTarget.item, reason, reasonText)
+          } else {
+            handleVoidCartItem(voidTarget.item, reason, reasonText)
+          }
+        }}
       />
 
       {/* ── Add-ons Modal ── */}

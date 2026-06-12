@@ -313,7 +313,7 @@ export function buildVoidTicket(
   itemName: string,
   staffName: string,
   time: string,
-  opts: { width?: PrintWidth } = {}
+  opts: { width?: PrintWidth; reason?: string; qty?: number } = {}
 ): string {
   const w = COLS[opts.width ?? 80]
   const L: string[] = []
@@ -322,11 +322,12 @@ export function buildVoidTicket(
   L.push(div('!', w))
   L.push('')
   L.push(row('Order #:', orderNum, w))
-  L.push(row('Item:', esc(itemName), w))
+  L.push(row('VOID:', `${opts.qty && opts.qty > 1 ? `${opts.qty}x ` : ''}${esc(itemName)}`, w))
+  if (opts.reason) L.push(row('Reason:', esc(opts.reason), w))
   L.push(row('Voided by:', esc(staffName), w))
   L.push(row('Time:', time, w))
   L.push('')
-  L.push(center('REMOVE FROM ORDER', w))
+  L.push(center('*** REMOVE FROM ORDER ***', w))
   L.push(div('!', w))
   return `<pre>${L.join('\n')}</pre>`
 }

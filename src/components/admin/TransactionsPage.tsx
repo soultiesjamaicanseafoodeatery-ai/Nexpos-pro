@@ -2,14 +2,17 @@
 
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
+import type { VoidReason, VoidLog } from '@/types'
+import VoidReasonModal from '@/components/pos/VoidReasonModal'
 
 const MOD_COLOR: Record<string, string> = { restaurant: 'var(--ora)', bar: 'var(--pur)', carwash: 'var(--blue)' }
 const MOD_ICON: Record<string, string>  = { restaurant: '🍽️', bar: '🍺', carwash: '🚗' }
 
 export default function TransactionsPage() {
-  const { state, dispatch, toast } = useApp()
+  const { state, dispatch, toast, audit } = useApp()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<string>('all')
+  const [voidingTxId, setVoidingTxId] = useState<number | null>(null)
 
   const txs = state.transactions
     .filter(t => {
@@ -23,12 +26,27 @@ export default function TransactionsPage() {
 
   const totalRev = txs.filter(t => !t.voided).reduce((s, t) => s + t.total, 0)
   const sym = state.biz.currencySymbol ?? 'J$'
+  const currentUser = state.currentUser
 
-  const voidTx = (id: number) => {
-    const reason = prompt('Void reason:')
-    if (!reason) return
-    dispatch({ type: 'VOID_TRANSACTION', id, reason })
+  const voidingTx = voidingTxId !== null ? state.transactions.find(t => t.id === voidingTxId) ?? null : null
+
+  const handleVoidTx = (reason: VoidReason, reasonText: string) => {
+    if (!voidingTx || !currentUser) return
+    const nowStr = new Date().toLocaleString()
+    dispatch({ type: 'VOID_TRANSACTION', id: voidingTx.id, reason: reasonText })
+    const logEntry: VoidLog = {
+      id: crypto.randomUUID(), ts: nowStr,
+      user: currentUser.name, userId: currentUser.id, role: currentUser.role,
+      voidType: 'transaction', txId: voidingTx.id,
+      itemName: voidingTx.item,
+      reason, reasonText,
+      amount: voidingTx.total,
+      mod: voidingTx.mod as VoidLog['mod'],
+    }
+    dispatch({ type: 'ADD_VOID_LOG', entry: logEntry })
+    audit('VOID_TRANSACTION', `Transaction #${voidingTx.id} voided — ${reasonText}`, 'warn')
     toast('Transaction voided', 'warn')
+    setVoidingTxId(null)
   }
 
   return (
@@ -89,7 +107,10 @@ export default function TransactionsPage() {
                   </td>
                   <td>
                     {!tx.voided && (state.currentUser?.role === 'admin' || state.currentUser?.role === 'manager') && (
-                      <button className="btn btn-xs btn-gh" onClick={() => voidTx(tx.id)}>Void</button>
+                      <button className="btn btn-xs btn-gh" onClick={() => setVoidingTxId(tx.id)} style={{ color: '#ef4444', borderColor: '#ef444444' }}>Void</button>
+                    )}
+                    {tx.voided && tx.voidReason && (
+                      <span style={{ fontSize: 10, color: 'var(--txt3)' }}>{tx.voidReason}</span>
                     )}
                   </td>
                 </tr>
@@ -101,6 +122,12 @@ export default function TransactionsPage() {
           )}
         </div>
       </div>
+      <VoidReasonModal
+        isOpen={!!voidingTx}
+        itemName={voidingTx ? `Transaction #${voidingTx.id} — ${voidingTx.item}` : ''}
+        onConfirm={handleVoidTx}
+        onClose={() => setVoidingTxId(null)}
+      />
     </div>
   )
 }

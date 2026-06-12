@@ -166,6 +166,12 @@ export interface CartItem {
   flavour?: string  // selected flavour name
   size?: string     // selected size name
   sides?: string[]  // selected side names
+  // Void — soft-delete; item stays in array for audit
+  voided?: boolean
+  voidReason?: VoidReason
+  voidReasonText?: string
+  voidedBy?: string
+  voidedAt?: string
 }
 
 // ── Transactions ──────────────────────────────────────────────
@@ -202,6 +208,8 @@ export interface Transaction {
   customerEmail?: string
   voided?: boolean
   voidReason?: string
+  voidedBy?: string
+  voidedAt?: string
   refunded?: boolean
   refundReason?: string
   refundedBy?: string
@@ -352,21 +360,59 @@ export interface LoyaltyMember {
   history: { date: string; pts: number; desc: string }[]
 }
 
+// ── Void System ───────────────────────────────────────────────
+export type VoidReason =
+  | 'wrong_item'
+  | 'customer_changed_mind'
+  | 'duplicate_entry'
+  | 'kitchen_error'
+  | 'bar_error'
+  | 'manager_approved'
+  | 'other'
+
+export const VOID_REASON_LABELS: Record<VoidReason, string> = {
+  wrong_item:            'Wrong Item',
+  customer_changed_mind: 'Customer Changed Mind',
+  duplicate_entry:       'Duplicate Entry',
+  kitchen_error:         'Kitchen Error',
+  bar_error:             'Bar Error',
+  manager_approved:      'Manager Approved',
+  other:                 'Other',
+}
+
+export interface VoidLog {
+  id: string
+  ts: string
+  user: string
+  userId: string
+  role: string
+  voidType: 'item' | 'order' | 'transaction'
+  orderNum?: string
+  txId?: number
+  itemName?: string
+  reason: VoidReason
+  reasonText?: string
+  amount: number
+  mod: ModuleKey
+}
+
 // ── Order Tickets & Kitchen Status ────────────────────────────
 export type KitchenStatus  = 'pending' | 'preparing' | 'ready' | 'served'
 export type BarStatus      = 'pending' | 'preparing' | 'ready'
 export type CarwashStatus  = 'queued'  | 'in_progress' | 'completed'
 export type PrintWidth     = 58 | 80
 
+export type OrderStatus = 'sent' | 'preparing' | 'ready' | 'served' | 'paid'
+
 export interface OrderTimeline {
-  created:          string
-  sentToKitchen?:   string
+  created:           string
+  sentToKitchen?:    string
   kitchenPreparing?: string
-  kitchenReady?:    string
-  barPreparing?:    string
-  barReady?:        string
-  served?:          string
-  paid:             string
+  kitchenReady?:     string
+  barPreparing?:     string
+  barReady?:         string
+  served?:           string
+  paid?:             string   // set at payment time; absent on unpaid open orders
 }
 
 export interface ReprintLog {
@@ -378,12 +424,13 @@ export interface ReprintLog {
 export interface OrderTicket {
   id:            string
   orderNum:      string
-  txId:          number
+  txId?:         number      // set at payment time; absent on open orders
   table?:        string
   server:        string
   guestCount?:   number
   customerName?: string
   orderType:     string
+  status?:       OrderStatus  // absent on legacy tickets (treat as 'paid')
   hasKitchen:    boolean
   hasBar:        boolean
   hasCarwash:    boolean
@@ -392,6 +439,9 @@ export interface OrderTicket {
   carwashStatus: CarwashStatus
   items:         CartItem[]
   orderNote?:    string
+  discPct?:      number      // saved at SEND ORDER for later payment calc
+  discFlat?:     number
+  gratuityPct?:  number
   timeline:      OrderTimeline
   reprints:      ReprintLog[]
 }

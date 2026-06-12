@@ -4,7 +4,7 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback, u
 import type {
   User, UserRole, ModuleKey, Transaction, Shift, AuditEntry,
   BusinessConfig, FleetAccount, POSState, LoyaltyMember, PromoCode,
-  CartItem, OrderType, HeldOrder, OrderTicket,
+  CartItem, OrderType, HeldOrder, OrderTicket, VoidLog, VoidReason,
 } from '@/types'
 
 const STAFF_API = 'https://www.soultiesseafoodjm.com/api/staff'
@@ -81,6 +81,7 @@ interface AppState {
   fleet: FleetAccount[]
   loyalty: LoyaltyMember[]
   promos: PromoCode[]
+  voidLogs: VoidLog[]
   // UI
   toasts: { id: number; msg: string; type: string }[]
   syncQueue: unknown[]
@@ -114,6 +115,9 @@ type Action =
   | { type: 'UPDATE_TRANSACTION'; tx: Transaction }
   | { type: 'ADD_ORDER_TICKET'; ticket: OrderTicket }
   | { type: 'UPDATE_ORDER_TICKET'; id: string; patch: Partial<OrderTicket> }
+  | { type: 'VOID_CART_ITEM'; id: string; reason: VoidReason; reasonText?: string; by: string; at: string }
+  | { type: 'VOID_TICKET_ITEM'; ticketId: string; itemId: string; reason: VoidReason; reasonText?: string; by: string; at: string }
+  | { type: 'ADD_VOID_LOG'; entry: VoidLog }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -148,6 +152,7 @@ function initState(): AppState {
     fleet: storage.get<FleetAccount[]>('fleet') ?? SEED_FLEET,
     loyalty: storage.get<LoyaltyMember[]>('loyalty') ?? [],
     promos: storage.get<PromoCode[]>('promos') ?? SEED_PROMOS,
+    voidLogs: (() => { const v = storage.get('void_logs'); return Array.isArray(v) ? (v as VoidLog[]) : [] })(),
     toasts: [],
     syncQueue: storage.get<unknown[]>('sync_queue') ?? [],
     isOnline: true,
@@ -285,6 +290,32 @@ function reducer(state: AppState, action: Action): AppState {
       )
       storage.set('order_tickets', orderTickets)
       return { ...state, orderTickets }
+    }
+    case 'VOID_CART_ITEM': {
+      const cart = state.cart.map(ci =>
+        ci.id === action.id
+          ? { ...ci, voided: true, voidReason: action.reason, voidReasonText: action.reasonText, voidedBy: action.by, voidedAt: action.at }
+          : ci
+      )
+      return { ...state, cart }
+    }
+    case 'VOID_TICKET_ITEM': {
+      const orderTickets = state.orderTickets.map(t =>
+        t.id === action.ticketId
+          ? { ...t, items: t.items.map(ci =>
+              ci.id === action.itemId
+                ? { ...ci, voided: true, voidReason: action.reason, voidReasonText: action.reasonText, voidedBy: action.by, voidedAt: action.at }
+                : ci
+            )}
+          : t
+      )
+      storage.set('order_tickets', orderTickets)
+      return { ...state, orderTickets }
+    }
+    case 'ADD_VOID_LOG': {
+      const voidLogs = [action.entry, ...state.voidLogs].slice(0, 500)
+      storage.set('void_logs', voidLogs)
+      return { ...state, voidLogs }
     }
     default:
       return state

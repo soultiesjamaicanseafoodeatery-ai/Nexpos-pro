@@ -121,7 +121,7 @@ export default function POSPage() {
       id: r.id, name: r.name,
       desc: r.desc ?? r.description ?? '',
       price: Number(r.price),
-      cat: r.cat ?? r.category ?? 'All',
+      cat: (r.cat ?? r.category ?? 'All').trim().toUpperCase(),
       emoji: r.emoji ?? '',
       active: r.active ?? r.is_available ?? true,
       module: r.module,
@@ -197,7 +197,7 @@ export default function POSPage() {
 
           const mappedItems: MenuItem[] = itemRows.map(r => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
-            cat: r.category ?? 'All', emoji: r.emoji ?? '',
+            cat: (r.category ?? 'All').trim().toUpperCase(), emoji: r.emoji ?? '',
             active: r.active ?? r.is_available ?? true,
             module: r.module,
           }))

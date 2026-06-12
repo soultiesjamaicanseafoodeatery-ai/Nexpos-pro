@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import '@/styles/globals.css'
 import { AppProvider } from '@/lib/hooks/useAppStore'
+import ErrorBoundary from '@/components/shared/ErrorBoundary'
 
 export const metadata: Metadata = {
   title: 'NexPOS Pro',
@@ -24,7 +25,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <AppProvider>
-          {children}
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
         </AppProvider>
       </body>
     </html>

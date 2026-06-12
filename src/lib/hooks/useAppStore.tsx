@@ -7,7 +7,7 @@ import type {
   CartItem, OrderType, HeldOrder, OrderTicket, VoidLog, VoidReason, RefundLog,
 } from '@/types'
 
-const STAFF_API = 'https://www.soultiesseafoodjm.com/api/staff'
+const STAFF_API = '/api/staff'
 
 interface DbStaffRow {
   id: string

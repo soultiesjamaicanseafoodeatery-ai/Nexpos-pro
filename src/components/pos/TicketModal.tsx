@@ -23,8 +23,9 @@ const CW_COLORS:      Record<CarwashStatus, string>   = { queued: 'var(--txt3)',
 
 export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props) {
   const { state, dispatch, audit } = useApp()
-  const [tab,   setTab]   = useState<Tab>('customer')
-  const [width, setWidth] = useState<PrintWidth>(80)
+  const [tab,      setTab]      = useState<Tab>('customer')
+  const [width,    setWidth]    = useState<PrintWidth>(80)
+  const [printing, setPrinting] = useState(false)
 
   if (!isOpen) return null
 
@@ -49,7 +50,8 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
   const barHTML     = buildBarTicket(orderData, { width })
   const carwashHTML = buildCarwashWorkOrder(orderData, { width })
 
-  const handlePrint = (type: Tab) => {
+  const handlePrint = async (type: Tab) => {
+    if (printing) return
     const htmlMap: Record<string, string> = {
       customer: receiptHTML,
       kitchen:  kitchenHTML,
@@ -71,7 +73,12 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
       bar:      biz.printers?.bar || biz.printers?.kitchen,
       carwash:  biz.printers?.receipt,
     }
-    smartPrint(html, titles[type] ?? 'Ticket', printerMap[type], pw)
+    setPrinting(true)
+    try {
+      await smartPrint(html, titles[type] ?? 'Ticket', printerMap[type], pw)
+    } finally {
+      setTimeout(() => setPrinting(false), 2000)
+    }
 
     // Log reprint
     const user = state.currentUser?.name ?? 'System'
@@ -183,11 +190,11 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
                 )}
               </div>
               <div style={{ padding: '10px 16px', borderTop: '1px solid var(--bdr)', display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button onClick={() => handlePrint(tab)} disabled={!previewHTML[tab]} style={{
-                  flex: 1, padding: 12, borderRadius: 'var(--r)', background: previewHTML[tab] ? 'var(--blue)' : 'var(--surf3)',
-                  color: previewHTML[tab] ? '#fff' : 'var(--txt3)', border: 'none', fontWeight: 800, fontSize: 14, cursor: previewHTML[tab] ? 'pointer' : 'not-allowed',
+                <button onClick={() => handlePrint(tab)} disabled={!previewHTML[tab] || printing} style={{
+                  flex: 1, padding: 12, borderRadius: 'var(--r)', background: previewHTML[tab] && !printing ? 'var(--blue)' : 'var(--surf3)',
+                  color: previewHTML[tab] && !printing ? '#fff' : 'var(--txt3)', border: 'none', fontWeight: 800, fontSize: 14, cursor: previewHTML[tab] && !printing ? 'pointer' : 'not-allowed',
                 }}>
-                  Print {tab === 'customer' ? 'Receipt' : tab === 'kitchen' ? 'Kitchen Ticket' : tab === 'bar' ? 'Bar Ticket' : 'Work Order'}
+                  {printing ? 'Printing…' : `Print ${tab === 'customer' ? 'Receipt' : tab === 'kitchen' ? 'Kitchen Ticket' : tab === 'bar' ? 'Bar Ticket' : 'Work Order'}`}
                 </button>
               </div>
             </>
@@ -293,10 +300,10 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
               {/* Quick reprint buttons */}
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Reprint</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-                <button onClick={() => handlePrint('customer')} style={{ padding: '10px 0', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Receipt</button>
-                {ticket.hasKitchen && <button onClick={() => handlePrint('kitchen')} style={{ padding: '10px 0', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Kitchen Ticket</button>}
-                {ticket.hasBar     && <button onClick={() => handlePrint('bar')}     style={{ padding: '10px 0', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Bar Ticket</button>}
-                {ticket.hasCarwash && <button onClick={() => handlePrint('carwash')} style={{ padding: '10px 0', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Work Order</button>}
+                <button onClick={() => handlePrint('customer')} disabled={printing} style={{ padding: '10px 0', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: printing ? 'var(--txt3)' : 'var(--txt2)', fontWeight: 700, fontSize: 12, cursor: printing ? 'not-allowed' : 'pointer' }}>Receipt</button>
+                {ticket.hasKitchen && <button onClick={() => handlePrint('kitchen')} disabled={printing} style={{ padding: '10px 0', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: printing ? 'var(--txt3)' : 'var(--txt2)', fontWeight: 700, fontSize: 12, cursor: printing ? 'not-allowed' : 'pointer' }}>Kitchen Ticket</button>}
+                {ticket.hasBar     && <button onClick={() => handlePrint('bar')}     disabled={printing} style={{ padding: '10px 0', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: printing ? 'var(--txt3)' : 'var(--txt2)', fontWeight: 700, fontSize: 12, cursor: printing ? 'not-allowed' : 'pointer' }}>Bar Ticket</button>}
+                {ticket.hasCarwash && <button onClick={() => handlePrint('carwash')} disabled={printing} style={{ padding: '10px 0', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: printing ? 'var(--txt3)' : 'var(--txt2)', fontWeight: 700, fontSize: 12, cursor: printing ? 'not-allowed' : 'pointer' }}>Work Order</button>}
               </div>
             </div>
           )}

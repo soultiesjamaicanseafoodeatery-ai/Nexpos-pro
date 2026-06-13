@@ -52,6 +52,7 @@ export default function SettingsPage() {
   // QZ Tray state
   const [qzStatus, setQZStatus]     = useState<'idle' | 'checking' | 'connected' | 'off'>('idle')
   const [qzPrinters, setQZPrinters] = useState<string[]>([])
+  const [fetchingPrinters, setFetchingPrinters] = useState(false)
 
   const checkQZ = useCallback(async () => {
     setQZStatus('checking')
@@ -66,6 +67,20 @@ export default function SettingsPage() {
       }
     } catch {
       setQZStatus('off')
+    }
+  }, [])
+
+  const fetchPrinters = useCallback(async () => {
+    setFetchingPrinters(true)
+    try {
+      const { qzGetPrinters } = await import('@/lib/utils/qzTray')
+      const list = await qzGetPrinters()
+      setQZPrinters(list)
+      if (list.length > 0) setQZStatus('connected')
+    } catch {
+      // ignore
+    } finally {
+      setFetchingPrinters(false)
     }
   }, [])
 
@@ -301,11 +316,11 @@ export default function SettingsPage() {
 
             {/* Find printers button + detected list */}
             <div style={{ marginBottom: 16 }}>
-              <button onClick={checkQZ} disabled={qzStatus === 'checking'} style={{
+              <button onClick={fetchPrinters} disabled={fetchingPrinters} style={{
                 marginBottom: 10, padding: '7px 18px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)',
                 background: 'var(--surf)', color: 'var(--txt2)', fontSize: 12, fontWeight: 700,
-                cursor: qzStatus === 'checking' ? 'not-allowed' : 'pointer',
-              }}>Find Printers</button>
+                cursor: fetchingPrinters ? 'not-allowed' : 'pointer',
+              }}>{fetchingPrinters ? 'Scanning…' : 'Find Printers'}</button>
               {qzPrinters.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {qzPrinters.map(p => (

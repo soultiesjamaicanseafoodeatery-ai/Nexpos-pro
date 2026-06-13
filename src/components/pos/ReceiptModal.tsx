@@ -34,7 +34,7 @@ function buildReceiptHTML(tx: Transaction, biz: BusinessConfig): string {
   ).join('') ?? ''
 
   return `
-    <div style="font-family:monospace;font-size:12px;max-width:320px;margin:0 auto;padding:20px">
+    <div style="font-family:monospace;font-size:14px;max-width:320px;margin:0 auto;padding:20px">
       <div style="text-align:center;margin-bottom:14px">
         <div style="font-size:16px;font-weight:bold">${biz.name}</div>
         ${biz.address ? `<div style="color:#666">${biz.address}</div>` : ''}
@@ -81,7 +81,7 @@ export default function ReceiptModal({ isOpen, onClose, tx, biz }: Props) {
     const win = window.open('', '_blank', 'width=380,height=650')
     if (!win) return
     const html = buildReceiptHTML(tx, biz)
-    win.document.write(`<!DOCTYPE html><html><head><title>Receipt #${tx.id}</title><style>body{margin:0;padding:0}@media print{body{width:80mm}}</style></head><body>${html}<script>window.onload=()=>{window.print();setTimeout(()=>window.close(),500)}<\/script></body></html>`)
+    win.document.write(`<!DOCTYPE html><html><head><title>Receipt #${tx.id}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:14px;padding-bottom:50mm}@media print{@page{margin:2mm;size:80mm auto}body{width:80mm}}</style></head><body>${html}<script>window.onload=()=>{setTimeout(()=>{window.print();setTimeout(()=>window.close(),600)},100)}<\/script></body></html>`)
     win.document.close()
   }
 

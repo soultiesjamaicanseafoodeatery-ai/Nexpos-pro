@@ -5,7 +5,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData, HeldOrder, PaymentEntry, OrderTicket, VoidReason, VoidLog } from '@/types'
 import { VOID_REASON_LABELS } from '@/types'
 import { calcCart, fmt } from '@/lib/utils/tax'
-import { buildKitchenTicket, buildBarTicket, buildCarwashWorkOrder, buildVoidTicket, printTicket, smartPrint } from '@/lib/utils/ticketPrinter'
+import { buildCustomerReceipt, buildKitchenTicket, buildBarTicket, buildCarwashWorkOrder, buildVoidTicket, printTicket, smartPrint } from '@/lib/utils/ticketPrinter'
 import OutsideOrders from './OutsideOrders'
 import PaymentModal from './PaymentModal'
 import TicketModal from './TicketModal'
@@ -593,17 +593,23 @@ export default function POSPage() {
       customerName: customerName || undefined,
     }
     const pw = (biz.printers?.width ?? 80) as 58 | 80
+    // silentOnly=true: auto-prints never open a browser dialog; they succeed via QZ Tray or skip
     if (hasKitchen) {
       const html = buildKitchenTicket(ticketData, { width: pw })
-      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, pw)
+      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, pw, true)
     }
     if (hasBar) {
       const html = buildBarTicket(ticketData, { width: pw })
-      smartPrint(html, 'Bar Ticket', biz.printers?.bar || biz.printers?.kitchen, pw)
+      smartPrint(html, 'Bar Ticket', biz.printers?.bar || biz.printers?.kitchen, pw, true)
     }
     if (hasCarwash) {
       const html = buildCarwashWorkOrder(ticketData, { width: pw })
-      smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw)
+      smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw, true)
+    }
+    // Auto-print receipt if enabled in Settings → Printers
+    if (biz.printers?.autoPrint && biz.printers?.receipt) {
+      const receiptHTML = buildCustomerReceipt(tx, biz, { width: pw })
+      smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw, true)
     }
 
     dispatch({ type: 'ADD_TRANSACTION', tx })
@@ -676,15 +682,15 @@ export default function POSPage() {
     const pw2 = (biz.printers?.width ?? 80) as 58 | 80
     if (hasKitchen) {
       const html = buildKitchenTicket(ticketData, { width: pw2 })
-      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, pw2)
+      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, pw2, true)
     }
     if (hasBar) {
       const html = buildBarTicket(ticketData, { width: pw2 })
-      smartPrint(html, 'Bar Ticket', biz.printers?.bar || biz.printers?.kitchen, pw2)
+      smartPrint(html, 'Bar Ticket', biz.printers?.bar || biz.printers?.kitchen, pw2, true)
     }
     if (hasCarwash) {
       const html = buildCarwashWorkOrder(ticketData, { width: pw2 })
-      smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw2)
+      smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw2, true)
     }
 
     dispatch({ type: 'ADD_ORDER_TICKET', ticket: newTicket })
@@ -791,8 +797,8 @@ export default function POSPage() {
     }})
     const addData = { orderNum: ticket.orderNum, table: ticket.table, server: currentUser.name, orderType: ticket.orderType, date: today, time: nowTime, items: [...activeCart], orderNote: `++ ADDITIONAL ITEMS ++` }
     const pw3 = (biz.printers?.width ?? 80) as 58 | 80
-    if (newHasKitchen) { const h = buildKitchenTicket(addData, { width: pw3 }); smartPrint(h, 'Kitchen Ticket — Addition', biz.printers?.kitchen, pw3) }
-    if (newHasBar)     { const h = buildBarTicket(addData, { width: pw3 });     smartPrint(h, 'Bar Ticket — Addition', biz.printers?.bar || biz.printers?.kitchen, pw3) }
+    if (newHasKitchen) { const h = buildKitchenTicket(addData, { width: pw3 }); smartPrint(h, 'Kitchen Ticket — Addition', biz.printers?.kitchen, pw3, true) }
+    if (newHasBar)     { const h = buildBarTicket(addData, { width: pw3 });     smartPrint(h, 'Bar Ticket — Addition', biz.printers?.bar || biz.printers?.kitchen, pw3, true) }
     dispatch({ type: 'CLEAR_CART' })
     setAddToOrderMode(false); setShowOpen(false)
     audit('ADD_TO_ORDER', `Added ${activeCart.length} item(s) to Order #${ticket.orderNum}`, 'info')

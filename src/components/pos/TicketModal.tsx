@@ -174,7 +174,7 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
             <>
               <div style={{ flex: 1, overflowY: 'auto', padding: 16, background: 'var(--surf)' }}>
                 {previewHTML[tab] ? (
-                  <div style={{ background: '#fff', borderRadius: 'var(--r2)', padding: '12px 16px', boxShadow: '0 2px 12px rgba(0,0,0,.1)', fontFamily: "'Courier New', monospace", fontSize: 11, maxWidth: 420, margin: '0 auto' }}
+                  <div style={{ background: '#fff', borderRadius: 'var(--r2)', padding: '12px 16px', boxShadow: '0 2px 12px rgba(0,0,0,.1)', fontFamily: "'Courier New', monospace", fontSize: 13, maxWidth: 420, margin: '0 auto' }}
                     dangerouslySetInnerHTML={{ __html: previewHTML[tab] }} />
                 ) : (
                   <div style={{ textAlign: 'center', padding: 40, color: 'var(--txt3)', fontSize: 13 }}>

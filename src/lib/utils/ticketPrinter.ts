@@ -41,11 +41,14 @@ function wrap(text: string, indent: number, w: number): string[] {
 }
 
 // ── Smart print — tries QZ Tray first, falls back to browser ─
+// silentOnly: when true, skips browser fallback — use for auto-prints triggered by system events.
+// Leave false (default) for user-initiated prints so they always get a fallback dialog.
 export async function smartPrint(
   html: string,
   title: string,
   printerName?: string,
   width: PrintWidth = 80,
+  silentOnly = false,
 ): Promise<void> {
   if (!html) return
   if (printerName?.trim()) {
@@ -53,7 +56,9 @@ export async function smartPrint(
     const ok = await qzPrint(printerName.trim(), html, width)
     if (ok) return
   }
-  printTicket(html, title)
+  if (!silentOnly) {
+    printTicket(html, title)
+  }
 }
 
 // ── Print helper — opens new window and prints ────────────────
@@ -63,7 +68,7 @@ export function printTicket(html: string, title = 'Ticket'): void {
   win.document.write(
     `<!DOCTYPE html><html><head><title>${esc(title)}</title><style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Courier New',Courier,monospace;font-size:14px;background:#fff;color:#000;padding:8px;padding-bottom:30mm}
+    body{font-family:'Courier New',Courier,monospace;font-size:14px;background:#fff;color:#000;padding:8px;padding-bottom:50mm}
     pre{white-space:pre-wrap;word-break:break-all;font-family:inherit;font-size:inherit}
     @media print{body{width:${title.startsWith('58') ? '58' : '80'}mm}@page{margin:2mm}}
     </style></head><body>${html}

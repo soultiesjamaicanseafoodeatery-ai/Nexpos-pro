@@ -53,6 +53,7 @@ export default function SettingsPage() {
   const [qzStatus, setQZStatus]     = useState<'idle' | 'checking' | 'connected' | 'off'>('idle')
   const [qzPrinters, setQZPrinters] = useState<string[]>([])
   const [fetchingPrinters, setFetchingPrinters] = useState(false)
+  const [printerError, setPrinterError] = useState('')
 
   const checkQZ = useCallback(async () => {
     setQZStatus('checking')
@@ -72,42 +73,31 @@ export default function SettingsPage() {
 
   const fetchPrinters = useCallback(async () => {
     setFetchingPrinters(true)
+    setPrinterError('')
     try {
-      // Direct access — bypasses connectPromise so it never hangs
-      const qz = (window as Window & { qz?: { websocket: { isActive: () => boolean }; printers: { find: (q?: string) => Promise<string | string[]> } } }).qz
-      if (qz?.websocket.isActive()) {
-        const result = await qz.printers.find()
-        const list = Array.isArray(result) ? result : result ? [result] : []
-        setQZPrinters(list)
-        if (list.length > 0) setQZStatus('connected')
-      } else {
-        // Fall back to utility if direct access unavailable
-        const { qzGetPrinters } = await import('@/lib/utils/qzTray')
-        const list = await qzGetPrinters()
-        setQZPrinters(list)
-        if (list.length > 0) setQZStatus('connected')
+      const { qzConnect, qzGetPrinters } = await import('@/lib/utils/qzTray')
+      const connected = await qzConnect()
+      if (!connected) {
+        setPrinterError('QZ Tray not connected. Make sure it is running and this site is trusted.')
+        setQZStatus('off')
+        return
       }
-    } catch {
-      // ignore
+      setQZStatus('connected')
+      const list = await qzGetPrinters()
+      if (list.length === 0) {
+        setPrinterError('No printers found. Make sure printers are installed in Windows Settings → Printers & scanners.')
+      } else {
+        setQZPrinters(list)
+        setPrinterError('')
+      }
+    } catch (e) {
+      setPrinterError('Error detecting printers: ' + String(e))
     } finally {
       setFetchingPrinters(false)
     }
   }, [])
 
-  useEffect(() => {
-    if (tab === 'printers') {
-      checkQZ().then(() => {
-        // Auto-populate printer list if already connected
-        const qz = (window as Window & { qz?: { websocket: { isActive: () => boolean }; printers: { find: () => Promise<string | string[]> } } }).qz
-        if (qz?.websocket.isActive()) {
-          qz.printers.find().then(result => {
-            const list = Array.isArray(result) ? result : result ? [result] : []
-            if (list.length > 0) setQZPrinters(list)
-          }).catch(() => {})
-        }
-      })
-    }
-  }, [tab, checkQZ])
+  useEffect(() => { if (tab === 'printers') checkQZ() }, [tab, checkQZ])
 
   const testPrint = async (label: string, content: string, printerName?: string) => {
     const w = (form.printers?.width ?? 80) as 58 | 80
@@ -334,16 +324,21 @@ export default function SettingsPage() {
           <div style={section}>
             <div style={sectionTitle}>Printer Assignment</div>
             <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 14 }}>
-              Connect QZ Tray, click <strong>Find Printers</strong>, then click a name to copy it into the field below.
+              Click <strong>Detect Printers</strong> to scan for available printers, then click <strong>→ Receipt</strong> or <strong>→ Kitchen</strong> to assign each one.
             </div>
 
             {/* Find printers button + detected list */}
             <div style={{ marginBottom: 16 }}>
               <button onClick={fetchPrinters} disabled={fetchingPrinters} style={{
-                marginBottom: 10, padding: '7px 18px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)',
-                background: 'var(--surf)', color: 'var(--txt2)', fontSize: 12, fontWeight: 700,
-                cursor: fetchingPrinters ? 'not-allowed' : 'pointer',
-              }}>{fetchingPrinters ? 'Scanning…' : 'Find Printers'}</button>
+                marginBottom: 10, padding: '7px 18px', borderRadius: 'var(--r)', border: '1.5px solid var(--blue)',
+                background: fetchingPrinters ? 'var(--surf3)' : 'var(--blue)', color: fetchingPrinters ? 'var(--txt3)' : '#fff',
+                fontSize: 12, fontWeight: 700, cursor: fetchingPrinters ? 'not-allowed' : 'pointer',
+              }}>{fetchingPrinters ? 'Scanning…' : 'Detect Printers'}</button>
+              {printerError && (
+                <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 8, padding: '8px 12px', background: 'var(--red-bg)', borderRadius: 'var(--r2)', border: '1px solid rgba(245,101,101,.3)' }}>
+                  {printerError}
+                </div>
+              )}
               {qzPrinters.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {qzPrinters.map(p => (

@@ -73,10 +73,20 @@ export default function SettingsPage() {
   const fetchPrinters = useCallback(async () => {
     setFetchingPrinters(true)
     try {
-      const { qzGetPrinters } = await import('@/lib/utils/qzTray')
-      const list = await qzGetPrinters()
-      setQZPrinters(list)
-      if (list.length > 0) setQZStatus('connected')
+      // Direct access — bypasses connectPromise so it never hangs
+      const qz = (window as Window & { qz?: { websocket: { isActive: () => boolean }; printers: { find: (q?: string) => Promise<string | string[]> } } }).qz
+      if (qz?.websocket.isActive()) {
+        const result = await qz.printers.find()
+        const list = Array.isArray(result) ? result : result ? [result] : []
+        setQZPrinters(list)
+        if (list.length > 0) setQZStatus('connected')
+      } else {
+        // Fall back to utility if direct access unavailable
+        const { qzGetPrinters } = await import('@/lib/utils/qzTray')
+        const list = await qzGetPrinters()
+        setQZPrinters(list)
+        if (list.length > 0) setQZStatus('connected')
+      }
     } catch {
       // ignore
     } finally {
@@ -84,7 +94,20 @@ export default function SettingsPage() {
     }
   }, [])
 
-  useEffect(() => { if (tab === 'printers') checkQZ() }, [tab, checkQZ])
+  useEffect(() => {
+    if (tab === 'printers') {
+      checkQZ().then(() => {
+        // Auto-populate printer list if already connected
+        const qz = (window as Window & { qz?: { websocket: { isActive: () => boolean }; printers: { find: () => Promise<string | string[]> } } }).qz
+        if (qz?.websocket.isActive()) {
+          qz.printers.find().then(result => {
+            const list = Array.isArray(result) ? result : result ? [result] : []
+            if (list.length > 0) setQZPrinters(list)
+          }).catch(() => {})
+        }
+      })
+    }
+  }, [tab, checkQZ])
 
   const testPrint = async (label: string, content: string, printerName?: string) => {
     const w = (form.printers?.width ?? 80) as 58 | 80

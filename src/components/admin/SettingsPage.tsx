@@ -307,12 +307,23 @@ export default function SettingsPage() {
                 cursor: qzStatus === 'checking' ? 'not-allowed' : 'pointer',
               }}>Find Printers</button>
               {qzPrinters.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {qzPrinters.map(p => (
-                    <button key={p} title="Click to copy name" onClick={() => navigator.clipboard?.writeText(p)} style={{
-                      fontSize: 11, padding: '4px 10px', borderRadius: 20, fontFamily: 'var(--mono)',
-                      background: 'var(--surf3)', border: '1px solid var(--bdr)', color: 'var(--txt2)', cursor: 'pointer',
-                    }}>{p}</button>
+                    <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '8px 12px' }}>
+                      <span style={{ flex: 1, fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--txt2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p}</span>
+                      <button onClick={() => setPrinters({ receipt: p })} style={{
+                        padding: '5px 12px', borderRadius: 'var(--r)', border: '1.5px solid var(--blue)',
+                        background: form.printers?.receipt === p ? 'var(--blue)' : 'transparent',
+                        color: form.printers?.receipt === p ? '#fff' : 'var(--blue)',
+                        fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}>→ Receipt</button>
+                      <button onClick={() => setPrinters({ kitchen: p })} style={{
+                        padding: '5px 12px', borderRadius: 'var(--r)', border: '1.5px solid var(--grn)',
+                        background: form.printers?.kitchen === p ? 'var(--grn)' : 'transparent',
+                        color: form.printers?.kitchen === p ? '#fff' : 'var(--grn)',
+                        fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}>→ Kitchen</button>
+                    </div>
                   ))}
                 </div>
               )}

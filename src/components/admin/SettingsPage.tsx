@@ -324,7 +324,7 @@ export default function SettingsPage() {
           <div style={section}>
             <div style={sectionTitle}>Printer Assignment</div>
             <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 14 }}>
-              Click <strong>Detect Printers</strong> to scan for available printers, then click <strong>→ Receipt</strong> or <strong>→ Kitchen</strong> to assign each one.
+              Click <strong>Detect Printers</strong> to scan for available printers, then click <strong>→ Receipt</strong>, <strong>→ Kitchen</strong>, or <strong>→ Bar</strong> to assign each one.
             </div>
 
             {/* Find printers button + detected list */}
@@ -356,6 +356,12 @@ export default function SettingsPage() {
                         color: form.printers?.kitchen === p ? '#fff' : 'var(--grn)',
                         fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
                       }}>→ Kitchen</button>
+                      <button onClick={() => setPrinters({ bar: p })} style={{
+                        padding: '5px 12px', borderRadius: 'var(--r)', border: '1.5px solid var(--pur)',
+                        background: form.printers?.bar === p ? 'var(--pur)' : 'transparent',
+                        color: form.printers?.bar === p ? '#fff' : 'var(--pur)',
+                        fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}>→ Bar</button>
                     </div>
                   ))}
                 </div>
@@ -365,7 +371,7 @@ export default function SettingsPage() {
               )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div>
                 <label style={lbl}>Pay / Receipt Printer</label>
                 <input style={inp} placeholder="Exact Windows printer name" value={form.printers?.receipt ?? ''} onChange={e => setPrinters({ receipt: e.target.value })} />
@@ -375,6 +381,11 @@ export default function SettingsPage() {
                 <label style={lbl}>Kitchen Printer</label>
                 <input style={inp} placeholder="Exact Windows printer name" value={form.printers?.kitchen ?? ''} onChange={e => setPrinters({ kitchen: e.target.value })} />
                 <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4 }}>Food &amp; drink order tickets</div>
+              </div>
+              <div>
+                <label style={lbl}>Bar Printer</label>
+                <input style={inp} placeholder="Exact Windows printer name" value={form.printers?.bar ?? ''} onChange={e => setPrinters({ bar: e.target.value })} />
+                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4 }}>Bar tickets (falls back to kitchen if blank)</div>
               </div>
             </div>
 
@@ -406,7 +417,7 @@ export default function SettingsPage() {
                 ? 'QZ Tray connected — prints go silently to the named printer.'
                 : 'QZ Tray not connected — buttons will open a browser print dialog instead.'}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               <button onClick={() => testPrint('Receipt Test', `==== PAY / RECEIPT ====\n\n   TEST PRINT OK\n   ${new Date().toLocaleTimeString()}\n\n=======================`, form.printers?.receipt)} style={{
                 padding: '12px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 12, cursor: 'pointer',
                 border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
@@ -415,6 +426,10 @@ export default function SettingsPage() {
                 padding: '12px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 12, cursor: 'pointer',
                 border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
               }}>Test Kitchen Printer</button>
+              <button onClick={() => testPrint('Bar Test', `====== BAR TICKET =====\n\n   TEST PRINT OK\n   ${new Date().toLocaleTimeString()}\n\n=======================`, form.printers?.bar || form.printers?.kitchen)} style={{
+                padding: '12px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
+              }}>Test Bar Printer</button>
             </div>
           </div>
         </>

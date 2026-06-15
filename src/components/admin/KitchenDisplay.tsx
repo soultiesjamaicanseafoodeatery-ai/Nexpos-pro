@@ -2,6 +2,7 @@
 import { useState, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { KitchenStatus, BarStatus, CarwashStatus, OrderTicket } from '@/types'
+import { buildKitchenTicket, buildBarTicket, smartPrint } from '@/lib/utils/ticketPrinter'
 
 type FilterMode = 'all' | 'kitchen' | 'bar' | 'carwash'
 type StatusFilter = 'active' | 'pending' | 'preparing' | 'ready' | 'served' | 'done'
@@ -47,11 +48,12 @@ function elapsed(createdTime: string | undefined): string {
 
 export default function KitchenDisplay() {
   const { state, dispatch, audit } = useApp()
-  const { orderTickets, currentUser } = state
+  const { orderTickets, currentUser, biz } = state
 
   const [filter,       setFilter]       = useState<FilterMode>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [searchQ,      setSearchQ]      = useState('')
+  const [printing,     setPrinting]     = useState<string | null>(null)
 
   const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 
@@ -74,6 +76,28 @@ export default function KitchenDisplay() {
 
   const updateCW = (ticket: OrderTicket, status: CarwashStatus) => {
     dispatch({ type: 'UPDATE_ORDER_TICKET', id: ticket.id, patch: { carwashStatus: status } })
+  }
+
+  const handleReprint = async (ticket: OrderTicket, type: 'kitchen' | 'bar') => {
+    if (printing) return
+    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+    const time  = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const pw    = (biz.printers?.width ?? 80) as 58 | 80
+    const orderData = {
+      orderNum: ticket.orderNum, table: ticket.table, server: ticket.server,
+      guestCount: ticket.guestCount, orderType: ticket.orderType,
+      date: today, time, items: ticket.items,
+      orderNote: ticket.orderNote, customerName: ticket.customerName,
+    }
+    const html        = type === 'kitchen' ? buildKitchenTicket(orderData, { width: pw }) : buildBarTicket(orderData, { width: pw })
+    const printerName = type === 'kitchen' ? biz.printers?.kitchen : (biz.printers?.bar || biz.printers?.kitchen)
+    setPrinting(ticket.id + type)
+    try {
+      await smartPrint(html, type === 'kitchen' ? 'Kitchen Ticket' : 'Bar Ticket', printerName, pw)
+      audit('REPRINT', `Reprinted ${type} ticket for order #${ticket.orderNum}`, 'info')
+    } finally {
+      setTimeout(() => setPrinting(null), 2000)
+    }
   }
 
   const isTicketPaid = (t: OrderTicket) =>
@@ -308,6 +332,28 @@ export default function KitchenDisplay() {
                             )
                           })}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Reprint buttons */}
+                    {(live.hasKitchen || live.hasBar) && (
+                      <div style={{ display: 'flex', gap: 4, paddingTop: 4, borderTop: '1px solid var(--bdr2)', marginTop: 2 }}>
+                        {live.hasKitchen && (
+                          <button onClick={() => handleReprint(live, 'kitchen')} disabled={!!printing} style={{
+                            flex: 1, padding: '6px 4px', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 10,
+                            cursor: printing ? 'not-allowed' : 'pointer',
+                            border: '1.5px solid var(--bdr)', background: 'var(--surf)',
+                            color: printing === live.id + 'kitchen' ? 'var(--ora)' : 'var(--txt3)',
+                          }}>🖨 {printing === live.id + 'kitchen' ? 'Printing…' : 'Kitchen'}</button>
+                        )}
+                        {live.hasBar && (
+                          <button onClick={() => handleReprint(live, 'bar')} disabled={!!printing} style={{
+                            flex: 1, padding: '6px 4px', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 10,
+                            cursor: printing ? 'not-allowed' : 'pointer',
+                            border: '1.5px solid var(--bdr)', background: 'var(--surf)',
+                            color: printing === live.id + 'bar' ? 'var(--pur)' : 'var(--txt3)',
+                          }}>🖨 {printing === live.id + 'bar' ? 'Printing…' : 'Bar'}</button>
+                        )}
                       </div>
                     )}
                   </div>

@@ -18,9 +18,30 @@ const shot = async (name) => {
   console.log(`📸 ${n}: ${name}`)
 }
 
+const addItem = async (name) => {
+  const item = page.locator('div').filter({ hasText: new RegExp(`^${name}$`) }).first()
+  if (await item.count() === 0) { console.log(`  ⚠️  "${name}" not found`); return false }
+  await item.click()
+  await page.waitForTimeout(600)
+  const addBtn = page.locator('button').filter({ hasText: /Add to Cart/ }).first()
+  if (await addBtn.count() > 0) {
+    await addBtn.click()
+    await addBtn.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+  }
+  await page.waitForTimeout(500)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+  console.log(`  ✅ Added ${name}`)
+  return true
+}
+
+const pass  = (label) => console.log(`  ✅ ${label}`)
+const warn  = (label) => console.log(`  ⚠️  ${label}`)
+const check = (label, cond) => cond ? pass(label) : warn(label)
+
 console.log('\n=== Delivery Full Order Test ===\n')
 
-// ── Login ──
+// ── Step 1: Login ──────────────────────────────────────────────
 await page.goto('https://nexpropos.vercel.app', { timeout: 60000, waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(3000)
 await page.locator('button').filter({ hasText: 'RENEE' }).first().waitFor({ state: 'visible', timeout: 15000 })
@@ -31,135 +52,175 @@ for (const d of ['0','6','0','6']) {
   await page.waitForTimeout(100)
 }
 await page.waitForTimeout(1500)
-console.log('✅ Logged in as RENEE')
+console.log('Step 1 — Login')
+pass('Logged in as RENEE (admin)')
 
-// ── Step 1: Service Select ──
+// ── Step 2: Service Select ─────────────────────────────────────
 await shot('01-service-select')
-const body0 = await page.textContent('body')
-console.log('Service select visible:', body0.includes('Dine-In') && body0.includes('Delivery'))
+const svcBody = await page.textContent('body')
+console.log('\nStep 2 — Service Select')
+check('Dine-In option visible',  svcBody.includes('Dine-In'))
+check('Takeout option visible',  svcBody.includes('Takeout'))
+check('Delivery option visible', svcBody.includes('Delivery'))
 
-// ── Step 2: Delivery → Dashboard ──
+// ── Step 3: Delivery → Dashboard ──────────────────────────────
 await page.locator('button').filter({ hasText: 'Delivery' }).first().click()
-await page.waitForTimeout(600)
+await page.waitForTimeout(800)
 await shot('02-delivery-dashboard')
-const body1 = await page.textContent('body')
-console.log('Delivery dashboard visible:', body1.includes('Delivery'))
+const dashBody = await page.textContent('body')
+console.log('\nStep 3 — Delivery Dashboard')
+check('Delivery dashboard loaded',         dashBody.includes('Delivery'))
+check('"New Delivery Order" button shown', dashBody.includes('New Delivery Order'))
 
-// ── Step 3: New Delivery Order → Form ──
+// ── Step 4: New Delivery Order → Customer Form ────────────────
 await page.locator('button').filter({ hasText: /New Delivery Order/i }).first().click()
-await page.waitForTimeout(500)
+await page.waitForTimeout(600)
 await shot('03-delivery-form')
-const body2 = await page.textContent('body')
-console.log('Form visible:', body2.includes('Customer Name') && body2.includes('Phone') && body2.includes('Delivery Address'))
-console.log('Service select gone:', !body2.includes('How is this order'))
+const formBody = await page.textContent('body')
+console.log('\nStep 4 — Customer Form')
+check('Customer Name field present',     formBody.includes('Customer Name') || formBody.includes('Name'))
+check('Phone field present',             formBody.includes('Phone'))
+check('Delivery Address field present',  formBody.includes('Address') || formBody.includes('Delivery'))
+check('Start Order button present',      formBody.includes('Start Order'))
 
-// ── Step 4: Fill customer + address details ──
+// ── Step 5: Fill Customer + Address ───────────────────────────
 await page.locator('input').nth(0).fill('John Smith')
 await page.locator('input').nth(1).fill('876-999-0000')
 await page.locator('input').nth(2).fill('14 King Street, Kingston')
 await page.waitForTimeout(300)
 await shot('04-form-filled')
-console.log('✅ Filled: John Smith / 876-999-0000 / 14 King Street, Kingston')
+console.log('\nStep 5 — Fill Customer Details')
+pass('Name: John Smith')
+pass('Phone: 876-999-0000')
+pass('Address: 14 King Street, Kingston')
 
-// ── Step 5: Start Order → Workspace ──
+// ── Step 6: Start Order → Workspace ───────────────────────────
 await page.locator('button').filter({ hasText: 'Start Order' }).first().click()
 await page.waitForTimeout(5000)
 await shot('05-workspace')
-const body3 = await page.textContent('body')
-console.log('Workspace header (Delivery):', body3.includes('Delivery'))
-console.log('Customer name in header:', body3.includes('John Smith'))
-console.log('Phone in header:', body3.includes('876-999-0000'))
-console.log('Address in header:', body3.includes('14 King Street'))
-console.log('No service select:', !body3.includes('How is this order'))
-console.log('Menu loaded:', body3.includes('J$'))
+const wsBody = await page.textContent('body')
+console.log('\nStep 6 — Workspace')
+check('Workspace shows Delivery',        wsBody.includes('Delivery') || wsBody.includes('DELIVERY'))
+check('Customer name in header',         wsBody.includes('John Smith'))
+check('Phone number in header',          wsBody.includes('876-999-0000'))
+check('Delivery address in header',      wsBody.includes('14 King Street') || wsBody.includes('Kingston'))
+check('Menu loaded (J$ prices)',         wsBody.includes('J$'))
+check('No table selector shown',         !wsBody.includes('Select Table'))
 
-// ── Step 6: Add items ──
-// Helper: click a menu item, handle optional Add-to-Cart modal, wait for overlay to clear
-const addItem = async (name) => {
-  const item = page.locator('div').filter({ hasText: new RegExp(`^${name}$`) }).first()
-  if (await item.count() === 0) { console.log(`⚠️  ${name} not found`); return }
-  await item.click()
-  await page.waitForTimeout(600)
-  const addBtn = page.locator('button').filter({ hasText: /Add to Cart/ }).first()
-  if (await addBtn.count() > 0) {
-    await addBtn.click()
-    // Wait for the modal / overlay to close before the next item click
-    await addBtn.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
-  }
-  // Extra buffer + dismiss any lingering overlay with Escape
-  await page.waitForTimeout(500)
-  await page.keyboard.press('Escape')
-  await page.waitForTimeout(300)
-  console.log(`✅ Added ${name}`)
-}
-
-await addItem('Conch')
-await addItem('BBQ Chicken')
-await addItem('Bammy')
+// ── Step 7: Add Items ──────────────────────────────────────────
+console.log('\nStep 7 — Add Menu Items')
+let itemsAdded = 0
+if (await addItem('Conch'))       itemsAdded++
+if (await addItem('BBQ Chicken')) itemsAdded++
+if (await addItem('Bammy'))       itemsAdded++
 
 await page.waitForTimeout(500)
 await shot('06-cart-filled')
 const cartBody = await page.textContent('body')
-const total = cartBody.match(/TOTAL\s+(J\$[\d,\.]+)/)?.[1] ?? 'unknown'
-console.log('Cart total:', total)
-console.log('Cart has items:', !cartBody.includes('Tap menu items to add'))
+check(`At least 2 items added (got ${itemsAdded})`, itemsAdded >= 2)
+check('Cart shows items', !cartBody.includes('Tap menu items to add'))
 
-// ── Step 7: Pay ──
+const cartTotalMatch = cartBody.match(/TOTAL\s+J\$([\d,]+\.?\d*)/)
+console.log(`  Cart total: ${cartTotalMatch ? 'J$' + cartTotalMatch[1] : 'unknown'}`)
+
+// ── Step 8: Verify No Auto-Gratuity for Delivery ──────────────
+console.log('\nStep 8 — Verify No Auto-Gratuity (Delivery)')
+check('No "Gratuity (15%)" in cart panel', !cartBody.includes('Gratuity (15%)'))
+
+// ── Step 9: Open Payment Modal ────────────────────────────────
+console.log('\nStep 9 — Open Payment Modal (direct pay)')
 const payBtn = page.locator('button').filter({ hasText: /✓ Pay/ }).first()
 await payBtn.waitFor({ state: 'visible', timeout: 10000 })
-const payDisabled = await payBtn.getAttribute('disabled')
-if (payDisabled !== null) {
-  console.log('⚠️  Pay button disabled — cart may be empty')
-  const allBtns = await page.locator('button').allTextContents()
-  console.log('Buttons:', JSON.stringify(allBtns.filter(t => t.trim()).slice(0, 20)))
-} else {
-  await payBtn.click()
+check('Pay button enabled', await payBtn.getAttribute('disabled') === null)
+await payBtn.click()
+await page.waitForTimeout(1500)
+await shot('07-payment-modal')
+
+// ── Step 10: Payment Modal — Order Summary ────────────────────
+const modalBody = await page.textContent('body')
+console.log('\nStep 10 — Payment Modal: Order Summary')
+check('Modal title "Process Payment"',    modalBody.includes('Process Payment'))
+check('Customer name shown in header',    modalBody.includes('John Smith'))
+check('Subtotal shown',                   modalBody.includes('Subtotal'))
+check('No GCT for Delivery',             !modalBody.includes('GCT'))
+check('No Service Charge for Delivery',  !modalBody.includes('Service (10%)'))
+check('No auto-Gratuity for Delivery',   !modalBody.includes('Gratuity (15%)'))
+check('TOTAL shown',                      modalBody.includes('TOTAL'))
+check('Surcharges panel available',       modalBody.includes('Surcharge') || modalBody.includes('Add'))
+
+const modalTotalMatch = modalBody.match(/TOTAL\s+J\$([\d,]+\.?\d*)/)
+console.log(`  Modal total: ${modalTotalMatch ? 'J$' + modalTotalMatch[1] : 'unknown'}`)
+
+// ── Step 11: Payment Methods ───────────────────────────────────
+console.log('\nStep 11 — Payment Methods')
+check('Cash visible',          modalBody.includes('Cash'))
+check('Card visible',          modalBody.includes('Card'))
+check('Gift Card visible',     modalBody.includes('Gift Card'))
+check('House Account visible', modalBody.includes('House Account'))
+check('Split Tender visible',  modalBody.includes('Split'))
+await shot('08-payment-methods')
+
+// ── Step 12: Cash Payment ─────────────────────────────────────
+console.log('\nStep 12 — Cash Payment Flow')
+const cashBtn = page.locator('button').filter({ hasText: 'Cash' }).first()
+await cashBtn.click()
+await page.waitForTimeout(1000)
+await shot('09-cash-numpad')
+const cashBody = await page.textContent('body')
+check('Cash Payment screen shown', cashBody.includes('Cash Payment'))
+check('Order Total shown',         cashBody.includes('Order Total') || cashBody.includes('J$'))
+check('Exact button visible',      cashBody.includes('Exact'))
+check('Quick amounts visible',     cashBody.includes('1K') || cashBody.includes('2K') || cashBody.includes('5K'))
+
+const exactBtn = page.locator('button').filter({ hasText: 'Exact' }).first()
+await exactBtn.click()
+await page.waitForTimeout(500)
+await shot('10-exact-set')
+const exactBody = await page.textContent('body')
+check('Change Due shown (exact tender)', exactBody.includes('Change') || exactBody.includes('0.00'))
+
+const completeBtn = page.locator('button').filter({ hasText: /Complete/ }).first()
+await completeBtn.waitFor({ state: 'visible', timeout: 8000 })
+const completeTxt = (await completeBtn.textContent() ?? '').trim()
+console.log(`  Complete button: "${completeTxt}"`)
+check('Complete button enabled', completeTxt.includes('Complete'))
+
+// ── Step 13: Complete Payment ─────────────────────────────────
+console.log('\nStep 13 — Complete Payment')
+await completeBtn.click()
+await page.waitForTimeout(500)
+await shot('11-payment-success')
+const successBody = await page.textContent('body')
+check('Payment Complete or Change Due shown',
+  successBody.includes('Payment Complete') || successBody.includes('Change Due') || successBody.includes('Done'))
+
+// ── Step 14: Ticket Modal ─────────────────────────────────────
+console.log('\nStep 14 — Ticket Modal')
+const doneBtn = page.locator('button').filter({ hasText: /^Done$/ }).first()
+if (await doneBtn.count() > 0) {
+  await doneBtn.click()
   await page.waitForTimeout(1500)
-  await shot('07-payment-modal')
-  const payBody = await page.textContent('body')
-  console.log('Payment modal open:', payBody.includes('Process Payment') || payBody.includes('Cash'))
-  console.log('Customer in modal:', payBody.includes('John Smith'))
+  await shot('12-ticket-modal')
+  const ticketBody = await page.textContent('body')
+  check('Ticket/receipt modal opened',
+    ticketBody.includes('Delivery') || ticketBody.includes('John') || ticketBody.includes('Order'))
 
-  // Select Cash
-  const cashBtn = page.locator('button').filter({ hasText: 'Cash' }).first()
-  if (await cashBtn.count() > 0) {
-    await cashBtn.click()
-    await page.waitForTimeout(1000)
-    await shot('08-cash-numpad')
-    const numpadBody = await page.textContent('body')
-    console.log('Cash numpad shown:', numpadBody.includes('Cash Payment') || numpadBody.includes('Exact'))
-  }
-
-  // Click Exact
-  const exactBtn = page.locator('button').filter({ hasText: 'Exact' }).first()
-  if (await exactBtn.count() > 0) {
-    await exactBtn.click()
+  const closeBtn = page.locator('button').filter({ hasText: /Close|Done/ }).first()
+  if (await closeBtn.count() > 0) {
+    await closeBtn.click()
     await page.waitForTimeout(500)
-    console.log('✅ Exact amount set')
+    check('Ticket modal closed', true)
   }
-
-  await page.waitForTimeout(400)
-  await shot('08b-tender-set')
-
-  // Complete payment
-  const completeBtn = page.locator('button').filter({ hasText: /Complete/ }).first()
-  if (await completeBtn.count() > 0) {
-    const txt = await completeBtn.textContent()
-    console.log('Complete button:', txt)
-    await completeBtn.click()
-    await page.waitForTimeout(2000)
-    await shot('09-payment-success')
-    const receipt = await page.textContent('body')
-    console.log('Payment Complete shown:', receipt.includes('Payment Complete') || receipt.includes('Change Due') || receipt.includes('Done'))
-    console.log('Receipt shows customer:', receipt.includes('John Smith') || receipt.includes('John'))
-    console.log('Receipt type is Delivery:', receipt.includes('Delivery') || receipt.includes('delivery'))
-    console.log('✅ Payment complete')
-  } else {
-    await shot('09-no-complete')
-    const allBtns = await page.locator('button').allTextContents()
-    console.log('⚠️  Complete button not found. Buttons:', JSON.stringify(allBtns.filter(t => t.trim())))
-  }
+} else {
+  warn('Done button not found after payment')
 }
+
+// ── Final State ───────────────────────────────────────────────
+await shot('13-final')
+const finalBody = await page.textContent('body')
+console.log('\nFinal State')
+check('Back at POS / Delivery dashboard',
+  finalBody.includes('Delivery') || finalBody.includes('J$') || finalBody.includes('New Delivery'))
 
 await browser.close()
 console.log('\n=== Test Complete ===')

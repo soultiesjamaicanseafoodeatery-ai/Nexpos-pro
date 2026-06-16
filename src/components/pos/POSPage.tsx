@@ -1195,9 +1195,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
               )}
 
               {/* Item grid — 3 columns */}
-              {searchFiltered.length === 0 ? (
+              {liveMenuItems === null && (activeModule === 'restaurant' || activeModule === 'bar') ? (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--txt3)', fontSize: 13 }}>
-                  No items match &ldquo;{searchQuery}&rdquo;
+                  Loading menu…
+                </div>
+              ) : searchFiltered.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--txt3)', fontSize: 13 }}>
+                  {searchQuery ? <>No items match &ldquo;{searchQuery}&rdquo;</> : 'No menu items in this category'}
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     description: body.description ?? '',
     price: Number(body.price ?? 0),
     category: body.category ?? '',
-    emoji: body.emoji ?? 'ðŸ½ï¸',
+    emoji: body.emoji ?? '',
     is_available: body.active ?? true,
     module: body.module ?? 'restaurant',
     route: body.route ?? '',

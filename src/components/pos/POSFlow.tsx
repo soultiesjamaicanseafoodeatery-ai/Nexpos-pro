@@ -24,13 +24,13 @@ export default function POSFlow() {
   const [dlPhone,   setDlPhone]   = useState('')
   const [dlAddress, setDlAddress] = useState('')
 
-  const goToOrder = (ctx: OrderContext) => {
+  const goToOrder = (ctx: OrderContext, backTo?: FlowStep) => {
     dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: ctx.orderType })
     if (ctx.table) {
       dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: ctx.table } })
     }
     setOrderContext(ctx)
-    setPrevStep(step)
+    setPrevStep(backTo ?? step)
     setStep('order')
   }
 
@@ -89,9 +89,9 @@ export default function POSFlow() {
       onBack={() => setStep('takeout')}
       onStart={() => goToOrder({
         orderType: 'takeout',
-        customerName: tkName   || undefined,
-        phone:        tkPhone  || undefined,
-      })}
+        customerName: tkName  || undefined,
+        phone:        tkPhone || undefined,
+      }, 'takeout')}
     />
   )
 
@@ -111,7 +111,7 @@ export default function POSFlow() {
         customerName: dlName    || undefined,
         phone:        dlPhone   || undefined,
         address:      dlAddress || undefined,
-      })}
+      }, 'delivery')}
     />
   )
 

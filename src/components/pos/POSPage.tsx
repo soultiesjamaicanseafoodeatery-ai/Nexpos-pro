@@ -28,7 +28,12 @@ const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = 
   carwash:    { bg: 'var(--blue-bg)',            color: 'var(--blue)',          label: 'Wash' },
 }
 
-export default function POSPage() {
+interface POSPageProps {
+  onBack?: () => void
+  onPaymentComplete?: () => void
+}
+
+export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}) {
   const { state, dispatch, toast, audit } = useApp()
   const { activeModule, posState, currentUser, biz, cart, cartPayMethod, cartOrderType } = state
   const ps  = posState[activeModule]
@@ -936,6 +941,26 @@ export default function POSPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
 
+      {/* ── Workflow nav bar — shown only when launched from POSFlow ── */}
+      {onBack && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
+          background: 'var(--bg2)', borderBottom: '1px solid var(--bdr)', flexShrink: 0,
+        }}>
+          <button onClick={onBack} style={{
+            padding: '6px 14px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)',
+            background: 'var(--surf)', color: 'var(--txt2)', fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+          }}>← Dashboard</button>
+          <div style={{ fontSize: 12, color: 'var(--txt3)', fontWeight: 600 }}>
+            {cartOrderType === 'dine-in'  ? '🍽 Dine-In'  :
+             cartOrderType === 'takeout'  ? '🥡 Takeout'  :
+             cartOrderType === 'delivery' ? '🚗 Delivery'  : 'Order Entry'}
+            {posState['restaurant'].selTable ? ` · Table ${posState['restaurant'].selTable}` : ''}
+          </div>
+        </div>
+      )}
+
       {/* ── Carwash toolbar (bay, plate, tabs) ── */}
       {activeModule === 'carwash' && (
 
@@ -1522,7 +1547,7 @@ export default function POSPage() {
       {lastTx && lastTicket && (
         <TicketModal
           isOpen={showTicket}
-          onClose={() => setShowTicket(false)}
+          onClose={() => { setShowTicket(false); onPaymentComplete?.() }}
           ticket={lastTicket}
           tx={lastTx}
           biz={biz}

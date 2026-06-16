@@ -3,7 +3,7 @@
 import { useApp } from '@/lib/hooks/useAppStore'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
-import POSPage from '@/components/pos/POSPage'
+import POSFlow from '@/components/pos/POSFlow'
 import TransactionsPage from '@/components/admin/TransactionsPage'
 import ReportsPage from '@/components/admin/ReportsPage'
 import StaffPage from '@/components/admin/StaffPage'
@@ -63,7 +63,7 @@ export default function AppShell() {
   function renderPage() {
     if (!allowed(activePage)) return ACCESS_DENIED
     switch (activePage) {
-      case 'pos':          return <POSPage />
+      case 'pos':          return <POSFlow />
       case 'transactions': return <TransactionsPage />
       case 'reports':      return <ReportsPage />
       case 'staff':        return <StaffPage />
@@ -82,7 +82,7 @@ export default function AppShell() {
       case 'targets':      return <TargetsPage />
       case 'kitchen':      return <KitchenDisplay />
       case 'voids':        return <VoidReport />
-      default:             return <POSPage />
+      default:             return <POSFlow />
     }
   }
 

@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 
-const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const SUPA_URL = process.env.SUPABASE_URL!
+const SUPA_KEY = process.env.SUPABASE_ANON_KEY!
 const SB = () => ({
   'apikey': SUPA_KEY,
   'Authorization': `Bearer ${SUPA_KEY}`,
@@ -16,7 +16,7 @@ export async function GET() {
   )
   const data = await res.json()
   if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
-  // Normalise is_available → active so the POS doesn't need to know the column name
+  // Normalise is_available â†’ active so the POS doesn't need to know the column name
   const normalised = (data as Record<string, unknown>[]).map(r => ({
     ...r,
     active: r.is_available ?? r.active ?? true,
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     description: body.description ?? '',
     price: Number(body.price ?? 0),
     category: body.category ?? '',
-    emoji: body.emoji ?? '🍽️',
+    emoji: body.emoji ?? 'ðŸ½ï¸',
     is_available: body.active ?? true,
     module: body.module ?? 'restaurant',
     route: body.route ?? '',
@@ -73,3 +73,4 @@ export async function DELETE(req: NextRequest) {
   if (!res.ok) return NextResponse.json({ error: await res.json() }, { status: res.status })
   return new NextResponse(null, { status: 204 })
 }
+

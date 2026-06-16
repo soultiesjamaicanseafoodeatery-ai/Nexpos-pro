@@ -28,12 +28,22 @@ const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = 
   carwash:    { bg: 'var(--blue-bg)',            color: 'var(--blue)',          label: 'Wash' },
 }
 
+export interface OrderContext {
+  orderType: 'dine-in' | 'takeout' | 'delivery'
+  table?: string
+  guests?: number
+  customerName?: string
+  phone?: string
+  address?: string
+}
+
 interface POSPageProps {
   onBack?: () => void
   onPaymentComplete?: () => void
+  orderContext?: OrderContext
 }
 
-export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}) {
+export default function POSPage({ onBack, onPaymentComplete, orderContext }: POSPageProps = {}) {
   const { state, dispatch, toast, audit } = useApp()
   const { activeModule, posState, currentUser, biz, cart, cartPayMethod, cartOrderType } = state
   const ps  = posState[activeModule]
@@ -55,6 +65,7 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
   // Guest & customer
   const [guestCount,    setGuestCount]    = useState(1)
   const [customerName,  setCustomerName]  = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
 
   // Payment / receipt modals
   const [showPayment,   setShowPayment]   = useState(false)
@@ -99,6 +110,17 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
       modalRef.current.focus()
     }
   }, [modalItem])
+
+  // Sync customer/guest details from orderContext on workspace entry
+  const orderContextRef = useRef<OrderContext | null>(null)
+  useEffect(() => {
+    if (orderContext && orderContext !== orderContextRef.current) {
+      orderContextRef.current = orderContext
+      if (orderContext.customerName) setCustomerName(orderContext.customerName)
+      if (orderContext.phone)        setCustomerPhone(orderContext.phone)
+      if (orderContext.guests)       setGuestCount(orderContext.guests)
+    }
+  }, [orderContext])
 
   // Live data — loaded from localStorage immediately, refreshed from Supabase in background
   const [liveMenuItems,    setLiveMenuItems]    = useState<MenuItem[] | null>(null)
@@ -516,7 +538,8 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
     const plates     = Array.from(new Set(cart.filter(ci => ci.plate).map(ci => ci.plate!)))
     const selTable   = posState['restaurant'].selTable ?? posState['bar'].selTable
     const tableInfo  = selTable ? `Table ${selTable}` : ''
-    const customer   = customerName || (plates.length > 0
+    const nameDisplay = customerPhone ? `${customerName || 'Customer'} · ${customerPhone}` : customerName
+    const customer   = nameDisplay || (plates.length > 0
       ? plates.join(', ') + (tableInfo ? ` · ${tableInfo}` : '')
       : (tableInfo || 'Walk-in'))
     const itemSummary = cart.length === 1
@@ -623,7 +646,7 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
     setLastTicket(newTicket)
     setShowPayment(false)
     setDiscPct(0); setDiscFlat(0)
-    setGuestCount(1); setCustomerName(''); setOrderNote('')
+    setGuestCount(1); setCustomerName(''); setCustomerPhone(''); setOrderNote('')
     setGratuityOverride(false)
     setSplitTarget(null)
     audit('PAYMENT', `${itemSummary} — ${fmt(tx.total, sym)} · ${payMethodLabel}`, 'success')
@@ -941,8 +964,90 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
 
-      {/* ── Workflow nav bar — shown only when launched from POSFlow ── */}
-      {onBack && (
+      {/* ── Order Workspace Header ── */}
+      {onBack && orderContext && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+          background: 'var(--bg3)', borderBottom: '2px solid var(--bdr)', flexShrink: 0,
+          flexWrap: 'wrap',
+        }}>
+          {/* Service type label */}
+          <span style={{ fontSize: 12, fontWeight: 900, color: mod.color, textTransform: 'uppercase', letterSpacing: '.6px', flexShrink: 0 }}>
+            {orderContext.orderType === 'dine-in' ? '🍽 Dine-In' : orderContext.orderType === 'takeout' ? '🥡 Takeout' : '🚗 Delivery'}
+          </span>
+
+          {/* Table pill */}
+          {selTable && (
+            <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--txt)', background: 'var(--surf)', padding: '4px 14px', borderRadius: 'var(--r)', border: `2px solid ${mod.color}44`, flexShrink: 0 }}>
+              Table {selTable}
+            </span>
+          )}
+
+          {/* Guest count — editable for dine-in */}
+          {orderContext.orderType === 'dine-in' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+              <button onClick={() => setGuestCount(g => Math.max(1, g - 1))} style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--txt2)', minWidth: 60, textAlign: 'center' }}>{guestCount} {guestCount === 1 ? 'Guest' : 'Guests'}</span>
+              <button onClick={() => setGuestCount(g => g + 1)} style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+            </div>
+          )}
+
+          {/* Customer name */}
+          {customerName && (
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', background: 'var(--surf)', padding: '4px 10px', borderRadius: 'var(--r)', border: '1px solid var(--bdr)', flexShrink: 0 }}>
+              {customerName}
+            </span>
+          )}
+
+          {/* Phone */}
+          {customerPhone && (
+            <span style={{ fontSize: 12, color: 'var(--txt3)', fontFamily: 'var(--mono)', fontWeight: 600, flexShrink: 0 }}>
+              {customerPhone}
+            </span>
+          )}
+
+          {/* Delivery address */}
+          {orderContext.address && (
+            <span style={{ fontSize: 12, color: 'var(--txt3)', fontWeight: 600, flexShrink: 0 }}>
+              📍 {orderContext.address}
+            </span>
+          )}
+
+          {/* Server */}
+          <span style={{ fontSize: 11, color: 'var(--txt3)' }}>· {currentUser?.name}</span>
+
+          {/* Kitchen status chips */}
+          {activeTableOrder && (
+            <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+              {[
+                { label: 'Sent ✓', done: true },
+                { label: 'Ready', done: activeTableOrder.kitchenStatus === 'ready' || activeTableOrder.status === 'ready' || activeTableOrder.status === 'served' },
+                { label: 'Served', done: activeTableOrder.status === 'served' },
+              ].map(s => (
+                <span key={s.label} style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, color: s.done ? 'var(--grn)' : 'var(--txt3)', background: s.done ? '#14532d22' : 'var(--surf)', border: `1px solid ${s.done ? '#16a34a44' : 'var(--bdr)'}` }}>{s.label}</span>
+              ))}
+            </div>
+          )}
+
+          {/* Open / Held */}
+          <div style={{ display: 'flex', gap: 5, marginLeft: 'auto' }}>
+            <button onClick={() => setShowOpen(true)} style={{ padding: '3px 9px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${openOrders.length > 0 ? 'var(--grn)' : 'var(--bdr)'}`, background: openOrders.length > 0 ? '#14532d22' : 'transparent', color: openOrders.length > 0 ? 'var(--grn)' : 'var(--txt3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              Open{openOrders.length > 0 && <span style={{ background: 'var(--grn)', color: '#fff', borderRadius: 6, fontSize: 9, padding: '0 4px', fontWeight: 800 }}>{openOrders.length}</span>}
+            </button>
+            <button onClick={() => setShowHeld(true)} style={{ padding: '3px 9px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--bdr)'}`, background: state.heldOrders.length > 0 ? '#78350f22' : 'transparent', color: state.heldOrders.length > 0 ? 'var(--ora)' : 'var(--txt3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              Held{state.heldOrders.length > 0 && <span style={{ background: 'var(--ora)', color: '#fff', borderRadius: 6, fontSize: 9, padding: '0 4px', fontWeight: 800 }}>{state.heldOrders.length}</span>}
+            </button>
+          </div>
+
+          {/* Back link */}
+          <button onClick={onBack} style={{ padding: '5px 12px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+            ← Back
+          </button>
+        </div>
+      )}
+
+      {/* ── Legacy nav bar — when onBack is set but no orderContext ── */}
+      {onBack && !orderContext && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
           background: 'var(--bg2)', borderBottom: '1px solid var(--bdr)', flexShrink: 0,
@@ -1107,8 +1212,8 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
           {/* ── RIGHT: Order ticket (60%) ── */}
           <div style={{ flex: '0 0 60%', minWidth: 340, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            {/* Table / Server / Status header */}
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
+            {/* Table / Server / Status header — hidden when workspace header is active */}
+            {!orderContext && <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
                 <div>
                   {selTable ? (
@@ -1191,10 +1296,10 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
                   </div>
                 )
               )}
-            </div>
+            </div>}
 
-            {/* Customer / order type / guests */}
-            {(activeModule === 'restaurant' || activeModule === 'bar') && (
+            {/* Customer / order type / guests — only when no orderContext (workspace mode hides this) */}
+            {(activeModule === 'restaurant' || activeModule === 'bar') && !orderContext && (
               <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginBottom: 6 }}>
                   <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name (optional)"

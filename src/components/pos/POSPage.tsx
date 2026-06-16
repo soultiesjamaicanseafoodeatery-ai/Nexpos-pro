@@ -1059,7 +1059,6 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
                         fontSize: 12, fontWeight: 700, display: 'flex', gap: 6, alignItems: 'center',
                         whiteSpace: 'nowrap', transition: 'all .12s',
                       }}>
-                        {item.emoji && <span style={{ fontSize: 15 }}>{item.emoji}</span>}
                         {item.name}
                         <span style={{ color: mod.color, fontFamily: 'var(--mono)', fontSize: 11 }}>{fmt(item.price, sym)}</span>
                       </button>
@@ -1094,7 +1093,6 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
                       )}
                       <div style={{ padding: '11px 12px 12px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                         <div>
-                          {item.emoji && <div style={{ fontSize: 26, marginBottom: 4, lineHeight: 1 }}>{item.emoji}</div>}
                           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', lineHeight: 1.25 }}>{item.name}</div>
                         </div>
                         <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--mono)', color: item.accent ?? mod.color, marginTop: 8, letterSpacing: '-.3px' }}>{fmt(item.price, sym)}</div>

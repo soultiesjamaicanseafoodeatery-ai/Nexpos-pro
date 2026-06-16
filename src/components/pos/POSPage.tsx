@@ -190,7 +190,7 @@ export default function POSPage({ onBack, onPaymentComplete }: POSPageProps = {}
 
     // ── Step 2: Background sync ──
     async function syncFromSupabase() {
-      const WAPI = 'https://www.soultiesseafoodjm.com'
+      const WAPI = ''
       try {
         // ── Menu items via website API (same source as Menu Manager) ──
         const menuRes = await fetch(`${WAPI}/api/menu`)

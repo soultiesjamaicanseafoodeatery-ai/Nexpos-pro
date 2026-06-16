@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { storage } from '@/lib/utils/storage'
 
-const API = 'https://www.soultiesseafoodjm.com'
+const API = ''
 
 // ── Types ──────────────────────────────────────────────────────
 interface MenuItemRow {

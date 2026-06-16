@@ -248,12 +248,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         const { data: cwData } = await supabase
           .from('carwash_services')
           .select('*')
-          .eq('active', true)
+          .eq('is_available', true)
         if (cwData && cwData.length > 0) {
-          const mapped: MenuItem[] = cwData.map((r: { id: string; name: string; description: string; price: number; duration: string; active: boolean; vehicle_type: string }) => ({
+          const mapped: MenuItem[] = cwData.map((r: { id: string; name: string; description: string; price: number; duration?: string; is_available: boolean; vehicle_type: string }) => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
             cat: r.vehicle_type ? (r.vehicle_type.charAt(0).toUpperCase() + r.vehicle_type.slice(1)) : 'All',
-            emoji: '', active: r.active, duration: r.duration ?? '',
+            emoji: '', active: r.is_available, duration: r.duration ?? '',
           }))
           setLiveCarwashItems(mapped)
           storage.set('carwash_services', mapped)

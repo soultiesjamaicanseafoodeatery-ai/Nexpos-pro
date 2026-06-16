@@ -1,27 +1,38 @@
 'use client'
 import { useState, useCallback } from 'react'
-import type { OrderCalc, PaymentEntry } from '@/types'
+import type { OrderCalc, PaymentEntry, Surcharge, SurchargeType } from '@/types'
+
+const SURCHARGE_LABELS: Record<SurchargeType, string> = {
+  credit_card_fee: 'Credit Card Fee',
+  service_charge:  'Service Charge',
+  delivery_fee:    'Delivery Fee',
+  other:           'Other',
+}
 
 interface Props {
   isOpen: boolean
   onClose: () => void
   calc: OrderCalc
   gratuityPct: number
+  onGratuityChange: (pct: number) => void
+  isManager: boolean
   sym: string
   selTable: string | null
   guestCount: number
   customerName: string
+  surcharges: Surcharge[]
+  onSurchargesChange: (s: Surcharge[]) => void
   onComplete: (data: { method: string; tender?: number; changeDue?: number; payments?: PaymentEntry[] }) => void
 }
 
 type Step = 'choose' | 'cash' | 'card' | 'gift' | 'tab' | 'split' | 'success'
 
-// Quick tender amounts in JMD
 const QUICK_AMTS = [500, 1000, 2000, 5000, 10000, 20000]
 
 export default function PaymentModal({
-  isOpen, onClose, calc, gratuityPct, sym,
-  selTable, guestCount, customerName, onComplete,
+  isOpen, onClose, calc, gratuityPct, onGratuityChange, isManager,
+  sym, selTable, guestCount, customerName,
+  surcharges, onSurchargesChange, onComplete,
 }: Props) {
   const [step, setStep]               = useState<Step>('choose')
   const [tender, setTender]           = useState('')
@@ -29,6 +40,17 @@ export default function PaymentModal({
   const [cardDone, setCardDone]       = useState(false)
   const [splits, setSplits]           = useState<{ method: string; amount: string }[]>([{ method: 'cash', amount: '' }])
   const [successData, setSuccessData] = useState<{ method: string; tender?: number; changeDue?: number; payments?: PaymentEntry[] } | null>(null)
+
+  // Gratuity custom input
+  const [showCustomGrat,  setShowCustomGrat]  = useState(false)
+  const [customGratInput, setCustomGratInput] = useState('')
+
+  // Surcharge form
+  const [showAddSurcharge,    setShowAddSurcharge]    = useState(false)
+  const [newSurchargeType,    setNewSurchargeType]    = useState<SurchargeType>('credit_card_fee')
+  const [newSurchargeDesc,    setNewSurchargeDesc]    = useState('')
+  const [newSurchargeAmtType, setNewSurchargeAmtType] = useState<'percentage' | 'fixed'>('percentage')
+  const [newSurchargeValue,   setNewSurchargeValue]   = useState('')
 
   const total    = calc.total
   const fmtN     = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -42,6 +64,13 @@ export default function PaymentModal({
     setCardDone(false)
     setSplits([{ method: 'cash', amount: '' }])
     setSuccessData(null)
+    setShowCustomGrat(false)
+    setCustomGratInput('')
+    setShowAddSurcharge(false)
+    setNewSurchargeType('credit_card_fee')
+    setNewSurchargeDesc('')
+    setNewSurchargeAmtType('percentage')
+    setNewSurchargeValue('')
   }, [])
 
   const handleClose = () => { reset(); onClose() }
@@ -95,6 +124,24 @@ export default function PaymentModal({
     onComplete(data)
   }
 
+  const addSurcharge = () => {
+    const val = parseFloat(newSurchargeValue)
+    if (!newSurchargeDesc.trim() || !val || val <= 0) return
+    const s: Surcharge = {
+      id: crypto.randomUUID(),
+      type: newSurchargeType,
+      description: newSurchargeDesc.trim(),
+      amountType: newSurchargeAmtType,
+      value: val,
+    }
+    onSurchargesChange([...surcharges, s])
+    setNewSurchargeType('credit_card_fee')
+    setNewSurchargeDesc('')
+    setNewSurchargeAmtType('percentage')
+    setNewSurchargeValue('')
+    setShowAddSurcharge(false)
+  }
+
   if (!isOpen) return null
 
   // ── Shared styles ─────────────────────────────────────────────
@@ -131,9 +178,150 @@ export default function PaymentModal({
       {calc.gct > 0 && summaryRow(`GCT (${(calc.gctRate * 100).toFixed(0)}%)`, fmtN(calc.gct))}
       {calc.serviceCharge > 0 && summaryRow(`Service (${(calc.scRate * 100).toFixed(0)}%)`, fmtN(calc.serviceCharge))}
       {calc.gratuity > 0 && summaryRow(`Gratuity (${gratuityPct}%)`, fmtN(calc.gratuity))}
+      {surcharges.map(s => {
+        const amt = s.amountType === 'percentage' ? calc.taxableBase * s.value / 100 : s.value
+        const label = `${SURCHARGE_LABELS[s.type]}: ${s.description}${s.amountType === 'percentage' ? ` (${s.value}%)` : ''}`
+        return <div key={s.id}>{summaryRow(label, fmtN(amt), { color: 'var(--ora)' })}</div>
+      })}
       <div style={{ borderTop: '1px solid var(--bdr)', marginTop: 8, paddingTop: 8 }}>
         {summaryRow('TOTAL', fmtN(total), { bold: true, large: true, color: 'var(--blue)' })}
       </div>
+    </div>
+  )
+
+  // ── Gratuity panel (manager-controlled, dine-in or when gratuity active) ─
+  const GratuityPanel = () => {
+    const show = calc.orderType === 'dine-in' || gratuityPct > 0
+    if (!show) return null
+    return (
+      <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isManager ? 8 : 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+            Gratuity
+          </span>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: gratuityPct > 0 ? 'var(--txt2)' : 'var(--txt3)', fontWeight: 600 }}>
+            {gratuityPct > 0 ? `${gratuityPct}% · ${fmtN(calc.gratuity)}` : 'None'}
+          </span>
+        </div>
+        {isManager && !showCustomGrat && (
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {gratuityPct > 0 && (
+              <button onClick={() => onGratuityChange(0)} style={{
+                padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                border: '1.5px solid #ef444444', background: '#ef444411', color: '#ef4444',
+              }}>Remove</button>
+            )}
+            {([10, 15, 18] as const).map(pct => (
+              <button key={pct} onClick={() => onGratuityChange(pct)} style={{
+                padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                border: `1.5px solid ${gratuityPct === pct ? 'var(--blue)' : 'var(--bdr)'}`,
+                background: gratuityPct === pct ? 'var(--blue-bg, #1e40af22)' : 'var(--surf)',
+                color: gratuityPct === pct ? 'var(--blue)' : 'var(--txt2)',
+              }}>{pct}%</button>
+            ))}
+            <button onClick={() => { setCustomGratInput(String(gratuityPct || '')); setShowCustomGrat(true) }} style={{
+              padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
+            }}>Custom</button>
+          </div>
+        )}
+        {isManager && showCustomGrat && (
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop: 4 }}>
+            <input
+              type="number" min={0} max={50} value={customGratInput}
+              onChange={e => setCustomGratInput(e.target.value)}
+              placeholder="e.g. 12"
+              autoFocus
+              style={{ flex: 1, background: 'var(--surf2)', border: '1.5px solid var(--blue)', borderRadius: 'var(--r)', padding: '6px 10px', fontSize: 13, color: 'var(--txt)' }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--txt3)' }}>%</span>
+            <button onClick={() => { const v = parseFloat(customGratInput); if (v >= 0) onGratuityChange(v); setShowCustomGrat(false) }} style={{
+              padding: '6px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: 'var(--blue)', color: '#fff', border: 'none',
+            }}>Apply</button>
+            <button onClick={() => setShowCustomGrat(false)} style={{
+              padding: '6px 10px', borderRadius: 'var(--r)', fontSize: 12, cursor: 'pointer',
+              background: 'transparent', color: 'var(--txt3)', border: '1px solid var(--bdr)',
+            }}>✕</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Surcharge panel ───────────────────────────────────────────
+  const SurchargePanel = () => (
+    <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: surcharges.length > 0 ? 8 : 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Surcharges</span>
+        {!showAddSurcharge && (
+          <button onClick={() => setShowAddSurcharge(true)} style={{
+            padding: '4px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+            border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
+          }}>+ Add</button>
+        )}
+      </div>
+
+      {surcharges.map(s => {
+        const amt = s.amountType === 'percentage' ? calc.taxableBase * s.value / 100 : s.value
+        return (
+          <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+            <span style={{ fontSize: 12, color: 'var(--txt2)', flex: 1, marginRight: 8 }}>
+              {SURCHARGE_LABELS[s.type]}: {s.description}
+              {s.amountType === 'percentage' ? <span style={{ color: 'var(--txt3)', fontSize: 11 }}> ({s.value}%)</span> : null}
+            </span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: 'var(--ora)', marginRight: 6 }}>{fmtN(amt)}</span>
+            <button onClick={() => onSurchargesChange(surcharges.filter(x => x.id !== s.id))} style={{
+              background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px',
+            }}>×</button>
+          </div>
+        )
+      })}
+
+      {showAddSurcharge && (
+        <div style={{ marginTop: surcharges.length > 0 ? 8 : 0, padding: '10px 12px', borderRadius: 'var(--r3)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <select value={newSurchargeType} onChange={e => setNewSurchargeType(e.target.value as SurchargeType)}
+              style={{ flex: 1, background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', padding: '7px 8px', fontSize: 12, color: 'var(--txt)' }}>
+              <option value="credit_card_fee">Credit Card Fee</option>
+              <option value="service_charge">Service Charge</option>
+              <option value="delivery_fee">Delivery Fee</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <input
+            type="text" value={newSurchargeDesc}
+            onChange={e => setNewSurchargeDesc(e.target.value)}
+            placeholder="Description (required)"
+            style={{ background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', padding: '7px 10px', fontSize: 12, color: 'var(--txt)' }}
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <select value={newSurchargeAmtType} onChange={e => setNewSurchargeAmtType(e.target.value as 'percentage' | 'fixed')}
+              style={{ flex: '0 0 120px', background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', padding: '7px 8px', fontSize: 12, color: 'var(--txt)' }}>
+              <option value="percentage">Percentage (%)</option>
+              <option value="fixed">Fixed Amount</option>
+            </select>
+            <input
+              type="number" min={0} step="0.01" value={newSurchargeValue}
+              onChange={e => setNewSurchargeValue(e.target.value)}
+              placeholder={newSurchargeAmtType === 'percentage' ? '0%' : '0.00'}
+              style={{ flex: 1, background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', padding: '7px 10px', fontSize: 12, color: 'var(--txt)' }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={addSurcharge} disabled={!newSurchargeDesc.trim() || !newSurchargeValue} style={{
+              flex: 1, padding: '8px 0', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: newSurchargeDesc.trim() && newSurchargeValue ? 'var(--blue)' : 'var(--surf3)',
+              color: newSurchargeDesc.trim() && newSurchargeValue ? '#fff' : 'var(--txt3)',
+              border: 'none',
+            }}>Add Surcharge</button>
+            <button onClick={() => setShowAddSurcharge(false)} style={{
+              padding: '8px 12px', borderRadius: 'var(--r)', fontSize: 12, cursor: 'pointer',
+              background: 'transparent', color: 'var(--txt3)', border: '1px solid var(--bdr)',
+            }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 
@@ -200,34 +388,39 @@ export default function PaymentModal({
             </div>
             {closeBtn}
           </div>
-          <OrderSummary />
-          <div style={{ padding: '16px 18px', flex: 1, overflowY: 'auto' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Select Payment Method</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-              {([
-                ['cash', 'Cash',          '💵', 'var(--grn)'],
-                ['card', 'Card',          '💳', 'var(--blue)'],
-                ['gift', 'Gift Card',     '🎁', 'var(--pur)'],
-                ['tab',  'House Account', '📋', 'var(--ora)'],
-              ] as const).map(([key, lbl, icon, color]) => (
-                <button key={key} onClick={() => setStep(key as Step)} style={{
-                  padding: '18px 12px', borderRadius: 'var(--r3)', border: `2px solid ${color}44`,
-                  background: `${color}11`, color: 'var(--txt)', cursor: 'pointer',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                  fontWeight: 700, fontSize: 13, transition: 'all .12s',
-                }}>
-                  <span style={{ fontSize: 24 }}>{icon}</span>
-                  <span style={{ color }}>{lbl}</span>
-                </button>
-              ))}
+          {/* Scrollable content */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <OrderSummary />
+            <GratuityPanel />
+            <SurchargePanel />
+            <div style={{ padding: '16px 18px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Select Payment Method</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                {([
+                  ['cash', 'Cash',          '💵', 'var(--grn)'],
+                  ['card', 'Card',          '💳', 'var(--blue)'],
+                  ['gift', 'Gift Card',     '🎁', 'var(--pur)'],
+                  ['tab',  'House Account', '📋', 'var(--ora)'],
+                ] as const).map(([key, lbl, icon, color]) => (
+                  <button key={key} onClick={() => setStep(key as Step)} style={{
+                    padding: '18px 12px', borderRadius: 'var(--r3)', border: `2px solid ${color}44`,
+                    background: `${color}11`, color: 'var(--txt)', cursor: 'pointer',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                    fontWeight: 700, fontSize: 13, transition: 'all .12s',
+                  }}>
+                    <span style={{ fontSize: 24 }}>{icon}</span>
+                    <span style={{ color }}>{lbl}</span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setStep('split')} style={{
+                width: '100%', padding: '13px 12px', borderRadius: 'var(--r3)',
+                border: '2px dashed var(--bdr)', background: 'transparent', color: 'var(--txt2)',
+                cursor: 'pointer', fontWeight: 700, fontSize: 13,
+              }}>
+                Split Tender — Multiple Methods
+              </button>
             </div>
-            <button onClick={() => setStep('split')} style={{
-              width: '100%', padding: '13px 12px', borderRadius: 'var(--r3)',
-              border: '2px dashed var(--bdr)', background: 'transparent', color: 'var(--txt2)',
-              cursor: 'pointer', fontWeight: 700, fontSize: 13,
-            }}>
-              Split Tender — Multiple Methods
-            </button>
           </div>
         </div>
       </div>

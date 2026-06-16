@@ -1,4 +1,4 @@
-import type { POSState, OrderCalc, ModuleData, TaxConfig, CartItem } from '@/types'
+import type { POSState, OrderCalc, ModuleData, TaxConfig, CartItem, Surcharge } from '@/types'
 import { MODULE_DATA } from '@/lib/data/seed'
 
 export function getTaxConfig(): TaxConfig {
@@ -67,6 +67,7 @@ export function calcOrder(
     taxableBase, gct, gctRate, gctApplies,
     serviceCharge, scRate,
     gratuity, deliveryFee, legacyTax,
+    surchargeTotal: 0,
     total,
     orderType: p.orderType ?? 'dine-in',
   }
@@ -74,7 +75,7 @@ export function calcOrder(
 
 export function calcCart(
   cart: CartItem[],
-  opts: { orderType?: string; taxOverride?: boolean | null; manualDiscPct?: number; manualDiscFlat?: number; gratuityPct?: number }
+  opts: { orderType?: string; taxOverride?: boolean | null; manualDiscPct?: number; manualDiscFlat?: number; gratuityPct?: number; surcharges?: Surcharge[] }
 ): OrderCalc {
   const cfg = getTaxConfig()
 
@@ -113,13 +114,19 @@ export function calcCart(
   const gratApplies = (opts.orderType ?? 'dine-in') === 'dine-in' && restaurantSub > 0 && (opts.gratuityPct ?? 0) > 0
   const gratuity = gratApplies ? taxableRestSub * ((opts.gratuityPct ?? 0) / 100) : 0
 
-  const total = Math.max(0, taxableBase + gct + serviceCharge + gratuity)
+  const surchargeTotal = (opts.surcharges ?? []).reduce((sum, s) => {
+    const amt = s.amountType === 'percentage' ? taxableBase * s.value / 100 : s.value
+    return sum + amt
+  }, 0)
+
+  const total = Math.max(0, taxableBase + gct + serviceCharge + gratuity + surchargeTotal)
 
   return {
     sub, disc, memberDiscAmt: 0, manualDiscAmt: disc,
     taxableBase, gct, gctRate, gctApplies,
     serviceCharge, scRate,
     gratuity, deliveryFee: 0, legacyTax: 0,
+    surchargeTotal,
     total,
     orderType: opts.orderType ?? 'dine-in',
   }

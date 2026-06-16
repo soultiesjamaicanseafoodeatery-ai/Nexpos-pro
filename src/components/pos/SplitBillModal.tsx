@@ -129,7 +129,7 @@ export default function SplitBillModal({
                             sub: equalSub, disc: totalCalc.disc / numSplits, memberDiscAmt: 0, manualDiscAmt: totalCalc.disc / numSplits,
                             taxableBase: totalCalc.taxableBase / numSplits, gct: totalCalc.gct / numSplits, gctRate: totalCalc.gctRate, gctApplies: totalCalc.gctApplies,
                             serviceCharge: totalCalc.serviceCharge / numSplits, scRate: totalCalc.scRate,
-                            gratuity: equalGrat, deliveryFee: 0, legacyTax: 0,
+                            gratuity: equalGrat, deliveryFee: 0, legacyTax: 0, surchargeTotal: 0,
                             total: equalAmount, orderType,
                           }
                           onPaySplit({ id: `bill-${i}`, label: `Bill ${i + 1} of ${numSplits}`, items: cart, calc: splitCalc })

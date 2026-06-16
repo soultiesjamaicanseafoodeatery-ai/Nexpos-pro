@@ -93,8 +93,19 @@ export interface OrderCalc {
   gratuity: number
   deliveryFee: number
   legacyTax: number
+  surchargeTotal: number
   total: number
   orderType: string
+}
+
+export type SurchargeType = 'credit_card_fee' | 'service_charge' | 'delivery_fee' | 'other'
+
+export interface Surcharge {
+  id: string
+  type: SurchargeType
+  description: string
+  amountType: 'percentage' | 'fixed'
+  value: number
 }
 
 // ── Membership ────────────────────────────────────────────────
@@ -199,6 +210,7 @@ export interface Transaction {
   serviceCharge?: number
   gratuity?: number
   gratuityPct?: number
+  surchargeTotal?: number
   guestCount?: number
   customerName?: string
   tableNum?: string

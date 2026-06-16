@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData, HeldOrder, PaymentEntry, OrderTicket, VoidReason, VoidLog } from '@/types'
+import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData, HeldOrder, PaymentEntry, OrderTicket, VoidReason, VoidLog, Surcharge } from '@/types'
 import { VOID_REASON_LABELS } from '@/types'
 import { calcCart, fmt } from '@/lib/utils/tax'
 import { buildCustomerReceipt, buildKitchenTicket, buildBarTicket, buildCarwashWorkOrder, buildVoidTicket, printTicket, smartPrint } from '@/lib/utils/ticketPrinter'
@@ -61,6 +61,9 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [gratuityOverride, setGratuityOverride] = useState(false)
   const [showGratEdit,     setShowGratEdit]     = useState(false)
   const [gratInput,        setGratInput]        = useState('15')
+
+  // Surcharges
+  const [surcharges, setSurcharges] = useState<Surcharge[]>([])
 
   // Guest & customer
   const [guestCount,    setGuestCount]    = useState(1)
@@ -121,6 +124,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       if (orderContext.guests)       setGuestCount(orderContext.guests)
     }
   }, [orderContext])
+
+  // Auto-apply 15% gratuity for dine-in orders unless manager has overridden it
+  useEffect(() => {
+    if (gratuityOverride) return
+    setGratuityPct(cartOrderType === 'dine-in' ? 15 : 0)
+  }, [cartOrderType, gratuityOverride])
 
   // Live data — loaded from localStorage immediately, refreshed from Supabase in background
   const [liveMenuItems,    setLiveMenuItems]    = useState<MenuItem[] | null>(null)
@@ -498,7 +507,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         gct:           finalCalc.gct,
         serviceCharge: finalCalc.serviceCharge,
         gratuity:      finalCalc.gratuity,
-        gratuityPct:   payingTicket.gratuityPct ?? 0,
+        gratuityPct,
+        surchargeTotal: finalCalc.surchargeTotal,
         guestCount:    payingTicket.guestCount,
         customerName:  payingTicket.customerName,
         tableNum:      payingTicket.table,
@@ -518,6 +528,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
       const paidTicket = { ...payingTicket, status: 'paid' as const, txId: tx.id, timeline: updatedTimeline }
       setPayingTicket(null)
+      setSurcharges([])
+      setGratuityOverride(false)
       setShowPayment(false)
       setShowOpen(false)
       setLastTx(tx)
@@ -563,8 +575,9 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       orderType: cartOrderType,
       gct:           finalCalc.gct,
       serviceCharge: finalCalc.serviceCharge,
-      gratuity:    finalCalc.gratuity,
-      gratuityPct: gratuityPct,
+      gratuity:      finalCalc.gratuity,
+      gratuityPct:   gratuityPct,
+      surchargeTotal: finalCalc.surchargeTotal,
       guestCount:  guestCount > 1 ? guestCount : undefined,
       customerName: customerName || undefined,
       tableNum:  selTable ?? undefined,
@@ -648,6 +661,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setDiscPct(0); setDiscFlat(0)
     setGuestCount(1); setCustomerName(''); setCustomerPhone(''); setOrderNote('')
     setGratuityOverride(false)
+    setSurcharges([])
     setSplitTarget(null)
     audit('PAYMENT', `${itemSummary} — ${fmt(tx.total, sym)} · ${payMethodLabel}`, 'success')
     toast(`✓ ${fmt(tx.total, sym)} charged`, 'success')
@@ -910,7 +924,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     ? { manualDiscPct: discPct || undefined }
     : { manualDiscFlat: discFlat || undefined }
   const activeCart = cart.filter(ci => !ci.voided)
-  const calc = calcCart(activeCart, { orderType: cartOrderType, taxOverride: null, ...discOpts, gratuityPct })
+  const calc = calcCart(activeCart, { orderType: cartOrderType, taxOverride: null, ...discOpts, gratuityPct, surcharges })
 
   // Open (sent, unpaid) orders — excludes legacy, paid, and voided tickets
   const openOrders = state.orderTickets.filter(t => {
@@ -924,7 +938,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         orderType: payingTicket.orderType as OrderType,
         manualDiscPct: payingTicket.discPct || undefined,
         manualDiscFlat: payingTicket.discFlat || undefined,
-        gratuityPct: payingTicket.gratuityPct ?? 0,
+        gratuityPct,
+        surcharges,
       })
     : calc
 
@@ -1613,7 +1628,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                       </button>
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: isManager ? '1fr auto' : '1fr', gap: 6 }}>
-                        <button onClick={() => { setPayingTicket(t); setShowOpen(false); setShowPayment(true) }}
+                        <button onClick={() => { setPayingTicket(t); setGratuityPct(t.gratuityPct ?? 15); setGratuityOverride(true); setShowOpen(false); setShowPayment(true) }}
                           style={{ padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
                           Pay {fmt(tCalc.total, sym)}
                         </button>
@@ -1636,13 +1651,17 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       {/* ── Payment Modal ── */}
       <PaymentModal
         isOpen={showPayment}
-        onClose={() => { setShowPayment(false); setPayingTicket(null); setShowDetails(false) }}
-        calc={splitTarget ? calcCart(payingTicket ? payingTicket.items : cart, { orderType: (payingTicket?.orderType ?? cartOrderType) as OrderType, ...(payingTicket ? { manualDiscPct: payingTicket.discPct, manualDiscFlat: payingTicket.discFlat } : discOpts), gratuityPct: splitTarget.total / (payingTicket ? calcCart(payingTicket.items, { orderType: payingTicket.orderType as OrderType, manualDiscPct: payingTicket.discPct, manualDiscFlat: payingTicket.discFlat, gratuityPct: payingTicket.gratuityPct ?? 0 }).total : calc.total) * (payingTicket?.gratuityPct ?? gratuityPct) }) : payCalc}
-        gratuityPct={payingTicket ? (payingTicket.gratuityPct ?? 0) : gratuityPct}
+        onClose={() => { setShowPayment(false); setPayingTicket(null); setShowDetails(false); setGratuityOverride(false); setSurcharges([]) }}
+        calc={splitTarget ? calcCart(payingTicket ? payingTicket.items : cart, { orderType: (payingTicket?.orderType ?? cartOrderType) as OrderType, ...(payingTicket ? { manualDiscPct: payingTicket.discPct, manualDiscFlat: payingTicket.discFlat } : discOpts), gratuityPct, surcharges }) : payCalc}
+        gratuityPct={gratuityPct}
+        onGratuityChange={pct => { setGratuityPct(pct); setGratuityOverride(true) }}
+        isManager={isManager}
         sym={sym}
         selTable={payingTicket?.table ?? posState['restaurant'].selTable ?? posState['bar'].selTable}
         guestCount={payingTicket?.guestCount ?? guestCount}
         customerName={payingTicket?.customerName ?? customerName}
+        surcharges={surcharges}
+        onSurchargesChange={setSurcharges}
         onComplete={payData => completeCheckout(payData)}
       />
 

@@ -105,7 +105,7 @@ export default function DeliveryDashboard({ onNewOrder, onOpenOrder, onBack }: P
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--txt2)' }}>
               {filter === 'active' ? 'No active delivery orders' : 'No orders found'}
             </div>
-            <div style={{ fontSize: 12, marginTop: 6 }}>Tap "New Delivery Order" to get started</div>
+            <div style={{ fontSize: 12, marginTop: 6 }}>Tap &quot;New Delivery Order&quot; to get started</div>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>

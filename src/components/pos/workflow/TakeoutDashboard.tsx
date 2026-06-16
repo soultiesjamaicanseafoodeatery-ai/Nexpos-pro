@@ -108,7 +108,7 @@ export default function TakeoutDashboard({ onNewOrder, onOpenOrder, onBack }: Pr
               {filter === 'active' ? 'No active takeout orders' : 'No orders found'}
             </div>
             <div style={{ fontSize: 12, marginTop: 6, color: 'var(--txt3)' }}>
-              Tap "New Takeout Order" to get started
+              Tap &quot;New Takeout Order&quot; to get started
             </div>
           </div>
         ) : (

@@ -388,7 +388,7 @@ function ItemModal({ item, categories, flavours, sides, addons, sizes, assignmen
     category: item?.category ?? '',
     module: item?.module ?? 'restaurant',
     route: item?.route ?? '',
-    emoji: item?.emoji ?? '🍽️',
+    emoji: '',
     active: item?.active ?? true,
   })
   const [asgn, setAsgn] = useState<ItemAssignment>({
@@ -497,10 +497,6 @@ function ItemModal({ item, categories, flavours, sides, addons, sizes, assignmen
                 <div>
                   <label style={lbl}>Price (J$) *</label>
                   <input type="number" value={form.price ?? 0} onChange={e => setForm(p => ({ ...p, price: Number(e.target.value) }))} style={{ ...inp, boxSizing: 'border-box' }} min={0} step={0.01} />
-                </div>
-                <div>
-                  <label style={lbl}>Emoji</label>
-                  <input type="text" value={form.emoji ?? '🍽️'} onChange={e => setForm(p => ({ ...p, emoji: e.target.value }))} style={{ ...inp, boxSizing: 'border-box' }} />
                 </div>
                 <div>
                   <label style={lbl}>Module</label>
@@ -743,7 +739,6 @@ function RoutingTab({ items, onBulkRoute }: RoutingTabProps) {
                     <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${selected.includes(item.id) ? 'var(--blue)' : 'var(--bdr2)'}`, background: selected.includes(item.id) ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff', flexShrink: 0 }}>
                       {selected.includes(item.id) ? '✓' : ''}
                     </div>
-                    <span style={{ fontSize: 16 }}>{item.emoji}</span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', flex: 1 }}>{item.name}</span>
                     <span style={{ fontSize: 11, color: 'var(--txt3)' }}>{item.category}</span>
                     <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, background: 'var(--surf2)', color: 'var(--txt3)', fontWeight: 600 }}>{item.module}</span>
@@ -807,7 +802,7 @@ export default function MenuPage() {
           category: String(r.category ?? ''),
           module: String(r.module ?? 'restaurant'),
           route: String(r.route ?? ''),
-          emoji: String(r.emoji ?? '🍽️'),
+          emoji: String(r.emoji ?? ''),
           active: Boolean(r.active ?? (r.is_available ?? true)),
         })))
       } else {
@@ -1021,19 +1016,18 @@ export default function MenuPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--bdr)', background: 'var(--bg2)' }}>
-                    {['', 'Name', 'Category', 'Module', 'Price', 'Route', 'Status', 'Actions'].map((h, i) => (
-                      <th key={i} style={{ padding: '10px 12px', textAlign: i >= 6 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{h}</th>
+                    {['Name', 'Category', 'Module', 'Price', 'Route', 'Status', 'Actions'].map((h, i) => (
+                      <th key={i} style={{ padding: '10px 12px', textAlign: i >= 5 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)' }}>Loading...</td></tr>
+                    <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)' }}>Loading...</td></tr>
                   ) : filteredItems.length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)' }}>No items yet — click &quot;+ Add Item&quot; to get started</td></tr>
+                    <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)' }}>No items yet — click &quot;+ Add Item&quot; to get started</td></tr>
                   ) : filteredItems.map(item => (
                     <tr key={item.id} style={{ borderBottom: '1px solid var(--bdr)' }}>
-                      <td style={{ padding: '10px 12px', fontSize: 22 }}>{item.emoji}</td>
                       <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--txt)' }}>{item.name}</td>
                       <td style={{ padding: '10px 12px', color: 'var(--txt2)' }}>{item.category}</td>
                       <td style={{ padding: '10px 12px' }}>

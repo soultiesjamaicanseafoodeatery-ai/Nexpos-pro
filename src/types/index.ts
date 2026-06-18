@@ -259,6 +259,15 @@ export interface Shift {
   end: string | null
   txCount: number
   revenue: number
+  // formal close metadata
+  closedBy?: string
+  closedAt?: string
+  openingFloat?: number
+  countedCash?: number
+  cashVariance?: number
+  varianceNote?: string
+  wasOverridden?: boolean
+  isFormalClose?: boolean
 }
 
 // ── Fleet ─────────────────────────────────────────────────────

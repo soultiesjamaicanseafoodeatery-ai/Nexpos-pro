@@ -88,6 +88,7 @@ interface AppState {
   syncQueue: unknown[]
   isOnline: boolean
   uiMode: 'pos' | 'admin'
+  showEOD: boolean
 }
 
 type Action =
@@ -123,6 +124,9 @@ type Action =
   | { type: 'REFUND_TRANSACTION'; id: number; reason: string; refundType: 'full' | 'partial'; amount: number; by: string; at: string }
   | { type: 'ADD_REFUND_LOG'; entry: RefundLog }
   | { type: 'SET_UI_MODE'; mode: 'pos' | 'admin' }
+  | { type: 'SHOW_EOD' }
+  | { type: 'HIDE_EOD' }
+  | { type: 'CLOSE_SHIFT_FORMAL'; closedBy: string; closedAt: string; openingFloat: number; countedCash: number; variance: number; varianceNote: string; wasOverridden?: boolean }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -163,6 +167,7 @@ function initState(): AppState {
     syncQueue: storage.get<unknown[]>('sync_queue') ?? [],
     isOnline: true,
     uiMode: 'pos',
+    showEOD: false,
   }
 }
 
@@ -337,6 +342,25 @@ function reducer(state: AppState, action: Action): AppState {
       const refundLogs = [action.entry, ...state.refundLogs].slice(0, 500)
       storage.set('refund_logs', refundLogs)
       return { ...state, refundLogs }
+    }
+    case 'SET_UI_MODE':
+      return { ...state, uiMode: action.mode }
+    case 'SHOW_EOD':
+      return { ...state, showEOD: true }
+    case 'HIDE_EOD':
+      return { ...state, showEOD: false }
+    case 'CLOSE_SHIFT_FORMAL': {
+      if (!state.currentShift) return state
+      const shifts = state.shifts.map(s =>
+        s.id === state.currentShift!.id
+          ? { ...s, end: action.closedAt, closedBy: action.closedBy, closedAt: action.closedAt,
+              openingFloat: action.openingFloat, countedCash: action.countedCash,
+              cashVariance: action.variance, varianceNote: action.varianceNote,
+              wasOverridden: action.wasOverridden ?? false, isFormalClose: true }
+          : s
+      )
+      storage.set('shifts', shifts)
+      return { ...state, currentShift: null, shifts, showEOD: false }
     }
     default:
       return state

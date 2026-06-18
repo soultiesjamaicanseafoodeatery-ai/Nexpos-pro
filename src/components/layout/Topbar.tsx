@@ -127,10 +127,13 @@ export default function Topbar() {
           </div>
         )}
 
-        {/* Clock out (if active shift) */}
+        {/* Close Shift — managers only, requires active shift */}
         {currentShift && (currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
-          <button className="btn btn-gh btn-sm" onClick={() => dispatch({ type: 'CLOCK_OUT' })}>
-            Clock Out
+          <button onClick={() => dispatch({ type: 'SHOW_EOD' })} style={{
+            padding: '4px 11px', borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 800, cursor: 'pointer',
+            border: '1px solid rgba(245,101,101,.5)', background: '#7f1d1d33', color: 'var(--red)',
+          }}>
+            🔒 Close Shift
           </button>
         )}
 

@@ -25,6 +25,7 @@ import TargetsPage from '@/components/admin/TargetsPage'
 import KitchenDisplay from '@/components/admin/KitchenDisplay'
 import VoidReport from '@/components/admin/VoidReport'
 import CarwashServicesPage from '@/components/admin/CarwashServicesPage'
+import CloseShiftWizard from '@/components/admin/CloseShiftWizard'
 
 // Roles allowed per page — must match Sidebar NAV_ITEMS
 const PAGE_ROLES: Record<string, string[]> = {
@@ -60,7 +61,7 @@ const ACCESS_DENIED = (
 
 export default function AppShell() {
   const { state } = useApp()
-  const { activePage, activeModule, currentUser } = state
+  const { activePage, activeModule, currentUser, showEOD } = state
 
   const role = currentUser?.role ?? ''
   const allowed = (page: string) => (PAGE_ROLES[page] ?? ['admin']).includes(role)
@@ -102,6 +103,7 @@ export default function AppShell() {
           {renderPage()}
         </div>
       </div>
+      {showEOD && <CloseShiftWizard />}
     </div>
   )
 }

@@ -28,9 +28,22 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json()
 
+  // Sequential ticket number: find the highest existing number and increment
+  const lastRes = await fetch(
+    `${SUPA_URL}/rest/v1/carwash_orders?select=ticket_no&order=created_at.desc&limit=1`,
+    { headers: SB() }
+  )
+  const lastData = await lastRes.json()
+  let nextNum = 1
+  if (Array.isArray(lastData) && lastData.length > 0) {
+    const match = String(lastData[0].ticket_no).match(/\d+$/)
+    if (match) nextNum = parseInt(match[0], 10) + 1
+  }
+  const ticket_no = `CW-${String(nextNum).padStart(4, '0')}`
+
   const row = {
     id:            `CWO-${Date.now()}`,
-    ticket_no:     `CW-${String(Date.now()).slice(-5)}`,
+    ticket_no,
     customer_name: body.customerName ?? '',
     phone:         body.phone ?? '',
     vehicle_type:  body.vehicleType ?? 'Car',

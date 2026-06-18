@@ -71,7 +71,7 @@ NOTIFY pgrst, 'reload schema';`
 const BLANK_SVC: Omit<CwService, 'id' | 'is_available'> = {
   name: '', description: '', price: 0, vehicle_type: '',
 }
-const BLANK_ADDON: Omit<CwAddon, 'id' | 'active'> = {
+const BLANK_ADDON: Omit<CwAddon, 'id' | 'is_available'> = {
   name: '', description: '', price: 0,
 }
 

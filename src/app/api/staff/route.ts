@@ -1,8 +1,8 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 
-const SUPA_URL = process.env.SUPABASE_URL!
-const SUPA_KEY = process.env.SUPABASE_ANON_KEY!
+const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 const headers = {
   'apikey': SUPA_KEY,
@@ -57,7 +57,7 @@ export async function PUT(req: NextRequest) {
   const existing = await check.json()
 
   if (Array.isArray(existing) && existing.length > 0) {
-    // Row exists â€” PATCH only changed fields
+    // Row exists — PATCH only changed fields
     const res = await fetch(`${SUPA_URL}/rest/v1/staff?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers,
@@ -67,7 +67,7 @@ export async function PUT(req: NextRequest) {
     if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
     return NextResponse.json(data)
   } else {
-    // Row doesn't exist (demo/seed user) â€” INSERT it
+    // Row doesn't exist (demo/seed user) — INSERT it
     if (!patch.pin_hash) return NextResponse.json({ error: 'PIN is required to save this staff member to Supabase' }, { status: 400 })
     const row = { id, ...patch }
     const res = await fetch(`${SUPA_URL}/rest/v1/staff`, {

@@ -272,11 +272,11 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         const { data: addData } = await supabase
           .from('carwash_addons')
           .select('*')
-          .eq('active', true)
+          .eq('is_available', true)
         if (addData && addData.length > 0) {
-          const mapped: Addon[] = addData.map((r: { id: string; name: string; description: string; price: number; active: boolean }) => ({
+          const mapped: Addon[] = addData.map((r: { id: string; name: string; description: string; price: number; is_available: boolean }) => ({
             id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price),
-            icon: '', active: r.active,
+            icon: '', active: r.is_available,
           }))
           setLiveAddons(mapped)
           storage.set('carwash_addons', mapped)
@@ -1828,16 +1828,20 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
               {/* ─── Add-ons ─── */}
               {(() => {
-                const assignment = liveAssignments[modalItem!.id]
                 let displayAddons: Addon[]
-                if (assignment?.addon_ids?.length > 0) {
-                  displayAddons = assignment.addon_ids.map(id => {
-                    const a = livePosAddons.find(x => x.id === id)
-                    if (!a) return null
-                    return { id: a.id, name: a.name, desc: a.description, price: a.price, icon: a.icon ?? '', active: a.active } as Addon
-                  }).filter(Boolean) as Addon[]
+                if (activeModule === 'carwash') {
+                  displayAddons = activeAddons
                 } else {
-                  displayAddons = []
+                  const assignment = liveAssignments[modalItem!.id]
+                  if (assignment?.addon_ids?.length > 0) {
+                    displayAddons = assignment.addon_ids.map(id => {
+                      const a = livePosAddons.find(x => x.id === id)
+                      if (!a) return null
+                      return { id: a.id, name: a.name, desc: a.description, price: a.price, icon: a.icon ?? '', active: a.active } as Addon
+                    }).filter(Boolean) as Addon[]
+                  } else {
+                    displayAddons = []
+                  }
                 }
                 if (displayAddons.length === 0) return null
                 return (

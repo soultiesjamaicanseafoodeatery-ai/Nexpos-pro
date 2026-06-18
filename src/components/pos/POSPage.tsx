@@ -455,12 +455,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   // Handle item click — open modal only if the item has assigned add-ons/flavours/sizes/sides
   const handleItemClick = (item: MenuItem) => {
     const assignment = liveAssignments[item.id]
-    const hasFlavours  = (assignment?.flavour_ids?.length ?? 0) > 0
-    const hasSides     = (assignment?.side_ids?.length ?? 0) > 0
-    const hasSizes     = (assignment?.sizes?.length ?? 0) > 0
-    const hasNewAddons = (assignment?.addon_ids?.length ?? 0) > 0
+    const hasFlavours     = (assignment?.flavour_ids?.length ?? 0) > 0
+    const hasSides        = (assignment?.side_ids?.length ?? 0) > 0
+    const hasSizes        = (assignment?.sizes?.length ?? 0) > 0
+    const hasNewAddons    = (assignment?.addon_ids?.length ?? 0) > 0
+    const hasCarwashAddons = activeModule === 'carwash' && activeAddons.length > 0
 
-    if (hasFlavours || hasSides || hasSizes || hasNewAddons) {
+    if (hasFlavours || hasSides || hasSizes || hasNewAddons || hasCarwashAddons) {
       setModalItem(item)
       setModalAddons([])
       setModalFlavourId(null)

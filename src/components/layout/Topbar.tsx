@@ -14,12 +14,17 @@ const MOD_COLOR: Record<ModuleKey, { color: string; bg: string }> = {
   bar:        { color: 'var(--pur)', bg: 'var(--pur-bg)' },
   carwash:    { color: 'var(--blue)',bg: 'var(--blue-bg)'},
 }
-const PAGE_TITLES: Record<string, string> = {
-  pos:'Point of Sale', tables:'Tables', transactions:'Transactions',
+const PAGE_TITLES: Record<string, Record<ModuleKey | 'default', string>> = {
+  pos: { restaurant: 'Point of Sale', bar: 'Point of Sale', carwash: 'Dashboard', default: 'Point of Sale' },
+}
+const GENERIC_PAGE_TITLES: Record<string, string> = {
+  tables:'Tables', transactions:'Transactions',
   reports:'Reports', staff:'Staff', settings:'Settings', audit:'Audit Log',
   shifts:'Shifts', members:'Members', fleet:'Fleet Accounts',
   loyalty:'Loyalty Points', promos:'Promo Codes', bookings:'Bookings',
   inventory:'Inventory', satisfaction:'Customer Satisfaction', targets:'Performance Targets',
+  'carwash-services':'Services & Prices', 'carwash-queue':'Wash Queue', kitchen:'Kitchen Display',
+  voids:'Void Report',
 }
 
 const ORDER_TYPE_LABELS = { 'dine-in': 'Dine-in', takeout: 'Takeout', delivery: 'Delivery' } as const
@@ -78,7 +83,7 @@ export default function Topbar() {
 
       {/* Page title */}
       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.2px', flexShrink: 0 }}>
-        {PAGE_TITLES[activePage] ?? activePage}
+        {PAGE_TITLES[activePage]?.[activeModule] ?? PAGE_TITLES[activePage]?.['default'] ?? GENERIC_PAGE_TITLES[activePage] ?? activePage}
       </div>
 
       {/* Order type pills — POS page, restaurant/bar only */}

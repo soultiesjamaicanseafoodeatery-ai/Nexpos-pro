@@ -1,4 +1,36 @@
--- Run this in your Supabase SQL editor to set up online bookings
+-- Run this in your Supabase SQL editor to set up all NexPOS Pro tables
+
+-- ─── Car Wash Services ────────────────────────────────────────────────────────
+
+create table if not exists carwash_services (
+  id           text        primary key,
+  name         text        not null,
+  description  text        not null default '',
+  price        numeric     not null default 0,
+  duration     text        not null default '',
+  vehicle_type text        not null default '',
+  is_available boolean     not null default true,
+  created_at   timestamptz not null default now()
+);
+
+alter table carwash_services disable row level security;
+grant all on carwash_services to anon, authenticated;
+
+-- ─── Car Wash Add-ons ─────────────────────────────────────────────────────────
+
+create table if not exists carwash_addons (
+  id          text        primary key,
+  name        text        not null,
+  description text        not null default '',
+  price       numeric     not null default 0,
+  active      boolean     not null default true,
+  created_at  timestamptz not null default now()
+);
+
+alter table carwash_addons disable row level security;
+grant all on carwash_addons to anon, authenticated;
+
+-- ─── Outside (Online) Bookings ────────────────────────────────────────────────
 
 create table if not exists outside_orders (
   id             uuid        primary key default gen_random_uuid(),

@@ -18,12 +18,14 @@ grant all on carwash_services to anon, authenticated;
 -- ─── Car Wash Add-ons ─────────────────────────────────────────────────────────
 
 create table if not exists carwash_addons (
-  id          text        primary key,
-  name        text        not null,
-  description text        not null default '',
-  price       numeric     not null default 0,
-  active      boolean     not null default true,
-  created_at  timestamptz not null default now()
+  id                 text        primary key,
+  name               text        not null,
+  description        text        not null default '',
+  price              numeric     not null default 0,
+  vehicle_type       text        not null default '',
+  estimated_minutes  integer     not null default 0,
+  is_available       boolean     not null default true,
+  created_at         timestamptz not null default now()
 );
 
 alter table carwash_addons disable row level security;

@@ -16,7 +16,7 @@ interface CwAddon {
   name: string
   description: string
   price: number
-  active: boolean
+  is_available: boolean
 }
 
 // ── Style helpers ──────────────────────────────────────────────
@@ -176,7 +176,7 @@ export default function CarwashServicesPage() {
     } catch (e) { showMsg((e as Error).message, false) } finally { setSavingAddon(false) }
   }
   const toggleAddon = async (a: CwAddon) => {
-    await fetch('/api/carwash-addons', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, active: !a.active }) })
+    await fetch('/api/carwash-addons', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, is_available: !a.is_available }) })
     await load()
   }
   const deleteAddon = async () => {
@@ -326,8 +326,8 @@ export default function CarwashServicesPage() {
                       </td>
                       <td style={{ padding: '10px 14px', fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--txt)' }}>{fmtJMD(a.price)}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                        <button style={toggleBadge(a.active)} onClick={() => toggleAddon(a)}>
-                          {a.active ? 'Active' : 'Inactive'}
+                        <button style={toggleBadge(a.is_available)} onClick={() => toggleAddon(a)}>
+                          {a.is_available ? 'Active' : 'Inactive'}
                         </button>
                       </td>
                       <td style={{ padding: '10px 14px', textAlign: 'right' }}>

@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     name: body.name,
     description: body.description ?? '',
     price: Number(body.price ?? 0),
-    active: true,
+    is_available: true,
   }
   const res = await fetch(`${SUPA_URL}/rest/v1/carwash_addons`, {
     method: 'POST',

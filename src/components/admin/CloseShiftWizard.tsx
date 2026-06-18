@@ -22,6 +22,7 @@ interface CWData {
   override: boolean
 }
 interface Validation { heldOrders: number; openTickets: number; activeWashes: number }
+interface CwOrder { service_price: number; addons_total: number; total: number; payment_method: string }
 
 const SummaryRow = ({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) => (
   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid var(--bdr2)'}}>
@@ -54,7 +55,8 @@ export default function CloseShiftWizard() {
   const [pin,     setPin]     = useState('')
   const [pinErr,  setPinErr]  = useState('')
   const [pinSt,   setPinSt]   = useState<'idle'|'error'|'success'>('idle')
-  const [closing, setClosing] = useState(false)
+  const [closing,  setClosing]  = useState(false)
+  const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
 
   // ── Shift transactions ────────────────────────────────────────
   const shiftStart = currentShift?.start ?? new Date(0).toISOString()
@@ -135,8 +137,10 @@ export default function CloseShiftWizard() {
     const openTix = orderTickets.filter(t => t.status && !['paid','voided'].includes(t.status)).length
     fetch('/api/carwash-orders')
       .then(r => r.ok ? r.json() : [])
-      .then((orders: {status:string}[]) => {
+      .then((orders: (CwOrder & {status:string})[]) => {
         const aw = orders.filter(o => ['waiting','in_progress','ready'].includes(o.status)).length
+        // Store all today's orders for the sales summary
+        setCwOrders(orders)
         setVal({ heldOrders: heldOrders.length, openTickets: openTix, activeWashes: aw })
       })
       .catch(() => setVal({ heldOrders: heldOrders.length, openTickets: openTix, activeWashes: 0 }))
@@ -458,33 +462,123 @@ export default function CloseShiftWizard() {
   }
 
   const renderSales = () => {
-    const MOD_LABEL: Record<string,string> = { restaurant:'🍽 Restaurant', bar:'🍹 Bar', carwash:'🚗 Car Wash' }
-    const MOD_COLOR: Record<string,string> = { restaurant:'var(--ora)', bar:'var(--pur)', carwash:'var(--blue)' }
+    // ── Per-module aggregates from POS transactions ────────────
+    type ModStats = { count:number; sub:number; disc:number; tax:number; grat:number; total:number }
+    const modStats: Record<string, ModStats> = {
+      restaurant: { count:0, sub:0, disc:0, tax:0, grat:0, total:0 },
+      bar:        { count:0, sub:0, disc:0, tax:0, grat:0, total:0 },
+    }
+    shiftTxs.forEach(tx => {
+      const m = (tx.mod === 'bar') ? 'bar' : 'restaurant'
+      modStats[m].count++
+      modStats[m].sub   += tx.sub   ?? tx.total
+      modStats[m].disc  += tx.disc  ?? 0
+      modStats[m].tax   += tx.gct   ?? tx.tax ?? 0
+      modStats[m].grat  += tx.gratuity ?? 0
+      modStats[m].total += tx.total
+    })
+
+    // ── Car wash from API orders ───────────────────────────────
+    const cwServiceTotal = cwOrders.reduce((s,o) => s + (o.service_price ?? 0), 0)
+    const cwAddonsTotal  = cwOrders.reduce((s,o) => s + (o.addons_total  ?? 0), 0)
+    const cwTotal        = cwOrders.reduce((s,o) => s + (o.total         ?? 0), 0)
+    const cwCount        = cwOrders.length
+
+    // ── Combined grand total ───────────────────────────────────
+    const posTotal       = modStats.restaurant.total + modStats.bar.total
+    const grandTotal     = posTotal + cwTotal
+    const grandOrders    = shiftTxs.length + cwCount
+    const grandDisc      = modStats.restaurant.disc + modStats.bar.disc
+    const grandTax       = modStats.restaurant.tax  + modStats.bar.tax
+    const grandGrat      = modStats.restaurant.grat + modStats.bar.grat
+
+    const ModPanel = ({ id, label, icon, color, stats, note }: {
+      id: string; label: string; icon: string; color: string
+      stats: { count:number; sub:number; disc:number; tax:number; grat:number; total:number } | null
+      note?: React.ReactNode
+    }) => (
+      <div style={{ background:'var(--surf)', border:`1.5px solid ${stats && stats.total > 0 ? color+'55' : 'var(--bdr)'}`,
+        borderRadius:'var(--r3)', overflow:'hidden' }}>
+        {/* Module header */}
+        <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--bdr)', display:'flex', alignItems:'center', gap:10,
+          background: stats && stats.total > 0 ? color+'0d' : undefined }}>
+          <span style={{ fontSize:18 }}>{icon}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:800, color: stats && stats.total > 0 ? color : 'var(--txt3)' }}>{label}</div>
+            <div style={{ fontSize:11, color:'var(--txt3)' }}>{stats?.count ?? 0} {id === 'carwash' ? 'tickets' : 'orders'}</div>
+          </div>
+          <div style={{ fontSize:18, fontWeight:900, color: stats && stats.total > 0 ? color : 'var(--txt3)',
+            fontFamily:'var(--mono)' }}>{fmtJ(stats?.total ?? 0)}</div>
+        </div>
+        {/* Detail rows */}
+        {stats && stats.total > 0 && (
+          <div style={{ padding:'10px 16px' }}>
+            {note ?? <>
+              <SummaryRow label="Subtotal"    value={fmtJ(stats.sub)} />
+              {stats.disc > 0 && <SummaryRow label="Discounts" value={'-'+fmtJ(stats.disc)} color="var(--ora)" />}
+              {stats.tax  > 0 && <SummaryRow label="GCT (15%)" value={fmtJ(stats.tax)} />}
+              {stats.grat > 0 && <SummaryRow label="Gratuity"  value={fmtJ(stats.grat)} color="var(--grn)" />}
+            </>}
+          </div>
+        )}
+        {(!stats || stats.total === 0) && (
+          <div style={{ padding:'12px 16px', fontSize:12, color:'var(--txt3)' }}>No sales this shift</div>
+        )}
+      </div>
+    )
+
     return (
       <Card>
-        <CardHead title="Sales Summary" sub="Complete breakdown of sales across all modules" />
+        <CardHead title="Sales Summary" sub="Revenue breakdown by module with combined grand total" />
         <CardBody>
-          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
-              {['restaurant','bar','carwash'].map(m => {
-                const md = modMap[m]
-                return (
-                  <div key={m} style={{ background:'var(--surf)', border:'1px solid var(--bdr)', borderRadius:'var(--r3)', padding:'14px 16px' }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.4px', marginBottom:4 }}>{MOD_LABEL[m]}</div>
-                    <div style={{ fontSize:17, fontWeight:900, color:md?MOD_COLOR[m]:'var(--txt3)', fontFamily:'var(--mono)' }}>{fmtJ(md?.total ?? 0)}</div>
-                    <div style={{ fontSize:10, color:'var(--txt3)', marginTop:2 }}>{md?.count ?? 0} orders</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+
+            {/* Restaurant */}
+            <ModPanel id="restaurant" label="Restaurant" icon="🍽" color="var(--ora)" stats={modStats.restaurant} />
+
+            {/* Bar */}
+            <ModPanel id="bar" label="Bar" icon="🍹" color="var(--pur)" stats={modStats.bar} />
+
+            {/* Car Wash */}
+            <ModPanel id="carwash" label="Car Wash" icon="🚗" color="var(--blue)"
+              stats={cwCount > 0 ? { count:cwCount, sub:cwTotal, disc:0, tax:0, grat:0, total:cwTotal } : null}
+              note={cwCount > 0 ? <>
+                <SummaryRow label="Wash Services" value={fmtJ(cwServiceTotal)} />
+                {cwAddonsTotal > 0 && <SummaryRow label="Add-ons" value={fmtJ(cwAddonsTotal)} />}
+              </> : undefined}
+            />
+
+            {/* Grand Total banner */}
+            <div style={{ background:'var(--blue)', borderRadius:'var(--r3)', padding:'16px 20px', marginTop:4 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                <div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.7)', textTransform:'uppercase', letterSpacing:'.6px' }}>Combined Grand Total</div>
+                  <div style={{ fontSize:11, color:'rgba(255,255,255,.6)', marginTop:2 }}>{grandOrders} orders · {fmtJ(grandOrders ? grandTotal/grandOrders : 0)} avg ticket</div>
+                </div>
+                <div style={{ fontSize:26, fontWeight:900, color:'#fff', fontFamily:'var(--mono)' }}>{fmtJ(grandTotal)}</div>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, borderTop:'1px solid rgba(255,255,255,.2)', paddingTop:10 }}>
+                {[
+                  { l:'Restaurant', v:modStats.restaurant.total },
+                  { l:'Bar',        v:modStats.bar.total },
+                  { l:'Car Wash',   v:cwTotal },
+                ].map(x => (
+                  <div key={x.l} style={{ textAlign:'center' }}>
+                    <div style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,.6)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:3 }}>{x.l}</div>
+                    <div style={{ fontSize:14, fontWeight:800, color:'#fff', fontFamily:'var(--mono)' }}>{fmtJ(x.v)}</div>
                   </div>
-                )
-              })}
+                ))}
+              </div>
             </div>
+
+            {/* Other combined stats */}
             <div style={{ background:'var(--surf)', borderRadius:'var(--r2)', padding:'14px 16px' }}>
-              <SummaryRow label="Total Orders"       value={String(shiftTxs.length)} />
-              <SummaryRow label="Average Ticket"     value={fmtJ(avgTicket)} />
-              {totalDisc > 0 && <SummaryRow label="Discounts Given" value={fmtJ(totalDisc)} color="var(--ora)" />}
-              <SummaryRow label="Tax Collected (GCT)" value={fmtJ(totalTax)} />
-              <SummaryRow label="Gratuity Collected" value={fmtJ(totalGrat)} />
-              {totalRefunds > 0 && <SummaryRow label="Total Refunds"  value={'-'+fmtJ(totalRefunds)} color="var(--red)" />}
-              <SummaryRow label="Grand Total"        value={fmtJ(netSales)} bold color="var(--blue)" />
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:10 }}>Combined Deductions & Additions</div>
+              {grandDisc > 0 && <SummaryRow label="Total Discounts Given" value={'-'+fmtJ(grandDisc)} color="var(--ora)" />}
+              {grandTax  > 0 && <SummaryRow label="GCT Collected"        value={fmtJ(grandTax)} />}
+              {grandGrat > 0 && <SummaryRow label="Gratuity Collected"   value={fmtJ(grandGrat)} color="var(--grn)" />}
+              {totalRefunds > 0 && <SummaryRow label="Refunds Issued"    value={'-'+fmtJ(totalRefunds)} color="var(--red)" />}
+              <SummaryRow label="Net Revenue (after refunds)" value={fmtJ(grandTotal - totalRefunds)} bold color="var(--grn)" />
             </div>
           </div>
         </CardBody>
@@ -571,6 +665,8 @@ export default function CloseShiftWizard() {
   const renderConfirm = () => {
     const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
     const varColor = variance === null ? 'var(--txt3)' : variance === 0 ? 'var(--grn)' : variance > 0 ? 'var(--blue)' : 'var(--red)'
+    const cwTotal      = cwOrders.reduce((s,o) => s + (o.total ?? 0), 0)
+    const grandConfirm = netSales + cwTotal
     return (
       <Card>
         <CardHead title="⚠️  Confirm Shift Close" sub="Review the summary below before finalizing. This cannot be undone." warn />
@@ -578,10 +674,10 @@ export default function CloseShiftWizard() {
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
               {[
-                { l:'Net Sales',      v:fmtJ(netSales),            c:'var(--grn)' },
-                { l:'Total Orders',   v:String(shiftTxs.length),   c:'var(--txt)' },
+                { l:'Grand Total',    v:fmtJ(grandConfirm),                               c:'var(--grn)' },
+                { l:'Total Orders',   v:String(shiftTxs.length + cwOrders.length),         c:'var(--txt)' },
                 { l:'Cash Variance',  v: variance!=null ? ((variance>=0?'+':'')+fmtJ(variance)) : '—', c:varColor },
-                { l:'Closed By',      v:by.split(' ')[0],          c:'var(--txt)' },
+                { l:'Closed By',      v:by.split(' ')[0],                                  c:'var(--txt)' },
               ].map(x => (
                 <div key={x.l} style={{ background:'var(--surf)', border:'1px solid var(--bdr)', borderRadius:'var(--r2)', padding:'12px 14px' }}>
                   <div style={{ fontSize:10, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:4 }}>{x.l}</div>
@@ -616,6 +712,8 @@ export default function CloseShiftWizard() {
 
   const renderDone = () => {
     const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
+    const cwTotal     = cwOrders.reduce((s,o) => s + (o.total ?? 0), 0)
+    const grandDone   = netSales + cwTotal
     return (
       <Card>
         <div style={{ padding:'36px 24px 20px', textAlign:'center', borderBottom:'1px solid var(--bdr)' }}>
@@ -624,11 +722,14 @@ export default function CloseShiftWizard() {
           <div style={{ fontSize:13, color:'var(--txt3)', marginTop:6 }}>All data has been locked and saved</div>
         </div>
         <CardBody>
-          <SummaryRow label="Shift ID"      value={currentShift?.id ?? '—'} />
-          <SummaryRow label="Close Time"    value={new Date().toLocaleString()} />
-          <SummaryRow label="Closed By"     value={by} />
-          <SummaryRow label="Net Sales"     value={fmtJ(netSales)} bold color="var(--grn)" />
-          <SummaryRow label="Total Orders"  value={String(shiftTxs.length)} />
+          <SummaryRow label="Shift ID"         value={currentShift?.id ?? '—'} />
+          <SummaryRow label="Close Time"        value={new Date().toLocaleString()} />
+          <SummaryRow label="Closed By"         value={by} />
+          <SummaryRow label="Restaurant Sales"  value={fmtJ(modMap['restaurant']?.total ?? 0)} color="var(--ora)" />
+          <SummaryRow label="Bar Sales"         value={fmtJ(modMap['bar']?.total ?? 0)} color="var(--pur)" />
+          <SummaryRow label="Car Wash Sales"    value={fmtJ(cwTotal)} color="var(--blue)" />
+          <SummaryRow label="Grand Total"       value={fmtJ(grandDone)} bold color="var(--grn)" />
+          <SummaryRow label="Total Orders"      value={String(shiftTxs.length + cwOrders.length)} />
           {variance !== null && (
             <SummaryRow label="Cash Variance" value={(variance>=0?'+':'')+fmtJ(variance)}
               color={variance===0?'var(--grn)':variance>0?'var(--blue)':'var(--red)'} />

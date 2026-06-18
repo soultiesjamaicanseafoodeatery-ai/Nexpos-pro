@@ -26,7 +26,6 @@ export async function POST(req: NextRequest) {
     name: body.name,
     description: body.description ?? '',
     price: Number(body.price ?? 0),
-    duration: body.duration ?? '',
     vehicle_type: body.vehicle_type ?? '',
     is_available: true,
   }

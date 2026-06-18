@@ -7,7 +7,6 @@ interface CwService {
   name: string
   description: string
   price: number
-  duration: string
   vehicle_type: string
   is_available: boolean
 }
@@ -49,7 +48,6 @@ CREATE TABLE IF NOT EXISTS public.carwash_services (
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   price NUMERIC NOT NULL DEFAULT 0,
-  duration TEXT NOT NULL DEFAULT '',
   vehicle_type TEXT NOT NULL DEFAULT '',
   is_available BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -71,7 +69,7 @@ NOTIFY pgrst, 'reload schema';`
 
 // ── Blank forms ────────────────────────────────────────────────
 const BLANK_SVC: Omit<CwService, 'id' | 'is_available'> = {
-  name: '', description: '', price: 0, duration: '', vehicle_type: '',
+  name: '', description: '', price: 0, vehicle_type: '',
 }
 const BLANK_ADDON: Omit<CwAddon, 'id' | 'active'> = {
   name: '', description: '', price: 0,
@@ -128,7 +126,7 @@ export default function CarwashServicesPage() {
   // ── Service CRUD ──────────────────────────────────────────────
   const openAddSvc = () => { setSvcForm({ ...BLANK_SVC }); setEditSvcId(null); setShowSvcModal(true) }
   const openEditSvc = (s: CwService) => {
-    setSvcForm({ name: s.name, description: s.description, price: s.price, duration: s.duration, vehicle_type: s.vehicle_type })
+    setSvcForm({ name: s.name, description: s.description, price: s.price, vehicle_type: s.vehicle_type })
     setEditSvcId(s.id)
     setShowSvcModal(true)
   }
@@ -256,16 +254,16 @@ export default function CarwashServicesPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--bdr)', background: 'var(--bg2)' }}>
-                    {['Name', 'Category', 'Price', 'Duration', 'Status', 'Actions'].map((h, i) => (
-                      <th key={i} style={{ padding: '10px 14px', textAlign: i >= 4 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{h}</th>
+                    {['Name', 'Category', 'Price', 'Status', 'Actions'].map((h, i) => (
+                      <th key={i} style={{ padding: '10px 14px', textAlign: i >= 3 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)' }}>Loading...</td></tr>
+                    <tr><td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)' }}>Loading...</td></tr>
                   ) : services.length === 0 ? (
-                    <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)' }}>No services yet — run the SQL setup above then click &quot;+ Add Service&quot;</td></tr>
+                    <tr><td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)' }}>No services yet — run the SQL setup above then click &quot;+ Add Service&quot;</td></tr>
                   ) : services.map(s => (
                     <tr key={s.id} style={{ borderBottom: '1px solid var(--bdr)' }}>
                       <td style={{ padding: '10px 14px' }}>
@@ -274,7 +272,6 @@ export default function CarwashServicesPage() {
                       </td>
                       <td style={{ padding: '10px 14px', color: 'var(--txt2)' }}>{s.vehicle_type || '—'}</td>
                       <td style={{ padding: '10px 14px', fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--txt)' }}>{fmtJMD(s.price)}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--txt2)' }}>{s.duration || '—'}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                         <button style={toggleBadge(s.is_available)} onClick={() => toggleSvc(s)}>
                           {s.is_available ? 'Active' : 'Inactive'}
@@ -362,15 +359,9 @@ export default function CarwashServicesPage() {
                 <label style={lbl}>Description</label>
                 <textarea value={svcForm.description} onChange={e => setSvcForm(p => ({ ...p, description: e.target.value }))} placeholder="Brief description shown to staff..." rows={2} style={{ ...inp, resize: 'vertical' }} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={lbl}>Price (J$) *</label>
-                  <input type="number" value={svcForm.price} onChange={e => setSvcForm(p => ({ ...p, price: Number(e.target.value) }))} min={0} step={0.01} style={inp} />
-                </div>
-                <div>
-                  <label style={lbl}>Duration</label>
-                  <input type="text" value={svcForm.duration} onChange={e => setSvcForm(p => ({ ...p, duration: e.target.value }))} placeholder="e.g. 20 min" style={inp} />
-                </div>
+              <div>
+                <label style={lbl}>Price (J$) *</label>
+                <input type="number" value={svcForm.price} onChange={e => setSvcForm(p => ({ ...p, price: Number(e.target.value) }))} min={0} step={0.01} style={inp} />
               </div>
               <div>
                 <label style={lbl}>Category</label>

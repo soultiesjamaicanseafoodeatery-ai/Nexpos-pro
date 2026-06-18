@@ -7,7 +7,6 @@ create table if not exists carwash_services (
   name         text        not null,
   description  text        not null default '',
   price        numeric     not null default 0,
-  duration     text        not null default '',
   vehicle_type text        not null default '',
   is_available boolean     not null default true,
   created_at   timestamptz not null default now()

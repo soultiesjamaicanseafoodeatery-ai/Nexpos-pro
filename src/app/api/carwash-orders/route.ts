@@ -28,9 +28,11 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json()
 
-  // Sequential ticket number: find the highest existing number and increment
+  // Sequential ticket number — resets to CW-0001 each day automatically
+  const dayStart = new Date()
+  dayStart.setHours(0, 0, 0, 0)
   const lastRes = await fetch(
-    `${SUPA_URL}/rest/v1/carwash_orders?select=ticket_no&order=created_at.desc&limit=1`,
+    `${SUPA_URL}/rest/v1/carwash_orders?select=ticket_no&created_at=gte.${encodeURIComponent(dayStart.toISOString())}&order=created_at.desc&limit=1`,
     { headers: SB() }
   )
   const lastData = await lastRes.json()

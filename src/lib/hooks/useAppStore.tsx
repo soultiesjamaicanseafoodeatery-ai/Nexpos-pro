@@ -360,7 +360,7 @@ function reducer(state: AppState, action: Action): AppState {
           : s
       )
       storage.set('shifts', shifts)
-      return { ...state, currentShift: null, shifts, showEOD: false }
+      return { ...state, currentShift: null, shifts }
     }
     default:
       return state

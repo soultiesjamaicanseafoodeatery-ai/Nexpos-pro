@@ -57,9 +57,10 @@ export default function CloseShiftWizard() {
   const [pinSt,   setPinSt]   = useState<'idle'|'error'|'success'>('idle')
   const [closing,  setClosing]  = useState(false)
   const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
+  const [savedShiftStart, setSavedShiftStart] = useState<string | null>(null)
 
   // ── Shift transactions ────────────────────────────────────────
-  const shiftStart = currentShift?.start ?? new Date(0).toISOString()
+  const shiftStart = savedShiftStart ?? currentShift?.start ?? new Date(0).toISOString()
   const shiftTxs = transactions.filter(tx => {
     if (tx.voided) return false
     try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false }
@@ -151,6 +152,8 @@ export default function CloseShiftWizard() {
   const doClose = async () => {
     setClosing(true)
     const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
+    // Capture shift start before dispatch nulls out currentShift
+    setSavedShiftStart(currentShift?.start ?? new Date(0).toISOString())
     dispatch({ type: 'CLOSE_SHIFT_FORMAL', closedBy: by, closedAt: new Date().toISOString(),
       openingFloat: floatNum, countedCash: countedNum, variance: variance ?? 0,
       varianceNote: data.varianceNote, wasOverridden: data.override })

@@ -31,6 +31,33 @@ create table if not exists carwash_addons (
 alter table carwash_addons disable row level security;
 grant all on carwash_addons to anon, authenticated;
 
+-- ─── Car Wash Orders (Queue) ──────────────────────────────────────────────────
+
+create table if not exists carwash_orders (
+  id             text        primary key,
+  ticket_no      text        not null,
+  customer_name  text        not null default '',
+  phone          text        not null default '',
+  vehicle_type   text        not null default 'Car',
+  plate          text        not null,
+  service_id     text        not null default '',
+  service_name   text        not null,
+  service_price  numeric     not null default 0,
+  addons         jsonb       not null default '[]',
+  addons_total   numeric     not null default 0,
+  notes          text        not null default '',
+  status         text        not null default 'waiting'
+                   check (status in ('waiting','in_progress','ready','completed')),
+  payment_method text        not null default 'cash',
+  total          numeric     not null default 0,
+  employee_name  text        not null default '',
+  created_at     timestamptz not null default now(),
+  completed_at   timestamptz
+);
+
+alter table carwash_orders disable row level security;
+grant all on carwash_orders to anon, authenticated;
+
 -- ─── Outside (Online) Bookings ────────────────────────────────────────────────
 
 create table if not exists outside_orders (

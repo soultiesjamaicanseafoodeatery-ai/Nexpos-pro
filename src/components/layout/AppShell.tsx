@@ -4,6 +4,8 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import POSFlow from '@/components/pos/POSFlow'
+import CarWashFlow from '@/components/carwash/CarWashFlow'
+import CarWashQueue from '@/components/carwash/CarWashQueue'
 import TransactionsPage from '@/components/admin/TransactionsPage'
 import ReportsPage from '@/components/admin/ReportsPage'
 import StaffPage from '@/components/admin/StaffPage'
@@ -44,8 +46,9 @@ const PAGE_ROLES: Record<string, string[]> = {
   satisfaction: ['admin','manager'],
   targets:      ['admin','manager'],
   kitchen:      ['admin','manager','supervisor','cashier','bartender','attendant'],
-  voids:            ['admin','manager'],
+  voids:              ['admin','manager'],
   'carwash-services': ['admin','manager'],
+  'carwash-queue':    ['admin','manager','supervisor','cashier','attendant'],
 }
 
 const ACCESS_DENIED = (
@@ -57,7 +60,7 @@ const ACCESS_DENIED = (
 
 export default function AppShell() {
   const { state } = useApp()
-  const { activePage, currentUser } = state
+  const { activePage, activeModule, currentUser } = state
 
   const role = currentUser?.role ?? ''
   const allowed = (page: string) => (PAGE_ROLES[page] ?? ['admin']).includes(role)
@@ -65,7 +68,7 @@ export default function AppShell() {
   function renderPage() {
     if (!allowed(activePage)) return ACCESS_DENIED
     switch (activePage) {
-      case 'pos':          return <POSFlow />
+      case 'pos':          return activeModule === 'carwash' ? <CarWashFlow /> : <POSFlow />
       case 'transactions': return <TransactionsPage />
       case 'reports':      return <ReportsPage />
       case 'staff':        return <StaffPage />
@@ -85,7 +88,8 @@ export default function AppShell() {
       case 'kitchen':      return <KitchenDisplay />
       case 'voids':              return <VoidReport />
       case 'carwash-services':   return <CarwashServicesPage />
-      default:                   return <POSFlow />
+      case 'carwash-queue':      return <CarWashQueue />
+      default:                   return activeModule === 'carwash' ? <CarWashFlow /> : <POSFlow />
     }
   }
 

@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+const SUPA_URL = process.env.SUPABASE_URL!
+const SUPA_KEY = process.env.SUPABASE_ANON_KEY!
+
+const SB = () => ({
+  apikey: SUPA_KEY,
+  Authorization: `Bearer ${SUPA_KEY}`,
+  'Content-Type': 'application/json',
+  Prefer: 'return=representation',
+})
+
+export async function GET() {
+  // Return today's orders (midnight local time to now)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const from = today.toISOString()
+
+  const res = await fetch(
+    `${SUPA_URL}/rest/v1/carwash_orders?created_at=gte.${encodeURIComponent(from)}&order=created_at.asc`,
+    { headers: SB() }
+  )
+  const data = await res.json()
+  if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
+  return NextResponse.json(data)
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json()
+
+  const row = {
+    id:            `CWO-${Date.now()}`,
+    ticket_no:     `CW-${String(Date.now()).slice(-5)}`,
+    customer_name: body.customerName ?? '',
+    phone:         body.phone ?? '',
+    vehicle_type:  body.vehicleType ?? 'Car',
+    plate:         body.plate ?? '',
+    service_id:    body.serviceId ?? '',
+    service_name:  body.serviceName ?? '',
+    service_price: Number(body.servicePrice ?? 0),
+    addons:        body.addons ?? [],
+    addons_total:  Number(body.addonsTotal ?? 0),
+    notes:         body.notes ?? '',
+    status:        'waiting',
+    payment_method:body.paymentMethod ?? 'cash',
+    total:         Number(body.total ?? 0),
+    employee_name: body.employeeName ?? '',
+  }
+
+  const res = await fetch(`${SUPA_URL}/rest/v1/carwash_orders`, {
+    method: 'POST',
+    headers: SB(),
+    body: JSON.stringify(row),
+  })
+  const data = await res.json()
+  if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
+  return NextResponse.json(Array.isArray(data) ? data[0] : data, { status: 201 })
+}
+
+export async function PUT(req: NextRequest) {
+  const body = await req.json()
+  const { id, ...rest } = body
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+  const patch: Record<string, unknown> = { ...rest }
+  if (rest.status === 'completed') {
+    patch.completed_at = new Date().toISOString()
+  }
+
+  const res = await fetch(
+    `${SUPA_URL}/rest/v1/carwash_orders?id=eq.${encodeURIComponent(id)}`,
+    { method: 'PATCH', headers: SB(), body: JSON.stringify(patch) }
+  )
+  const data = await res.json()
+  if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
+  return NextResponse.json(data)
+}

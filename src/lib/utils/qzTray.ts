@@ -85,8 +85,8 @@ export async function qzConnect(): Promise<boolean> {
       if (!ok) return false
       const qz = getQZ()
       if (!qz) return false
-      if (qz.websocket.isActive()) return true
       setupSecurity(qz)
+      if (qz.websocket.isActive()) return true
       await qz.websocket.connect({ retries: 1, delay: 0.3 })
       return true
     } catch {

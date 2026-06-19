@@ -52,29 +52,28 @@ async function loadScript(): Promise<boolean> {
 }
 
 function setupSecurity(qz: QZTrayAPI) {
-  // Cert is stored as base64 in env to survive Next.js client-bundle baking
-  const certB64 = process.env.NEXT_PUBLIC_QZ_CERT ?? ''
-  const cert = certB64 ? atob(certB64) : ''
-
-  qz.security.setCertificatePromise(resolve => resolve(cert))
+  // Cert is fetched from /api/qz-cert at connection time (server-side env var,
+  // avoids NEXT_PUBLIC baking issues). Anonymous fallback if endpoint returns empty.
+  qz.security.setCertificatePromise(async (resolve) => {
+    try {
+      const res = await fetch('/api/qz-cert')
+      const cert = res.ok ? await res.text() : ''
+      resolve(cert.trim())
+    } catch {
+      resolve('')
+    }
+  })
   qz.security.setSignatureAlgorithm('SHA512')
-
-  if (cert) {
-    // Cert is configured — sign server-side so the private key never touches the browser
-    qz.security.setSignaturePromise(async (toSign) => {
-      const res = await fetch('/api/qz-sign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: toSign }),
-      })
-      if (!res.ok) throw new Error(`Sign API ${res.status}`)
-      const json = await res.json()
-      return json.signature as string
+  qz.security.setSignaturePromise(async (toSign) => {
+    const res = await fetch('/api/qz-sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: toSign }),
     })
-  } else {
-    // No cert — anonymous mode (QZ Tray will show Allow/Block popup)
-    qz.security.setSignaturePromise((toSign, signing) => signing(toSign, null))
-  }
+    if (!res.ok) throw new Error(`Sign API ${res.status}`)
+    const json = await res.json()
+    return json.signature as string
+  })
 }
 
 // Connect to QZ Tray — returns true if connected, false if unavailable

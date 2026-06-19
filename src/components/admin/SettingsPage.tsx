@@ -435,6 +435,10 @@ export default function SettingsPage() {
               {qzStatus === 'connected'
                 ? 'QZ Tray connected — prints go silently to the named printer.'
                 : 'QZ Tray not connected — buttons will open a browser print dialog instead.'}
+              {' '}
+              <span style={{ color: process.env.NEXT_PUBLIC_QZ_CERT ? 'var(--grn)' : 'var(--red)', fontWeight: 700 }}>
+                {process.env.NEXT_PUBLIC_QZ_CERT ? `[cert: ${process.env.NEXT_PUBLIC_QZ_CERT.slice(0,8)}…]` : '[cert: NOT SET]'}
+              </span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
               <button onClick={() => testPrint('Receipt Test', `==== PAY / RECEIPT ====\n\n   TEST PRINT OK\n   ${new Date().toLocaleTimeString()}\n\n=======================`, form.printers?.receipt)} style={{

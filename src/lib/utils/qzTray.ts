@@ -52,9 +52,27 @@ async function loadScript(): Promise<boolean> {
 }
 
 function setupSecurity(qz: QZTrayAPI) {
-  qz.security.setCertificatePromise(resolve => resolve(''))
+  const cert = process.env.NEXT_PUBLIC_QZ_CERT ?? ''
+
+  qz.security.setCertificatePromise(resolve => resolve(cert.replace(/\\n/g, '\n')))
   qz.security.setSignatureAlgorithm('SHA512')
-  qz.security.setSignaturePromise((toSign, signing) => signing(toSign, null))
+
+  if (cert) {
+    // Cert is configured — sign server-side so the private key never touches the browser
+    qz.security.setSignaturePromise(async (toSign) => {
+      const res = await fetch('/api/qz-sign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: toSign }),
+      })
+      if (!res.ok) throw new Error(`Sign API ${res.status}`)
+      const json = await res.json()
+      return json.signature as string
+    })
+  } else {
+    // No cert — anonymous mode (QZ Tray will show Allow/Block popup)
+    qz.security.setSignaturePromise((toSign, signing) => signing(toSign, null))
+  }
 }
 
 // Connect to QZ Tray — returns true if connected, false if unavailable
@@ -115,7 +133,8 @@ export async function qzOpenDrawer(printerName: string): Promise<boolean> {
     const b64   = btoa(String.fromCharCode(...bytes))
     await qz.print(config, [{ type: 'raw', format: 'command', flavor: 'base64', data: b64 }])
     return true
-  } catch {
+  } catch (e) {
+    console.error('[QZ Tray] Drawer kick failed:', e)
     return false
   }
 }
@@ -146,7 +165,8 @@ export async function qzPrint(printerName: string, html: string, width: 58 | 80 
       </style></head><body>${html}</body></html>`,
     }])
     return true
-  } catch {
+  } catch (e) {
+    console.error('[QZ Tray] Print failed:', e)
     return false
   }
 }

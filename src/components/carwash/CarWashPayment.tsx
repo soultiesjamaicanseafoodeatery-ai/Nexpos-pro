@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
+import type { Transaction } from '@/types'
 import type { CwService, CwAddon } from './CarWashFlow'
 
 const fmtJ = (n: number) =>
@@ -24,7 +25,7 @@ const inp: React.CSSProperties = {
 }
 
 export default function CarWashPayment({ service, addons, onBack, onComplete }: Props) {
-  const { state } = useApp()
+  const { state, dispatch } = useApp()
   const { currentUser, biz } = state
 
   const [payMethod,    setPayMethod]    = useState<PayMethod>('cash')
@@ -65,6 +66,28 @@ export default function CarWashPayment({ service, addons, onBack, onComplete }: 
       }
       const order = await res.json()
       setTicket(order.ticket_no)
+      const nowTs = new Date()
+      const cwTx: Transaction = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        ts: nowTs.toISOString(),
+        mod: 'carwash',
+        cashier: currentUser?.name ?? 'Staff',
+        userId: currentUser?.id ?? '',
+        customer: customerName || plate || 'Walk-in',
+        item: service.name,
+        addons: addons.map(a => a.name),
+        sub: total,
+        disc: 0,
+        tax: 0,
+        total,
+        pay: payMethod,
+        orderType: 'walk-in',
+        gct: 0,
+        serviceCharge: 0,
+        gratuity: 0,
+        items: [],
+      }
+      dispatch({ type: 'ADD_TRANSACTION', tx: cwTx })
     } catch (e) {
       setError((e as Error).message)
     } finally {

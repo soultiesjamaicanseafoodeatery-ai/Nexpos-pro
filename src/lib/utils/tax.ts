@@ -96,7 +96,8 @@ export function calcCart(
     : (opts.manualDiscFlat ?? 0)
 
   const taxableBase    = Math.max(0, sub - disc)
-  const taxableRestSub = Math.max(0, restaurantSub - disc)
+  const restaurantDiscPortion = sub > 0 ? disc * (restaurantSub / sub) : 0
+  const taxableRestSub = Math.max(0, restaurantSub - restaurantDiscPortion)
 
   const gctApplies = cfg.enabled
     && isGCTApplicable(opts.orderType ?? 'dine-in', opts.taxOverride ?? null)

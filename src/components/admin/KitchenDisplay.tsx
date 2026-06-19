@@ -37,8 +37,9 @@ function elapsed(createdTime: string | undefined): string {
     const isPM = /pm/i.test(createdTime)
     const hour = isPM && h !== 12 ? h + 12 : (!isPM && h === 12 ? 0 : h)
     const created = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, m)
+    if (created > now) created.setDate(created.getDate() - 1)
     const diff = Math.floor((now.getTime() - created.getTime()) / 60000)
-    if (diff < 0) return '—'
+    if (diff < 0 || diff > 1440) return '—'
     if (diff < 60) return `${diff}m`
     return `${Math.floor(diff / 60)}h ${diff % 60}m`
   } catch {

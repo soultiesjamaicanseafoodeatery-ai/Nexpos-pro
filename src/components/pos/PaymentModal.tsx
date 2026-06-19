@@ -35,6 +35,7 @@ export default function PaymentModal({
   surcharges, onSurchargesChange, onComplete,
 }: Props) {
   const [step, setStep]               = useState<Step>('choose')
+  const [submitting, setSubmitting]   = useState(false)
   const [tender, setTender]           = useState('')
   const [cardProcessing, setCardProcessing] = useState(false)
   const [cardDone, setCardDone]       = useState(false)
@@ -59,6 +60,7 @@ export default function PaymentModal({
 
   const reset = useCallback(() => {
     setStep('choose')
+    setSubmitting(false)
     setTender('')
     setCardProcessing(false)
     setCardDone(false)
@@ -87,7 +89,8 @@ export default function PaymentModal({
   }
 
   const completeCash = () => {
-    if (tenderNum < total) return
+    if (tenderNum < total || submitting) return
+    setSubmitting(true)
     const data = { method: 'cash', tender: tenderNum, changeDue: changeNum }
     setSuccessData(data)
     setStep('success')
@@ -102,7 +105,8 @@ export default function PaymentModal({
   }
 
   const completeCard = () => {
-    if (!cardDone) return
+    if (!cardDone || submitting) return
+    setSubmitting(true)
     const data = { method: 'card' }
     setSuccessData(data)
     setStep('success')
@@ -113,7 +117,8 @@ export default function PaymentModal({
   const splitRemaining = Math.max(0, total - splitTotal)
 
   const completeSplit = () => {
-    if (splitRemaining > 0.01) return
+    if (splitRemaining > 0.01 || submitting) return
+    setSubmitting(true)
     const payments: PaymentEntry[] = splits
       .filter(p => parseFloat(p.amount) > 0)
       .map(p => ({ method: p.method, amount: parseFloat(p.amount) }))
@@ -567,6 +572,8 @@ export default function PaymentModal({
           </div>
           <div style={{ padding: '0 18px 16px', flexShrink: 0 }}>
             <button onClick={() => {
+              if (submitting) return
+              setSubmitting(true)
               const data = { method: 'gift_card' }
               setSuccessData(data)
               setStep('success')
@@ -597,6 +604,8 @@ export default function PaymentModal({
           </div>
           <div style={{ padding: '0 18px 16px', flexShrink: 0 }}>
             <button onClick={() => {
+              if (submitting) return
+              setSubmitting(true)
               const data = { method: 'tab' }
               setSuccessData(data)
               setStep('success')

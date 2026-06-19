@@ -68,7 +68,7 @@ export default function CloseShiftWizard() {
 
   // ── Payment breakdown ─────────────────────────────────────────
   const payMap: Record<string,number> = {}
-  shiftTxs.forEach(tx => {
+  shiftTxs.filter(tx => !tx.refunded).forEach(tx => {
     const entries = (tx.payments && tx.payments.length > 0) ? tx.payments : [{ method: tx.pay, amount: tx.total }]
     entries.forEach(p => {
       const k = /cash/i.test(p.method) ? 'Cash' : /card|visa|master|debit|credit/i.test(p.method) ? 'Card' : 'Other'
@@ -135,7 +135,7 @@ export default function CloseShiftWizard() {
   useEffect(() => {
     if (step !== 'validate') return
     setVL(true)
-    const openTix = orderTickets.filter(t => t.status && !['paid','voided'].includes(t.status)).length
+    const openTix = orderTickets.filter(t => t.status == null || !['paid','voided'].includes(t.status)).length
     fetch('/api/carwash-orders')
       .then(r => r.ok ? r.json() : [])
       .then((orders: (CwOrder & {status:string})[]) => {

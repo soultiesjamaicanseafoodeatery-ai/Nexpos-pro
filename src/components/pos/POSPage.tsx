@@ -82,7 +82,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [payingTicket,  setPayingTicket]  = useState<OrderTicket | null>(null)
 
   // Split bill target (when paying one split at a time)
-  const [splitTarget,   setSplitTarget]   = useState<{ total: number; label: string } | null>(null)
+  const [splitTarget,   setSplitTarget]   = useState<{ calc: ReturnType<typeof calcCart>; label: string } | null>(null)
 
   // Void system
   const [voidTarget,      setVoidTarget]      = useState<{ item: CartItem; ticketId?: string } | null>(null)
@@ -491,7 +491,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       const mod2 = modules.length === 1 ? modules[0] : 'mixed' as const
 
       const tx: Transaction = {
-        id: Date.now(),
+        id: Date.now() + Math.floor(Math.random() * 1000),
         ts: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' + nowTime,
         mod: mod2,
         cashier:  currentUser.name,
@@ -560,7 +560,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       : `${cart.length} items (${modules.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(' + ')})`
 
     const tx: Transaction = {
-      id: Date.now(),
+      id: Date.now() + Math.floor(Math.random() * 1000),
       ts: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' + nowTime,
       mod: mod2,
       cashier:  currentUser.name,
@@ -1573,7 +1573,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 const allTables = [
                   ...(customTables?.restaurant ?? MODULE_DATA.restaurant.tables ?? []),
                   ...(customTables?.bar        ?? MODULE_DATA.bar.tables        ?? []),
-                ].filter(tbl => tbl !== t.table)
+                ].filter(tbl => tbl !== t.table && !tableOrderMap[tbl])
                 return (
                   <div key={t.id} style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: '12px 14px', marginBottom: 8 }}>
                     {/* Header */}
@@ -1657,7 +1657,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       <PaymentModal
         isOpen={showPayment}
         onClose={() => { setShowPayment(false); setPayingTicket(null); setShowDetails(false); setGratuityOverride(false); setSurcharges([]) }}
-        calc={splitTarget ? calcCart(payingTicket ? payingTicket.items : cart, { orderType: (payingTicket?.orderType ?? cartOrderType) as OrderType, ...(payingTicket ? { manualDiscPct: payingTicket.discPct, manualDiscFlat: payingTicket.discFlat } : discOpts), gratuityPct, surcharges }) : payCalc}
+        calc={splitTarget ? splitTarget.calc : payCalc}
         gratuityPct={gratuityPct}
         onGratuityChange={pct => { setGratuityPct(pct); setGratuityOverride(true) }}
         isManager={isManager}
@@ -1667,7 +1667,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         customerName={payingTicket?.customerName ?? customerName}
         surcharges={surcharges}
         onSurchargesChange={setSurcharges}
-        onComplete={payData => completeCheckout(payData)}
+        onComplete={payData => completeCheckout(payData, splitTarget?.calc)}
       />
 
       {/* ── Ticket Modal ── */}
@@ -1691,10 +1691,19 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         sym={sym}
         onPaySplit={split => {
           setShowSplitBill(false)
-          setSplitTarget({ total: split.calc.total, label: split.label })
+          setSplitTarget({ calc: split.calc, label: split.label })
           setShowPayment(true)
         }}
         onPayAll={() => { setShowSplitBill(false); setShowPayment(true) }}
+        onAllPaid={() => {
+          if (payingTicket) {
+            dispatch({ type: 'UPDATE_ORDER_TICKET', id: payingTicket.id, patch: { status: 'paid' } })
+            setPayingTicket(null)
+          }
+          setShowSplitBill(false)
+          setSplitTarget(null)
+          dispatch({ type: 'CLEAR_CART' })
+        }}
       />
 
       {/* ── Void Item Modal ── */}

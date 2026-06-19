@@ -19,12 +19,13 @@ interface Props {
   sym: string
   onPaySplit: (split: SplitBill) => void
   onPayAll: () => void
+  onAllPaid?: () => void
 }
 
 type Mode = 'equal' | 'items'
 
 export default function SplitBillModal({
-  isOpen, onClose, cart, orderType, gratuityPct, sym, onPaySplit, onPayAll,
+  isOpen, onClose, cart, orderType, gratuityPct, sym, onPaySplit, onPayAll, onAllPaid,
 }: Props) {
   const [mode, setMode]         = useState<Mode>('equal')
   const [numSplits, setNumSplits] = useState(2)
@@ -124,7 +125,6 @@ export default function SplitBillModal({
                       </div>
                       {!paid ? (
                         <button onClick={() => {
-                          // Build a proxy calc for this bill
                           const splitCalc: OrderCalc = {
                             sub: equalSub, disc: totalCalc.disc / numSplits, memberDiscAmt: 0, manualDiscAmt: totalCalc.disc / numSplits,
                             taxableBase: totalCalc.taxableBase / numSplits, gct: totalCalc.gct / numSplits, gctRate: totalCalc.gctRate, gctApplies: totalCalc.gctApplies,
@@ -132,8 +132,22 @@ export default function SplitBillModal({
                             gratuity: equalGrat, deliveryFee: 0, legacyTax: 0, surchargeTotal: 0,
                             total: equalAmount, orderType,
                           }
-                          onPaySplit({ id: `bill-${i}`, label: `Bill ${i + 1} of ${numSplits}`, items: cart, calc: splitCalc })
-                          setPaidSplits(prev => { const next = new Set(Array.from(prev)); next.add(i); return next })
+                          const splitItem: CartItem = {
+                            id: crypto.randomUUID(),
+                            itemId: `split-${i}`,
+                            name: `Bill ${i + 1} / ${numSplits}`,
+                            price: equalAmount,
+                            qty: 1,
+                            addons: [],
+                            module: cart[0]?.module ?? 'restaurant',
+                          }
+                          onPaySplit({ id: `bill-${i}`, label: `Bill ${i + 1} of ${numSplits}`, items: [splitItem], calc: splitCalc })
+                          setPaidSplits(prev => {
+                            const next = new Set(Array.from(prev))
+                            next.add(i)
+                            if (next.size === numSplits && onAllPaid) onAllPaid()
+                            return next
+                          })
                         }} style={{ width: '100%', padding: '8px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
                           Pay This Bill
                         </button>

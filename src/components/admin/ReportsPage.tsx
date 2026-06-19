@@ -44,8 +44,15 @@ export default function ReportsPage() {
   // ── Menu breakdown ─────────────────────────────────────────
   const itemCount: Record<string, { count: number; mod: string }> = {}
   txs.forEach(t => {
-    if (!itemCount[t.item]) itemCount[t.item] = { count: 0, mod: t.mod }
-    itemCount[t.item].count++
+    if (t.items && t.items.length > 0) {
+      t.items.filter(ci => !ci.voided).forEach(ci => {
+        if (!itemCount[ci.name]) itemCount[ci.name] = { count: 0, mod: ci.module ?? t.mod }
+        itemCount[ci.name].count += ci.qty
+      })
+    } else {
+      if (!itemCount[t.item]) itemCount[t.item] = { count: 0, mod: t.mod }
+      itemCount[t.item].count++
+    }
   })
   const topFood  = Object.entries(itemCount).filter(([,v]) => v.mod === 'restaurant').sort((a,b) => b[1].count - a[1].count).slice(0, 10)
   const topDrinks = Object.entries(itemCount).filter(([,v]) => v.mod === 'bar').sort((a,b) => b[1].count - a[1].count).slice(0, 10)

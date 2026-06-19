@@ -29,7 +29,7 @@ import CloseShiftWizard from '@/components/admin/CloseShiftWizard'
 
 // Roles allowed per page — must match Sidebar NAV_ITEMS
 const PAGE_ROLES: Record<string, string[]> = {
-  pos:          ['admin','manager','supervisor','cashier','bartender','attendant'],
+  pos:          ['admin','manager','supervisor','cashier','server','bartender','attendant'],
   tables:       ['admin','manager','supervisor','cashier'],
   transactions: ['admin','manager','supervisor','cashier','bartender','attendant'],
   reports:      ['admin','manager'],

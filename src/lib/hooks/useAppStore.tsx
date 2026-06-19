@@ -206,7 +206,7 @@ function reducer(state: AppState, action: Action): AppState {
         },
       }
     case 'ADD_TRANSACTION': {
-      const transactions = [action.tx, ...state.transactions]
+      const transactions = [action.tx, ...state.transactions].slice(0, 5000)
       storage.set('tx', transactions)
       const currentShift = state.currentShift
         ? { ...state.currentShift, txCount: state.currentShift.txCount + 1, revenue: state.currentShift.revenue + action.tx.total }
@@ -360,7 +360,8 @@ function reducer(state: AppState, action: Action): AppState {
           : s
       )
       storage.set('shifts', shifts)
-      return { ...state, currentShift: null, shifts }
+      storage.set('held_orders', [])
+      return { ...state, currentShift: null, shifts, heldOrders: [] }
     }
     default:
       return state

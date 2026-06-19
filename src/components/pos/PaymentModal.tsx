@@ -255,7 +255,9 @@ export default function PaymentModal({
   }
 
   // ── Surcharge panel ───────────────────────────────────────────
-  const SurchargePanel = () => (
+  // Must be a JSX variable (not a nested component) so React doesn't remount it
+  // on every keystroke and steal focus from the description input.
+  const surchargePanel = (
     <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: surcharges.length > 0 ? 8 : 0 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Surcharges</span>
@@ -397,7 +399,7 @@ export default function PaymentModal({
           <div style={{ flex: 1, overflowY: 'auto' }}>
             <OrderSummary />
             <GratuityPanel />
-            <SurchargePanel />
+            {surchargePanel}
             <div style={{ padding: '16px 18px' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Select Payment Method</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>

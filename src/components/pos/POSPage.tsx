@@ -6,6 +6,7 @@ import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData, Hel
 import { VOID_REASON_LABELS } from '@/types'
 import { calcCart, fmt } from '@/lib/utils/tax'
 import { buildCustomerReceipt, buildKitchenTicket, buildBarTicket, buildCarwashWorkOrder, buildVoidTicket, printTicket, smartPrint } from '@/lib/utils/ticketPrinter'
+import { qzOpenDrawer } from '@/lib/utils/qzTray'
 import OutsideOrders from './OutsideOrders'
 import PaymentModal from './PaymentModal'
 import TicketModal from './TicketModal'
@@ -536,6 +537,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       setLastTx(tx)
       setLastTicket(paidTicket)
       setSplitTarget(null)
+      if (payData.method === 'cash' && biz.printers?.drawerEnabled && biz.printers?.receipt)
+        qzOpenDrawer(biz.printers.receipt)
       audit('PAYMENT', `Order #${payingTicket.orderNum} — ${fmt(finalCalc.total, sym)} · ${payMethodLabel}`, 'success')
       toast(`Order #${payingTicket.orderNum} paid — ${fmt(finalCalc.total, sym)}`, 'success')
       setTimeout(() => setShowTicket(true), 200)
@@ -653,6 +656,9 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       const receiptHTML = buildCustomerReceipt(tx, biz, { width: pw })
       smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw, true)
     }
+    // Open cash drawer after cash payment
+    if (payData.method === 'cash' && biz.printers?.drawerEnabled && biz.printers?.receipt)
+      qzOpenDrawer(biz.printers.receipt)
 
     dispatch({ type: 'ADD_TRANSACTION', tx })
     dispatch({ type: 'CLEAR_CART' })

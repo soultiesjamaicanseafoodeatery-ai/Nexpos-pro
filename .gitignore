@@ -39,3 +39,9 @@ next-env.d.ts
 
 # playwright test screenshots
 *-shots/
+
+# electron build output
+/dist-electron/
+
+# debug screenshots from tests
+*.png

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>NexPOS Pro — Startup Error</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0f1117; color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100vh; gap: 16px;
+  }
+  h1 { font-size: 20px; color: #ef4444; }
+  p  { font-size: 13px; color: #64748b; max-width: 400px; text-align: center; line-height: 1.6; }
+  button {
+    margin-top: 8px; padding: 10px 28px; border-radius: 8px;
+    background: #f97316; color: #fff; border: none;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <h1>Failed to start NexPOS Pro</h1>
+  <p>The internal server could not start. Try closing and reopening the app. If the problem persists, reinstall NexPOS Pro.</p>
+  <button onclick="window.location.reload()">Retry</button>
+</body>
+</html>

@@ -1,0 +1,62 @@
+appId: com.soulties.nexpos-pro
+productName: NexPOS Pro
+copyright: "Copyright © 2024 Soulties Jamaican Seafood Eatery"
+
+# Electron entry point
+main: electron/main.js
+
+directories:
+  output: dist-electron
+  buildResources: electron
+
+# Files included in the app package
+files:
+  - electron/**
+  - package.json
+  - "!node_modules/**"
+  - "!src/**"
+  - "!test*"
+  - "!*.mjs"
+  - "!*.md"
+  - "!dist-electron/**"
+
+# Next.js standalone build goes into resources (outside asar for Node.js access)
+extraResources:
+  - from: .next/standalone
+    to: app/.next/standalone
+  - from: .next/static
+    to: app/.next/standalone/.next/static
+  - from: public
+    to: app/.next/standalone/public
+
+# Disable asar for resources so Next.js can read its own files
+asar: true
+asarUnpack:
+  - "**/*.node"
+  - "**/node_modules/sharp/**"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: electron/icon.ico
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: NexPOS Pro
+  installerIcon: electron/icon.ico
+  uninstallerIcon: electron/icon.ico
+  installerHeaderIcon: electron/icon.ico
+  differentialPackage: false
+
+portable:
+  artifactName: "NexPOS-Pro-${version}-portable.exe"
+
+publish: null

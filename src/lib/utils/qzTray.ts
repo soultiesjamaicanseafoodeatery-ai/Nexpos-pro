@@ -99,6 +99,27 @@ export async function qzGetPrinters(): Promise<string[]> {
   }
 }
 
+// Send ESC/POS cash drawer kick command to the receipt printer.
+// ESC p 0 25 250 — pulse on drawer port 0.
+export async function qzOpenDrawer(printerName: string): Promise<boolean> {
+  if (!printerName.trim()) return false
+  try {
+    const ok = await qzConnect()
+    if (!ok) return false
+    const qz = getQZ()
+    if (!qz) return false
+
+    const config = qz.configs.create(printerName)
+    // Build base64-encoded ESC/POS drawer kick: 1B 70 00 19 FA
+    const bytes = [0x1B, 0x70, 0x00, 0x19, 0xFA]
+    const b64   = btoa(String.fromCharCode(...bytes))
+    await qz.print(config, [{ type: 'raw', format: 'command', flavor: 'base64', data: b64 }])
+    return true
+  } catch {
+    return false
+  }
+}
+
 // Print HTML to a named printer via QZ Tray.
 // Returns true if printed successfully, false if QZ is unavailable (caller should fall back).
 export async function qzPrint(printerName: string, html: string, width: 58 | 80 = 80): Promise<boolean> {

@@ -45,8 +45,17 @@ export default function SettingsPage() {
     setDirty(true)
   }
   const setPrinters = (patch: Partial<NonNullable<BusinessConfig['printers']>>) => {
-    setForm(f => ({ ...f, printers: { receipt: '', kitchen: '', bar: '', width: 80, autoPrint: false, ...f.printers, ...patch } }))
+    setForm(f => ({ ...f, printers: { receipt: '', kitchen: '', bar: '', width: 80, autoPrint: false, drawerEnabled: false, ...f.printers, ...patch } }))
     setDirty(true)
+  }
+
+  const testDrawer = async () => {
+    if (!form.printers?.receipt?.trim()) { setPrinterError('Set a Receipt Printer name first — the cash drawer is wired through it.'); return }
+    if (qzStatus !== 'connected') { setPrinterError('QZ Tray not connected — start QZ Tray first.'); return }
+    const { qzOpenDrawer } = await import('@/lib/utils/qzTray')
+    const ok = await qzOpenDrawer(form.printers.receipt.trim())
+    if (!ok) setPrinterError('Drawer kick failed — check that QZ Tray is running and the receipt printer name is correct.')
+    else setPrinterError('')
   }
 
   // QZ Tray state
@@ -407,6 +416,10 @@ export default function SettingsPage() {
               <input type="checkbox" checked={form.printers?.autoPrint ?? false} onChange={e => setPrinters({ autoPrint: e.target.checked })} />
               Auto-print receipt after payment (skips preview modal)
             </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--txt2)', marginTop: 10 }}>
+              <input type="checkbox" checked={form.printers?.drawerEnabled ?? false} onChange={e => setPrinters({ drawerEnabled: e.target.checked })} />
+              Open cash drawer automatically after cash payments
+            </label>
           </div>
 
           {/* Test prints */}
@@ -417,7 +430,7 @@ export default function SettingsPage() {
                 ? 'QZ Tray connected — prints go silently to the named printer.'
                 : 'QZ Tray not connected — buttons will open a browser print dialog instead.'}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
               <button onClick={() => testPrint('Receipt Test', `==== PAY / RECEIPT ====\n\n   TEST PRINT OK\n   ${new Date().toLocaleTimeString()}\n\n=======================`, form.printers?.receipt)} style={{
                 padding: '12px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 12, cursor: 'pointer',
                 border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
@@ -430,6 +443,10 @@ export default function SettingsPage() {
                 padding: '12px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 12, cursor: 'pointer',
                 border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
               }}>Test Bar Printer</button>
+              <button onClick={testDrawer} style={{
+                padding: '12px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                border: '1.5px solid var(--grn)', background: 'var(--grn-bg)', color: 'var(--grn)',
+              }}>Open Cash Drawer</button>
             </div>
           </div>
         </>

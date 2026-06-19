@@ -195,64 +195,61 @@ export default function PaymentModal({
   )
 
   // ── Gratuity panel (manager-controlled, dine-in or when gratuity active) ─
-  const GratuityPanel = () => {
-    const show = calc.orderType === 'dine-in' || gratuityPct > 0
-    if (!show) return null
-    return (
-      <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isManager ? 8 : 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-            Gratuity
-          </span>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: gratuityPct > 0 ? 'var(--txt2)' : 'var(--txt3)', fontWeight: 600 }}>
-            {gratuityPct > 0 ? `${gratuityPct}% · ${fmtN(calc.gratuity)}` : 'None'}
-          </span>
-        </div>
-        {isManager && !showCustomGrat && (
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-            {gratuityPct > 0 && (
-              <button onClick={() => onGratuityChange(0)} style={{
-                padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                border: '1.5px solid #ef444444', background: '#ef444411', color: '#ef4444',
-              }}>Remove</button>
-            )}
-            {([10, 15, 18] as const).map(pct => (
-              <button key={pct} onClick={() => onGratuityChange(pct)} style={{
-                padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                border: `1.5px solid ${gratuityPct === pct ? 'var(--blue)' : 'var(--bdr)'}`,
-                background: gratuityPct === pct ? 'var(--blue-bg, #1e40af22)' : 'var(--surf)',
-                color: gratuityPct === pct ? 'var(--blue)' : 'var(--txt2)',
-              }}>{pct}%</button>
-            ))}
-            <button onClick={() => { setCustomGratInput(String(gratuityPct || '')); setShowCustomGrat(true) }} style={{
-              padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-              border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
-            }}>Custom</button>
-          </div>
-        )}
-        {isManager && showCustomGrat && (
-          <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop: 4 }}>
-            <input
-              type="number" min={0} max={50} value={customGratInput}
-              onChange={e => setCustomGratInput(e.target.value)}
-              placeholder="e.g. 12"
-              autoFocus
-              style={{ flex: 1, background: 'var(--surf2)', border: '1.5px solid var(--blue)', borderRadius: 'var(--r)', padding: '6px 10px', fontSize: 13, color: 'var(--txt)' }}
-            />
-            <span style={{ fontSize: 12, color: 'var(--txt3)' }}>%</span>
-            <button onClick={() => { const v = parseFloat(customGratInput); if (v >= 0) onGratuityChange(v); setShowCustomGrat(false) }} style={{
-              padding: '6px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              background: 'var(--blue)', color: '#fff', border: 'none',
-            }}>Apply</button>
-            <button onClick={() => setShowCustomGrat(false)} style={{
-              padding: '6px 10px', borderRadius: 'var(--r)', fontSize: 12, cursor: 'pointer',
-              background: 'transparent', color: 'var(--txt3)', border: '1px solid var(--bdr)',
-            }}>✕</button>
-          </div>
-        )}
+  // Must be a JSX variable (not a nested component) — same reason as surchargePanel above.
+  const gratuityPanel = (calc.orderType === 'dine-in' || gratuityPct > 0) ? (
+    <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isManager ? 8 : 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+          Gratuity
+        </span>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: gratuityPct > 0 ? 'var(--txt2)' : 'var(--txt3)', fontWeight: 600 }}>
+          {gratuityPct > 0 ? `${gratuityPct}% · ${fmtN(calc.gratuity)}` : 'None'}
+        </span>
       </div>
-    )
-  }
+      {isManager && !showCustomGrat && (
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {gratuityPct > 0 && (
+            <button onClick={() => onGratuityChange(0)} style={{
+              padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              border: '1.5px solid #ef444444', background: '#ef444411', color: '#ef4444',
+            }}>Remove</button>
+          )}
+          {([10, 15, 18] as const).map(pct => (
+            <button key={pct} onClick={() => onGratuityChange(pct)} style={{
+              padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              border: `1.5px solid ${gratuityPct === pct ? 'var(--blue)' : 'var(--bdr)'}`,
+              background: gratuityPct === pct ? 'var(--blue-bg, #1e40af22)' : 'var(--surf)',
+              color: gratuityPct === pct ? 'var(--blue)' : 'var(--txt2)',
+            }}>{pct}%</button>
+          ))}
+          <button onClick={() => { setCustomGratInput(String(gratuityPct || '')); setShowCustomGrat(true) }} style={{
+            padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+            border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
+          }}>Custom</button>
+        </div>
+      )}
+      {isManager && showCustomGrat && (
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop: 4 }}>
+          <input
+            type="number" min={0} max={50} value={customGratInput}
+            onChange={e => setCustomGratInput(e.target.value)}
+            placeholder="e.g. 12"
+            autoFocus
+            style={{ flex: 1, background: 'var(--surf2)', border: '1.5px solid var(--blue)', borderRadius: 'var(--r)', padding: '6px 10px', fontSize: 13, color: 'var(--txt)' }}
+          />
+          <span style={{ fontSize: 12, color: 'var(--txt3)' }}>%</span>
+          <button onClick={() => { const v = parseFloat(customGratInput); if (v >= 0) onGratuityChange(v); setShowCustomGrat(false) }} style={{
+            padding: '6px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            background: 'var(--blue)', color: '#fff', border: 'none',
+          }}>Apply</button>
+          <button onClick={() => setShowCustomGrat(false)} style={{
+            padding: '6px 10px', borderRadius: 'var(--r)', fontSize: 12, cursor: 'pointer',
+            background: 'transparent', color: 'var(--txt3)', border: '1px solid var(--bdr)',
+          }}>✕</button>
+        </div>
+      )}
+    </div>
+  ) : null
 
   // ── Surcharge panel ───────────────────────────────────────────
   // Must be a JSX variable (not a nested component) so React doesn't remount it
@@ -398,7 +395,7 @@ export default function PaymentModal({
           {/* Scrollable content */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             <OrderSummary />
-            <GratuityPanel />
+            {gratuityPanel}
             {surchargePanel}
             <div style={{ padding: '16px 18px' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Select Payment Method</div>

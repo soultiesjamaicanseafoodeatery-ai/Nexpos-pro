@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     addons:        body.addons ?? [],
     addons_total:  Number(body.addonsTotal ?? 0),
     notes:         body.notes ?? '',
-    status:        'waiting',
+    status:        'completed',
     payment_method:body.paymentMethod ?? 'cash',
     total:         Number(body.total ?? 0),
     employee_name: body.employeeName ?? '',

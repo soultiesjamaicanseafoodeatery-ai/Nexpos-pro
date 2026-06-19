@@ -2,56 +2,58 @@
 
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import type { CwService, CwAddon, CwVehicle } from './CarWashFlow'
+import type { CwService, CwAddon } from './CarWashFlow'
+
+const fmtJ = (n: number) =>
+  'J$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+type PayMethod = 'cash' | 'card' | 'mixed'
+const VEHICLE_TYPES = ['Car', 'SUV', 'Pickup', 'Van', 'Truck'] as const
 
 interface Props {
   service: CwService
   addons: CwAddon[]
-  vehicle: CwVehicle
   onBack: () => void
   onComplete: () => void
 }
 
-const fmtJMD = (n: number) =>
-  'J$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const inp: React.CSSProperties = {
+  width: '100%', background: 'var(--surf2)', border: '1.5px solid var(--bdr2)',
+  borderRadius: 'var(--r2)', padding: '10px 12px', fontSize: 14, color: 'var(--txt)',
+  boxSizing: 'border-box', outline: 'none',
+}
 
-type PayMethod = 'cash' | 'card' | 'mixed'
-
-const PAY_OPTIONS: { id: PayMethod; label: string; icon: string }[] = [
-  { id: 'cash',  label: 'Cash',  icon: '💵' },
-  { id: 'card',  label: 'Card',  icon: '💳' },
-  { id: 'mixed', label: 'Mixed', icon: '🔄' },
-]
-
-export default function CarWashPayment({ service, addons, vehicle, onBack, onComplete }: Props) {
+export default function CarWashPayment({ service, addons, onBack, onComplete }: Props) {
   const { state } = useApp()
-  const { currentUser } = state
-  const [payMethod, setPayMethod] = useState<PayMethod>('cash')
-  const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState<{ ticketNo: string; total: number } | null>(null)
-  const [error, setError] = useState('')
+  const { currentUser, biz } = state
+
+  const [payMethod,    setPayMethod]    = useState<PayMethod>('cash')
+  const [plate,        setPlate]        = useState('')
+  const [vehicleType,  setVehicleType]  = useState('Car')
+  const [customerName, setCustomerName] = useState('')
+  const [phone,        setPhone]        = useState('')
+  const [saving,       setSaving]       = useState(false)
+  const [error,        setError]        = useState('')
+  const [ticket,       setTicket]       = useState<string | null>(null)
 
   const addonTotal = addons.reduce((s, a) => s + a.price, 0)
-  const total = service.price + addonTotal
+  const total      = service.price + addonTotal
 
+  // ── Complete payment ─────────────────────────────────────────
   const complete = async () => {
-    setSaving(true)
-    setError('')
+    setSaving(true); setError('')
     try {
       const res = await fetch('/api/carwash-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerName: vehicle.customerName,
-          phone: vehicle.phone,
-          vehicleType: vehicle.vehicleType,
-          plate: vehicle.plate,
-          serviceId: service.id,
-          serviceName: service.name,
+          customerName, phone, vehicleType,
+          plate: plate.trim().toUpperCase(),
+          serviceId:    service.id,
+          serviceName:  service.name,
           servicePrice: service.price,
           addons: addons.map(a => ({ id: a.id, name: a.name, price: a.price })),
-          addonsTotal: addonTotal,
-          notes: vehicle.notes,
+          addonsTotal:  addonTotal,
           paymentMethod: payMethod,
           total,
           employeeName: currentUser?.name ?? '',
@@ -59,10 +61,10 @@ export default function CarWashPayment({ service, addons, vehicle, onBack, onCom
       })
       if (!res.ok) {
         const e = await res.json()
-        throw new Error(e.error?.message ?? JSON.stringify(e.error) ?? 'Failed to save order')
+        throw new Error(e.error?.message ?? JSON.stringify(e.error) ?? 'Failed to save')
       }
       const order = await res.json()
-      setDone({ ticketNo: order.ticket_no, total: order.total })
+      setTicket(order.ticket_no)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -70,37 +72,100 @@ export default function CarWashPayment({ service, addons, vehicle, onBack, onCom
     }
   }
 
-  // ── Success screen ──────────────────────────────────────────────────────────
-  if (done) {
+  // ── Print receipt ────────────────────────────────────────────
+  const printReceipt = () => {
+    const bizName = biz?.name ?? 'Car Wash'
+    const rows = [
+      plate        ? `<div class="row"><span>Plate</span><span>${plate}</span></div>` : '',
+      vehicleType  ? `<div class="row"><span>Vehicle</span><span>${vehicleType}</span></div>` : '',
+      customerName ? `<div class="row"><span>Customer</span><span>${customerName}</span></div>` : '',
+      phone        ? `<div class="row"><span>Phone</span><span>${phone}</span></div>` : '',
+    ].filter(Boolean).join('')
+
+    const html = `<!DOCTYPE html><html><head><title>${ticket}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Courier New',monospace;font-size:12px;padding:16px;max-width:300px}
+  .c{text-align:center}.biz{font-size:15px;font-weight:700;margin-bottom:2px}
+  .d{border-top:1px dashed #000;margin:8px 0}.row{display:flex;justify-content:space-between;margin:3px 0}
+  .ticket{font-size:20px;font-weight:700;letter-spacing:2px;margin:8px 0}
+  .total{font-size:15px;font-weight:700}.cap{text-transform:capitalize}
+</style></head><body>
+<div class="c"><div class="biz">${bizName}</div>
+<div>${new Date().toLocaleString()}</div>
+<div class="ticket">${ticket}</div></div>
+<div class="d"></div>
+${rows}
+${rows ? '<div class="d"></div>' : ''}
+<div class="row"><span>${service.name}</span><span>${fmtJ(service.price)}</span></div>
+${addons.map(a => `<div class="row"><span>+ ${a.name}</span><span>${fmtJ(a.price)}</span></div>`).join('')}
+<div class="d"></div>
+<div class="row total"><span>TOTAL</span><span>${fmtJ(total)}</span></div>
+<div class="row"><span>Payment</span><span class="cap">${payMethod}</span></div>
+${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.name}</span></div>` : ''}
+<div class="d"></div>
+<div class="c" style="margin-top:8px">Thank you!</div>
+</body></html>`
+
+    const w = window.open('', '_blank', 'width=340,height=520')
+    if (!w) return
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 280)
+  }
+
+  // ── Success / receipt screen ─────────────────────────────────
+  if (ticket) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 18, padding: 48, background: 'var(--bg)', textAlign: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 20, padding: 40, background: 'var(--bg)', textAlign: 'center' }}>
         <div style={{ fontSize: 72 }}>✅</div>
-        <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--txt)' }}>Payment Complete!</div>
-        <div style={{ fontFamily: 'monospace', fontSize: 22, fontWeight: 900, color: 'var(--blue)', background: 'var(--blue-bg)', padding: '12px 32px', borderRadius: 'var(--r2)', border: '2px solid rgba(79,142,247,.3)', letterSpacing: '1px' }}>
-          {done.ticketNo}
+        <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--txt)' }}>Payment Complete!</div>
+
+        {/* Ticket badge */}
+        <div style={{ fontFamily: 'var(--mono)', fontSize: 24, fontWeight: 900, color: 'var(--blue)', background: 'var(--blue-bg)', padding: '10px 32px', borderRadius: 'var(--r2)', border: '2px solid rgba(79,142,247,.3)', letterSpacing: '2px' }}>
+          {ticket}
         </div>
-        <div style={{ fontSize: 15, color: 'var(--txt2)', lineHeight: 1.7 }}>
-          <strong>{vehicle.plate}</strong> · {vehicle.vehicleType}<br />
-          {service.name}{addons.length > 0 ? ` + ${addons.length} add-on${addons.length !== 1 ? 's' : ''}` : ''}<br />
-          <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--txt)', fontFamily: 'monospace' }}>{fmtJMD(done.total)}</span>
-          {' · '}
-          <span style={{ textTransform: 'capitalize' }}>{payMethod}</span>
+
+        {/* Receipt card */}
+        <div style={{ width: '100%', maxWidth: 400, background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', textAlign: 'left' }}>
+          {[
+            ...(plate        ? [{ l: 'Plate',    v: plate }]          : []),
+            ...(vehicleType  ? [{ l: 'Vehicle',  v: vehicleType }]    : []),
+            ...(customerName ? [{ l: 'Customer', v: customerName }]   : []),
+            { l: service.name, v: fmtJ(service.price) },
+            ...addons.map(a => ({ l: `+ ${a.name}`, v: fmtJ(a.price) })),
+            { l: 'Total',      v: fmtJ(total),    bold: true },
+            { l: 'Payment',    v: payMethod[0].toUpperCase() + payMethod.slice(1) },
+            ...(currentUser?.name ? [{ l: 'Staff', v: currentUser.name }] : []),
+          ].map((row, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', borderBottom: '1px solid var(--bdr2)' }}>
+              <span style={{ fontSize: 13, color: 'var(--txt3)' }}>{row.l}</span>
+              <span style={{ fontSize: 13, fontWeight: row.bold ? 900 : 600, color: row.bold ? 'var(--grn)' : 'var(--txt)', fontFamily: row.bold ? 'var(--mono)' : undefined }}>{row.v}</span>
+            </div>
+          ))}
         </div>
-        {vehicle.notes && <div style={{ fontSize: 13, color: '#f97316', background: 'rgba(249,115,22,.08)', padding: '6px 16px', borderRadius: 'var(--r)' }}>{vehicle.notes}</div>}
-        <div style={{ fontSize: 13, color: 'var(--txt3)', marginTop: 4 }}>Vehicle added to wash queue.</div>
-        <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-          <button onClick={onComplete} style={{ padding: '14px 36px', borderRadius: 'var(--r2)', fontSize: 15, fontWeight: 800, background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer' }}>
-            + New Wash
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+          <button
+            onClick={printReceipt}
+            style={{ padding: '12px 28px', borderRadius: 'var(--r2)', fontSize: 14, fontWeight: 700, background: 'var(--surf)', color: 'var(--txt)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}
+          >
+            🖨 Print Receipt
           </button>
-          <button onClick={onComplete} style={{ padding: '14px 36px', borderRadius: 'var(--r2)', fontSize: 15, fontWeight: 800, background: 'var(--surf2)', color: 'var(--txt)', border: '1px solid var(--bdr)', cursor: 'pointer' }}>
-            Dashboard
+          <button
+            onClick={onComplete}
+            style={{ padding: '12px 32px', borderRadius: 'var(--r2)', fontSize: 14, fontWeight: 800, background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer' }}
+          >
+            + New Wash
           </button>
         </div>
       </div>
     )
   }
 
-  // ── Payment screen ──────────────────────────────────────────────────────────
+  // ── Payment screen ───────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
 
@@ -109,71 +174,95 @@ export default function CarWashPayment({ service, addons, vehicle, onBack, onCom
         <button onClick={onBack} style={{ padding: '8px 14px', borderRadius: 'var(--r2)', fontSize: 13, fontWeight: 700, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer' }}>
           ← Back
         </button>
-        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)' }}>Payment</div>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--txt)' }}>Payment</div>
+          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 1 }}>{service.name}{addons.length > 0 ? ` + ${addons.length} add-on${addons.length !== 1 ? 's' : ''}` : ''}</div>
+        </div>
+        <div style={{ marginLeft: 'auto', fontSize: 22, fontWeight: 900, color: 'var(--blue)', fontFamily: 'var(--mono)' }}>{fmtJ(total)}</div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', gap: 24, alignItems: 'flex-start', maxWidth: 860, margin: '0 auto', width: '100%' }}>
+      {/* Main — two columns */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
         {/* Left: Order summary */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-          {/* Vehicle card */}
-          <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: '16px 18px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>Vehicle</div>
-            <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--txt)', fontFamily: 'monospace', letterSpacing: '3px' }}>{vehicle.plate}</div>
-            <div style={{ fontSize: 13, color: 'var(--txt2)', marginTop: 4 }}>
-              {vehicle.vehicleType}
-              {vehicle.customerName && ` · ${vehicle.customerName}`}
-              {vehicle.phone && ` · ${vehicle.phone}`}
-            </div>
-            {vehicle.notes && (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#f97316', fontWeight: 600 }}>{vehicle.notes}</div>
-            )}
+        <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 0, background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+          <div style={{ padding: '10px 16px', background: 'var(--bg2)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid var(--bdr)' }}>
+            Order Summary
           </div>
-
-          {/* Order lines */}
-          <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
-            <div style={{ padding: '10px 18px', background: 'var(--bg2)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid var(--bdr)' }}>Order Summary</div>
-
-            {/* Package */}
-            <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: addons.length > 0 ? '1px solid var(--bdr)' : undefined }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--txt)' }}>{service.name}</div>
-                {service.vehicle_type && <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>{service.vehicle_type}</div>}
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 800, fontFamily: 'monospace', color: 'var(--txt)' }}>{fmtJMD(service.price)}</div>
+          <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: addons.length > 0 ? '1px solid var(--bdr)' : undefined }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--txt)' }}>{service.name}</div>
+              {service.vehicle_type && service.vehicle_type !== 'All' && (
+                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>{service.vehicle_type}</div>
+              )}
             </div>
-
-            {/* Add-ons */}
-            {addons.map((a, i) => (
-              <div key={a.id} style={{ padding: '10px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: i < addons.length - 1 ? '1px solid var(--bdr)' : '1px solid var(--bdr)' }}>
-                <div style={{ fontSize: 13, color: 'var(--txt2)' }}>+ {a.name}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: 'var(--txt2)' }}>{fmtJMD(a.price)}</div>
-              </div>
-            ))}
-
-            {/* Total */}
-            <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--blue-bg)' }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>TOTAL</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--blue)', fontFamily: 'monospace' }}>{fmtJMD(total)}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'var(--mono)', color: 'var(--txt)' }}>{fmtJ(service.price)}</div>
+          </div>
+          {addons.map((a, i) => (
+            <div key={a.id} style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: i < addons.length - 1 ? '1px solid var(--bdr)' : '1px solid var(--bdr)' }}>
+              <div style={{ fontSize: 13, color: 'var(--txt2)' }}>+ {a.name}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--txt2)' }}>{fmtJ(a.price)}</div>
             </div>
+          ))}
+          <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--blue-bg)', borderTop: '1px solid var(--bdr)' }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>TOTAL</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--blue)', fontFamily: 'var(--mono)' }}>{fmtJ(total)}</div>
           </div>
         </div>
 
-        {/* Right: Payment method */}
-        <div style={{ width: 260, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Right: Customer + Payment method */}
+        <div style={{ flex: '0 0 280px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Customer details — all optional */}
           <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
-            <div style={{ padding: '10px 18px', background: 'var(--bg2)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid var(--bdr)' }}>Payment Method</div>
-            {PAY_OPTIONS.map(({ id, label, icon }) => (
+            <div style={{ padding: '10px 16px', background: 'var(--bg2)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid var(--bdr)' }}>
+              Customer Details — Optional
+            </div>
+            <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Plate */}
+              <input
+                type="text"
+                value={plate}
+                onChange={e => setPlate(e.target.value.toUpperCase())}
+                placeholder="License Plate (e.g. ABC-1234)"
+                style={{ ...inp, fontFamily: 'var(--mono)', fontWeight: 700, letterSpacing: '2px', fontSize: 15 }}
+              />
+              {/* Vehicle type */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {VEHICLE_TYPES.map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setVehicleType(t)}
+                    style={{ padding: '6px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '2px solid', borderColor: vehicleType === t ? 'var(--blue)' : 'var(--bdr)', background: vehicleType === t ? 'var(--blue-bg)' : 'var(--surf2)', color: vehicleType === t ? 'var(--blue)' : 'var(--txt2)', transition: 'all .12s' }}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              {/* Name */}
+              <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer Name" style={inp} />
+              {/* Phone */}
+              <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone Number" style={inp} />
+            </div>
+          </div>
+
+          {/* Payment method */}
+          <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 16px', background: 'var(--bg2)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid var(--bdr)' }}>
+              Payment Method
+            </div>
+            {(['cash', 'card', 'mixed'] as PayMethod[]).map(m => (
               <div
-                key={id}
-                onClick={() => setPayMethod(id)}
-                style={{ padding: '15px 18px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', borderBottom: '1px solid var(--bdr)', background: payMethod === id ? 'var(--blue-bg)' : 'transparent', transition: 'background .1s' }}
+                key={m}
+                onClick={() => setPayMethod(m)}
+                style={{ padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', borderBottom: '1px solid var(--bdr)', background: payMethod === m ? 'var(--blue-bg)' : 'transparent', transition: 'background .1s' }}
               >
-                <div style={{ width: 20, height: 20, borderRadius: '50%', border: `2.5px solid ${payMethod === id ? 'var(--blue)' : 'var(--bdr2)'}`, background: payMethod === id ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {payMethod === id && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />}
+                <div style={{ width: 20, height: 20, borderRadius: '50%', border: `2.5px solid ${payMethod === m ? 'var(--blue)' : 'var(--bdr2)'}`, background: payMethod === m ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {payMethod === m && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />}
                 </div>
-                <span style={{ fontSize: 14, fontWeight: 700, color: payMethod === id ? 'var(--blue)' : 'var(--txt)' }}>{icon} {label}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: payMethod === m ? 'var(--blue)' : 'var(--txt)', textTransform: 'capitalize' }}>
+                  {m === 'cash' ? '💵 Cash' : m === 'card' ? '💳 Card' : '🔄 Mixed'}
+                </span>
               </div>
             ))}
           </div>
@@ -191,9 +280,9 @@ export default function CarWashPayment({ service, addons, vehicle, onBack, onCom
         <button
           onClick={complete}
           disabled={saving}
-          style={{ width: '100%', padding: '16px', borderRadius: 'var(--r2)', fontSize: 17, fontWeight: 800, background: saving ? 'var(--surf2)' : '#16a34a', color: saving ? 'var(--txt3)' : '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}
+          style={{ width: '100%', padding: '16px', borderRadius: 'var(--r2)', fontSize: 17, fontWeight: 800, background: saving ? 'var(--surf2)' : '#16a34a', color: saving ? 'var(--txt3)' : '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', transition: 'background .15s' }}
         >
-          {saving ? 'Processing...' : `✓ Complete Payment · ${fmtJMD(total)}`}
+          {saving ? 'Processing…' : `✓  Complete Payment  ·  ${fmtJ(total)}`}
         </button>
       </div>
     </div>

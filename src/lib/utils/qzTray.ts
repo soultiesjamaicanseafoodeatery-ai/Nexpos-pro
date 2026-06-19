@@ -52,9 +52,11 @@ async function loadScript(): Promise<boolean> {
 }
 
 function setupSecurity(qz: QZTrayAPI) {
-  const cert = process.env.NEXT_PUBLIC_QZ_CERT ?? ''
+  // Cert is stored as base64 in env to survive Next.js client-bundle baking
+  const certB64 = process.env.NEXT_PUBLIC_QZ_CERT ?? ''
+  const cert = certB64 ? atob(certB64) : ''
 
-  qz.security.setCertificatePromise(resolve => resolve(cert.replace(/\\n/g, '\n')))
+  qz.security.setCertificatePromise(resolve => resolve(cert))
   qz.security.setSignatureAlgorithm('SHA512')
 
   if (cert) {

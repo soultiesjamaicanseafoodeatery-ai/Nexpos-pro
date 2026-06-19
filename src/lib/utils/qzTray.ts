@@ -51,18 +51,29 @@ async function loadScript(): Promise<boolean> {
   })
 }
 
+// Public certificate — safe to embed in source. Private key lives server-side in QZ_PRIVATE_KEY.
+const QZ_CERT = `-----BEGIN CERTIFICATE-----
+MIIDCzCCAfOgAwIBAgIUGVTRWimP+oBMK81fXOEA/O18ARgwDQYJKoZIhvcNAQEL
+BQAwFTETMBEGA1UEAwwKTmV4UE9TIFBybzAeFw0yNjA2MTkwMzQzNDVaFw0zNjA2
+MTYwMzQzNDVaMBUxEzARBgNVBAMMCk5leFBPUyBQcm8wggEiMA0GCSqGSIb3DQEB
+AQUAA4IBDwAwggEKAoIBAQCsBYt/c/GF73LmmPZubaWMEL1WoFwNjwFpr8PLfIhQ
+VBw+6nPPe4kZDtzNuFQ6geT9iK/zNLXabEbU7zgGcmQddEhsr26XgJKKsBW2O0Nr
+ue0iKNZcIS+UtWYKnzVE6kmA1XW2daxX4obf/n8tCavCbf2jCwdB3gcucGpbrQXk
+/ihPZMBYy9NRNLJQYrRghytKhRBOqnqUzmTy1MlUXlc3hb6An4QdSMJ0ordiZAwm
+nIPe9OZFMSbFsWj+7OVBYM5fAxZPNDsaBlsCF5r3+AB43hDxCZ9BXFZKfjiumvEV
+C5yJgFNZwVLyS0GXB9KDyP/K6NrlyS74Y05DQYaiIUJrAgMBAAGjUzBRMB0GA1Ud
+DgQWBBRwB9tdEezIQMDVyHd3r4V76B1TojAfBgNVHSMEGDAWgBRwB9tdEezIQMDV
+yHd3r4V76B1TojAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQCK
+xj4e2+OFqYNNfaowtCUtBkJKNi7ctGP1Vi+axh5ag9D4eceLqtfGiqrwyBzrWDFH
+voO2n/TOP5zU89BI813mB6MSf0GaJ6Pfoxe06AX4ND5HfAUP/KyluOdG5z1FwgO4
+jldUxUqELHF4A6WuV/AZnY3g4I7+DABauinPD6YqECdvLIsyOoFyc2hNGKmO8Ysj
+pADPkATKF6N1VKW2xz/Xzp+ggwwRv6z8rsqiaYjUOFj6VnjgRes95qC806+eizL/
+poeiY89g7zq2nwcXnK1+ktPiZeJ3nRzc+oEq2V7oR/aENQr7eRSi4HeJbRmUKPrZ
+SMBP4nVqZUtlUIC8k+5L
+-----END CERTIFICATE-----`
+
 function setupSecurity(qz: QZTrayAPI) {
-  // Cert is fetched from /api/qz-cert at connection time (server-side env var,
-  // avoids NEXT_PUBLIC baking issues). Anonymous fallback if endpoint returns empty.
-  qz.security.setCertificatePromise(async (resolve) => {
-    try {
-      const res = await fetch('/api/qz-cert')
-      const cert = res.ok ? await res.text() : ''
-      resolve(cert.trim())
-    } catch {
-      resolve('')
-    }
-  })
+  qz.security.setCertificatePromise(resolve => resolve(QZ_CERT))
   qz.security.setSignatureAlgorithm('SHA512')
   qz.security.setSignaturePromise(async (toSign) => {
     const res = await fetch('/api/qz-sign', {

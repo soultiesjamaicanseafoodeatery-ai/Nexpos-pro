@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const SB = () => ({
   'apikey': SUPA_KEY,
   'Authorization': `Bearer ${SUPA_KEY}`,

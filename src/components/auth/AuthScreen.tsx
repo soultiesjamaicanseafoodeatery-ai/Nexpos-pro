@@ -17,12 +17,51 @@ const MOD_TAG_LBL: Record<string, string> = {
   carwash:    'Wash',
 }
 
+
+// ── PIN lockout helpers ───────────────────────────────────────
+const MAX_PIN_ATTEMPTS = 5
+const LOCKOUT_DURATION_MS = 10 * 60 * 1000
+
+function getLockoutKey(userId: string) { return `pinLockout_${userId}` }
+function getAttemptsKey(userId: string) { return `pinAttempts_${userId}` }
+
+function isLockedOut(userId: string): { locked: boolean; remaining: number } {
+  try {
+    const exp = parseInt(localStorage.getItem(getLockoutKey(userId)) ?? '0', 10)
+    const now = Date.now()
+    if (exp > now) return { locked: true, remaining: Math.ceil((exp - now) / 60000) }
+    localStorage.removeItem(getLockoutKey(userId))
+    localStorage.removeItem(getAttemptsKey(userId))
+  } catch {}
+  return { locked: false, remaining: 0 }
+}
+
+function recordFailedAttempt(userId: string): number {
+  try {
+    const key = getAttemptsKey(userId)
+    const attempts = parseInt(localStorage.getItem(key) ?? '0', 10) + 1
+    localStorage.setItem(key, String(attempts))
+    if (attempts >= MAX_PIN_ATTEMPTS) {
+      localStorage.setItem(getLockoutKey(userId), String(Date.now() + LOCKOUT_DURATION_MS))
+      localStorage.removeItem(key)
+    }
+    return attempts
+  } catch { return 0 }
+}
+
+function clearFailedAttempts(userId: string) {
+  try {
+    localStorage.removeItem(getAttemptsKey(userId))
+    localStorage.removeItem(getLockoutKey(userId))
+  } catch {}
+}
 export default function AuthScreen() {
   const { state, dispatch, toast } = useApp()
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [pinState, setPinState] = useState<'idle' | 'error' | 'success'>('idle')
+  const [lockoutInfo, setLockoutInfo] = useState<{ locked: boolean; remaining: number }>({ locked: false, remaining: 0 })
 
   const activeUsers = state.users.filter(u => u.active)
 
@@ -31,6 +70,7 @@ export default function AuthScreen() {
     setPin('')
     setError('')
     setPinState('idle')
+    setLockoutInfo(isLockedOut(user.id))
   }, [])
 
   const resetAuth = useCallback(() => {
@@ -42,6 +82,8 @@ export default function AuthScreen() {
 
   const pressKey = useCallback((digit: string) => {
     if (!selectedUser) { toast('Tap your name first', 'warn'); return }
+    const lockout = isLockedOut(selectedUser.id)
+    if (lockout.locked) { setLockoutInfo(lockout); setError(`Account locked — try again in \ min`); return }
     if (pin.length >= 4) return
     setError('')
     const newPin = pin + digit
@@ -71,16 +113,20 @@ export default function AuthScreen() {
               txCount: 0,
               revenue: 0,
             }
+            clearFailedAttempts(selectedUser.id)
             dispatch({ type: 'LOGIN', user: selectedUser, shift })
             toast(`Welcome ${selectedUser.name.split(' ')[0]}!`, 'success')
           }, 280)
         } else {
+          const attempts = recordFailedAttempt(selectedUser.id)
+          const lockout = isLockedOut(selectedUser.id)
+          setLockoutInfo(lockout)
           setPinState('error')
-          setError('Incorrect PIN — try again')
+          setError(lockout.locked ? `Account locked for \ min — too many failed attempts` : `Incorrect PIN — try again (\/\)`)
           setTimeout(() => {
             setPin('')
             setPinState('idle')
-            setError('')
+            if (!lockout.locked) setError('')
           }, 1000)
         }
       }, 200)

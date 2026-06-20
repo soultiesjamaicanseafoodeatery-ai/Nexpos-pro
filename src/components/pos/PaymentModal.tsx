@@ -408,14 +408,24 @@ export default function PaymentModal({
                   ['gift', 'Gift Card',     '🎁', 'var(--pur)'],
                   ['tab',  'House Account', '📋', 'var(--ora)'],
                 ] as const).map(([key, lbl, icon, color]) => (
-                  <button key={key} onClick={() => setStep(key as Step)} style={{
-                    padding: '18px 12px', borderRadius: 'var(--r3)', border: `2px solid ${color}44`,
-                    background: `${color}11`, color: 'var(--txt)', cursor: 'pointer',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                    fontWeight: 700, fontSize: 13, transition: 'all .12s',
-                  }}>
+                  <button key={key}
+                    onClick={() => { if (key === 'card' && !CARD_TERMINAL_ENABLED) return; setStep(key as Step) }}
+                    disabled={key === 'card' && !CARD_TERMINAL_ENABLED}
+                    title={key === 'card' && !CARD_TERMINAL_ENABLED ? 'Card terminal not yet configured — cash payments only' : undefined}
+                    style={{
+                      padding: '18px 12px', borderRadius: 'var(--r3)',
+                      border: key === 'card' && !CARD_TERMINAL_ENABLED ? '2px solid var(--bdr)' : `2px solid ${color}44`,
+                      background: key === 'card' && !CARD_TERMINAL_ENABLED ? 'var(--surf2)' : `${color}11`,
+                      color: 'var(--txt)', cursor: key === 'card' && !CARD_TERMINAL_ENABLED ? 'not-allowed' : 'pointer',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      fontWeight: 700, fontSize: 13, transition: 'all .12s',
+                      opacity: key === 'card' && !CARD_TERMINAL_ENABLED ? 0.45 : 1,
+                    }}>
                     <span style={{ fontSize: 24 }}>{icon}</span>
-                    <span style={{ color }}>{lbl}</span>
+                    <span style={{ color: key === 'card' && !CARD_TERMINAL_ENABLED ? 'var(--txt3)' : color }}>{lbl}</span>
+                    {key === 'card' && !CARD_TERMINAL_ENABLED && (
+                      <span style={{ fontSize: 9, color: 'var(--txt3)', fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>Not configured</span>
+                    )}
                   </button>
                 ))}
               </div>

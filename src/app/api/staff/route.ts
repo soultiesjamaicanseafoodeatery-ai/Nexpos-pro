@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 const headers = {
   'apikey': SUPA_KEY,

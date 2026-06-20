@@ -1245,7 +1245,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                       opacity: eightySixed ? 0.55 : 1,
                     }}>
                       {eightySixed ? (
-                        <div style={{ padding: '3px 8px', background: '#7f1d1d33', borderBottom: '1px solid #ef444433', fontSize: 10, fontWeight: 800, color: '#ef4444', textAlign: 'center', letterSpacing: '.5px' }}>86'd — OUT</div>
+                        <div style={{ padding: '3px 8px', background: '#7f1d1d33', borderBottom: '1px solid #ef444433', fontSize: 10, fontWeight: 800, color: '#ef4444', textAlign: 'center', letterSpacing: '.5px' }}>{'86\'d — OUT'}</div>
                       ) : item.duration ? (
                         <div style={{ padding: '3px 8px', background: 'var(--surf2)', borderBottom: '1px solid var(--bdr)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)' }}>{item.duration}</div>
                       ) : null}

@@ -4,15 +4,54 @@ import { useState, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 
 type Tab = 'overview' | 'server' | 'menu' | 'financial'
+type DateRange = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'
 
 export default function ReportsPage() {
   const { state } = useApp()
   const { transactions, biz } = state
   const sym = biz.currencySymbol ?? 'J$'
-  const txs = transactions.filter(t => !t.voided)
+  const txs = useMemo(() => {
+    const base = transactions.filter(t => !t.voided)
+    if (!rangeStart && !rangeEnd) return base
+    return base.filter(t => {
+      const ts = new Date(t.ts)
+      if (rangeStart && ts < rangeStart) return false
+      if (rangeEnd && ts > rangeEnd) return false
+      return true
+    })
+  }, [transactions, rangeStart, rangeEnd])
   const fmtN = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const [tab, setTab] = useState<Tab>('overview')
+  const [dateRange, setDateRange] = useState<DateRange>('all')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
+
+  const { rangeStart, rangeEnd, rangeLabel } = useMemo(() => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    switch (dateRange) {
+      case 'today':
+        return { rangeStart: today, rangeEnd: null, rangeLabel: 'Today' }
+      case 'yesterday': {
+        const y = new Date(today); y.setDate(y.getDate() - 1)
+        return { rangeStart: y, rangeEnd: today, rangeLabel: 'Yesterday' }
+      }
+      case 'week': {
+        const w = new Date(today); w.setDate(w.getDate() - 6)
+        return { rangeStart: w, rangeEnd: null, rangeLabel: 'Last 7 Days' }
+      }
+      case 'month':
+        return { rangeStart: new Date(now.getFullYear(), now.getMonth(), 1), rangeEnd: null, rangeLabel: 'This Month' }
+      case 'custom': {
+        const s = customStart ? new Date(customStart) : null
+        const e = customEnd ? new Date(customEnd + 'T23:59:59.999') : null
+        return { rangeStart: s, rangeEnd: e, rangeLabel: customStart || customEnd ? `${customStart || '?'} – ${customEnd || '?'}` : 'Custom Range' }
+      }
+      default:
+        return { rangeStart: null, rangeEnd: null, rangeLabel: 'All Time' }
+    }
+  }, [dateRange, customStart, customEnd])
 
   // ── Overview stats ─────────────────────────────────────────
   const totalRev  = txs.reduce((s, t) => s + t.total, 0)
@@ -86,10 +125,10 @@ export default function ReportsPage() {
 
   return (
     <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>Reports</div>
-          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>All-time · {txs.length} transactions</div>
+          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>{rangeLabel} · {txs.length} transactions</div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           {tabs.map(t => (
@@ -100,6 +139,24 @@ export default function ReportsPage() {
           ))}
         </div>
       </div>
+      {/* Date filter bar */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        {(['today','yesterday','week','month','all'] as DateRange[]).map(r => (
+          <button key={r} onClick={() => { setDateRange(r); setCustomStart(''); setCustomEnd('') }}
+            style={{ padding: '6px 12px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+              background: dateRange === r ? 'var(--blue)' : 'var(--surf2)', color: dateRange === r ? '#fff' : 'var(--txt2)' }}>
+            {r === 'today' ? 'Today' : r === 'yesterday' ? 'Yesterday' : r === 'week' ? 'Last 7 Days' : r === 'month' ? 'This Month' : 'All Time'}
+          </button>
+        ))}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input type="date" value={customStart} onChange={e => { setCustomStart(e.target.value); setDateRange('custom') }}
+            style={{ padding: '5px 8px', borderRadius: 'var(--r)', fontSize: 12, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)' }} />
+          <span style={{ fontSize: 11, color: 'var(--txt3)' }}>–</span>
+          <input type="date" value={customEnd} onChange={e => { setCustomEnd(e.target.value); setDateRange('custom') }}
+            style={{ padding: '5px 8px', borderRadius: 'var(--r)', fontSize: 12, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)' }} />
+        </div>
+      </div>
+
 
       {/* ── Overview tab ─────────────────────────────────────── */}
       {tab === 'overview' && (

@@ -973,6 +973,28 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   })()
 
   // Filtered items — applies search on top of category filter
+  const liveInvQty = (() => {
+    const inv = storage.get<Array<{ name: string; quantity: number }>>('inventory') ?? []
+    const m: Record<string, number> = {}
+    inv.forEach(i => { m[i.name.toLowerCase()] = i.quantity })
+    return m
+  })()
+  const isEightySixed = (itemName: string) => {
+    const qty = liveInvQty[itemName.toLowerCase()]
+    return qty !== undefined && qty === 0
+  }
+  const elapsedMins = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  const elapsedTime = (iso: string): string | null => {
+    const m = elapsedMins(iso)
+    if (m < 1) return null
+    if (m >= 60) return Math.floor(m / 60) + 'h ' + (m % 60) + 'm'
+    return m + 'm'
+  }
+  const elapsedColor = (iso: string) => {
+    const m = elapsedMins(iso)
+    return m >= 60 ? '#ef4444' : m >= 30 ? 'var(--ora)' : 'var(--txt3)'
+  }
+
   const searchFiltered = filteredItems.filter((i: MenuItem) =>
     !searchQuery || i.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -1212,24 +1234,32 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                  {searchFiltered.map((item: MenuItem) => (
-                    <div key={item.id} onClick={() => handleItemClick(item)} style={{
-                      background: item.gradient ?? 'var(--surf)',
+                  {searchFiltered.map((item: MenuItem) => {
+                    const eightySixed = isEightySixed(item.name)
+                    return (
+                    <div key={item.id} onClick={() => !eightySixed && handleItemClick(item)} style={{
+                      background: eightySixed ? 'var(--surf2)' : (item.gradient ?? 'var(--surf)'),
                       border: '2px solid var(--bdr)',
-                      borderRadius: 'var(--r3)', cursor: 'pointer', overflow: 'hidden',
+                      borderRadius: 'var(--r3)', cursor: eightySixed ? 'not-allowed' : 'pointer', overflow: 'hidden',
                       transition: 'all .15s', display: 'flex', flexDirection: 'column', minHeight: 130,
+                      opacity: eightySixed ? 0.55 : 1,
                     }}>
-                      {item.duration && (
+                      {eightySixed ? (
+                        <div style={{ padding: '3px 8px', background: '#7f1d1d33', borderBottom: '1px solid #ef444433', fontSize: 10, fontWeight: 800, color: '#ef4444', textAlign: 'center', letterSpacing: '.5px' }}>86'd — OUT</div>
+                      ) : item.duration ? (
                         <div style={{ padding: '3px 8px', background: 'var(--surf2)', borderBottom: '1px solid var(--bdr)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)' }}>{item.duration}</div>
-                      )}
+                      ) : null}
                       <div style={{ padding: '11px 12px 12px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                         <div>
-                          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', lineHeight: 1.25 }}>{item.name}</div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: eightySixed ? 'var(--txt3)' : 'var(--txt)', lineHeight: 1.25, textDecoration: eightySixed ? 'line-through' : 'none' }}>{item.name}</div>
                         </div>
-                        <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--mono)', color: item.accent ?? mod.color, marginTop: 8, letterSpacing: '-.3px' }}>{fmt(item.price, sym)}</div>
+                        <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--mono)', color: eightySixed ? 'var(--txt3)' : (item.accent ?? mod.color), marginTop: 8, letterSpacing: '-.3px' }}>
+                          {eightySixed ? '86 OUT' : fmt(item.price, sym)}
+                        </div>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -1533,7 +1563,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>{h.label}</div>
                       <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>
-                        {h.cart.length} items · Held at {h.savedAt} by {h.savedBy}
+                        {h.cart.length} items · Saved {h.savedAt} by {h.savedBy}
+                        {h.openedAt && (() => { const t = elapsedTime(h.openedAt!); return t ? <span style={{ color: elapsedColor(h.openedAt!), fontWeight: 700, marginLeft: 4 }}>· {t}</span> : null })()}
                       </div>
                     </div>
                     <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--blue)' }}>

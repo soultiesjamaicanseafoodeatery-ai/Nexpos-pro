@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { qzIsConnected } from '@/lib/utils/qzTray'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { ModuleKey, HeldOrder } from '@/types'
 
@@ -34,6 +35,7 @@ export default function Topbar() {
   const { activeModule, activePage, currentUser, currentShift, isOnline, cartOrderType, cart, posState } = state
   const hasRestaurantItems = cart.some(ci => (ci as { module?: string }).module === 'restaurant')
   const [clock, setClock] = useState('')
+  const [printerOk, setPrinterOk] = useState<boolean | null>(null)
 
   function handleLogout() {
     if (cart.length > 0 && currentUser) {
@@ -53,6 +55,7 @@ export default function Topbar() {
         discFlat: ps.manualDiscFlat ?? 0,
         gratuityPct: ps.gratuityPct ?? 0,
         gratuityOverride: false,
+        openedAt: new Date().toISOString(),
         savedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         savedBy: currentUser.name,
       }
@@ -66,6 +69,13 @@ export default function Topbar() {
     const tick = () => setClock(new Date().toLocaleTimeString())
     tick()
     const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    const check = () => setPrinterOk(qzIsConnected())
+    check()
+    const id = setInterval(check, 5000)
     return () => clearInterval(id)
   }, [])
 
@@ -108,6 +118,21 @@ export default function Topbar() {
 
       {/* Right side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {/* Printer status */}
+        {printerOk !== null && (
+          <div
+            title={printerOk ? 'QZ Tray connected — printer ready' : 'Printer offline — open QZ Tray to connect'}
+            style={{
+              fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 'var(--r2)',
+              background: printerOk ? 'rgba(34,197,94,0.12)' : 'var(--surf)',
+              color: printerOk ? 'var(--grn)' : 'var(--txt3)',
+              border: printerOk ? '1px solid rgba(34,197,94,0.3)' : '1px solid var(--bdr)',
+              cursor: 'default', userSelect: 'none',
+            }}
+          >
+            {printerOk ? '🖨 Ready' : '🖨 Offline'}
+          </div>
+        )}
         {/* Offline badge */}
         {!isOnline && (
           <div style={{ fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 'var(--r2)', background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid rgba(245,101,101,.3)' }}>

@@ -209,7 +209,7 @@ function reducer(state: AppState, action: Action): AppState {
         },
       }
     case 'ADD_TRANSACTION': {
-      const transactions = [action.tx, ...state.transactions].slice(0, 5000)
+      const transactions = [action.tx, ...state.transactions].slice(0, 50000)
       storage.set('tx', transactions)
       const currentShift = state.currentShift
         ? { ...state.currentShift, txCount: state.currentShift.txCount + 1, revenue: state.currentShift.revenue + action.tx.total }

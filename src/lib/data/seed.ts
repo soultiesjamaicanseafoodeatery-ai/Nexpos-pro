@@ -55,7 +55,7 @@ export const MODULE_DATA: Record<string, ModuleData> = {
   },
   bar: {
     label:'Bar', icon:'🍺', color:'var(--pur)', cobText:'#0d0028', selCls:'s-p', aoCls:'p',
-    taxRate:0.10,
+    taxRate:0.15,
     categories:['All','Cocktails','Beer','Wine','Spirits','Shots','Non-Alc'],
     tables:['B1','B2','B3','B4','B5'],
     tableStatus:{ B1:'free', B2:'occupied', B3:'free', B4:'free', B5:'occupied' },
@@ -83,7 +83,7 @@ export const MODULE_DATA: Record<string, ModuleData> = {
   },
   carwash: {
     label:'Car Wash', icon:'🚗', color:'var(--blue)', cobText:'#fff', selCls:'s-b', aoCls:'g',
-    taxRate:0.08,
+    taxRate:0.15,
     categories:['All','Basic','Deluxe','Premium'],
     tables:[], tableStatus:{}, tabs:[],
     bays:['Bay 1','Bay 2','Bay 3'],

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 
@@ -11,6 +13,19 @@ const headers = {
   'Prefer': 'return=representation',
 }
 
+const ALLOWED_ORIGINS = (process.env.NEXT_PUBLIC_APP_URL ?? '').split(',').map(o => o.trim()).filter(Boolean)
+
+function isAllowedOrigin(req: NextRequest): boolean {
+  const origin = req.headers.get('origin') ?? req.headers.get('referer') ?? ''
+  if (!origin) return false
+  if (process.env.NODE_ENV === 'development') return true
+  if (ALLOWED_ORIGINS.length === 0) {
+    const host = req.headers.get('host') ?? ''
+    return origin.includes(host)
+  }
+  return ALLOWED_ORIGINS.some(allowed => origin.startsWith(allowed))
+}
+
 export async function GET() {
   const res = await fetch(
     `${SUPA_URL}/rest/v1/staff?select=*&order=created_at.asc`,
@@ -22,6 +37,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isAllowedOrigin(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const body = await req.json()
   const row = {
     id: randomUUID(),
@@ -45,11 +61,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  if (!isAllowedOrigin(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const body = await req.json()
   const { id, ...patch } = body
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-  // Check if the row exists first
   const check = await fetch(
     `${SUPA_URL}/rest/v1/staff?id=eq.${encodeURIComponent(id)}&select=id`,
     { headers }
@@ -57,7 +73,6 @@ export async function PUT(req: NextRequest) {
   const existing = await check.json()
 
   if (Array.isArray(existing) && existing.length > 0) {
-    // Row exists — PATCH only changed fields
     const res = await fetch(`${SUPA_URL}/rest/v1/staff?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers,
@@ -67,7 +82,6 @@ export async function PUT(req: NextRequest) {
     if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
     return NextResponse.json(data)
   } else {
-    // Row doesn't exist (demo/seed user) — INSERT it
     if (!patch.pin_hash) return NextResponse.json({ error: 'PIN is required to save this staff member to Supabase' }, { status: 400 })
     const row = { id, ...patch }
     const res = await fetch(`${SUPA_URL}/rest/v1/staff`, {
@@ -82,6 +96,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!isAllowedOrigin(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   const res = await fetch(`${SUPA_URL}/rest/v1/staff?id=eq.${encodeURIComponent(id)}`, {
@@ -94,5 +109,3 @@ export async function DELETE(req: NextRequest) {
   }
   return new NextResponse(null, { status: 204 })
 }
-
-

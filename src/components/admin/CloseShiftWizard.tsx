@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -58,6 +58,7 @@ export default function CloseShiftWizard() {
   const [closing,  setClosing]  = useState(false)
   const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
   const [savedShiftStart, setSavedShiftStart] = useState<string | null>(null)
+  const [countedSubmitted, setCountedSubmitted] = useState(false)
 
   // ── Shift transactions ────────────────────────────────────────
   const shiftStart = savedShiftStart ?? currentShift?.start ?? new Date(0).toISOString()
@@ -195,7 +196,7 @@ export default function CloseShiftWizard() {
     </div>
   )
   const Back = ({ to }: { to: WStep }) => (
-    <Btn onClick={() => setStep(to)}>← Back</Btn>
+    <Btn onClick={() => { if (step === 'payments') setCountedSubmitted(false); setStep(to) }}>← Back</Btn>
   )
   const Next = ({ to, label = 'Continue →', disabled }: { to: WStep; label?: string; disabled?: boolean }) => (
     <Btn primary onClick={() => setStep(to)} disabled={disabled}>{label}</Btn>
@@ -347,17 +348,29 @@ export default function CloseShiftWizard() {
               </div>
             ))}
 
-            {/* Calculated totals */}
-            <div style={{ background:'var(--surf)', borderRadius:'var(--r2)', padding:'14px 16px', marginTop:4 }}>
-              <SummaryRow label="Cash Sales This Shift" value={fmtJ(cashSales)} />
-              <SummaryRow label="Expected Cash in Drawer" value={fmtJ(expected)} bold />
-              {variance !== null && (
-                <SummaryRow
-                  label={variance >= 0 ? 'Over' : 'Short'}
-                  value={(variance > 0 ? '+' : '') + fmtJ(variance)}
-                  bold color={varColor} />
-              )}
-            </div>
+            {/* Blind count: submit physical count first, then reveal expected */}
+            {!countedSubmitted ? (
+              <button
+                onClick={() => { if (data.countedCash.trim()) setCountedSubmitted(true) }}
+                disabled={!data.countedCash.trim()}
+                style={{ marginTop:4, padding:'11px 0', borderRadius:'var(--r2)', fontSize:13, fontWeight:800,
+                  cursor:data.countedCash.trim()?'pointer':'not-allowed',
+                  background:data.countedCash.trim()?'var(--blue)':'var(--surf3)',
+                  color:data.countedCash.trim()?'#fff':'var(--txt3)', border:'none', width:'100%' }}>
+                Submit Count &amp; Reveal Expected
+              </button>
+            ) : (
+              <div style={{ background:'var(--surf)', borderRadius:'var(--r2)', padding:'14px 16px', marginTop:4 }}>
+                <SummaryRow label="Cash Sales This Shift" value={fmtJ(cashSales)} />
+                <SummaryRow label="Expected Cash in Drawer" value={fmtJ(expected)} bold />
+                {variance !== null && (
+                  <SummaryRow
+                    label={variance >= 0 ? 'Over' : 'Short'}
+                    value={(variance > 0 ? '+' : '') + fmtJ(variance)}
+                    bold color={varColor} />
+                )}
+              </div>
+            )}
 
             {/* Variance note */}
             {needsNote && (
@@ -378,7 +391,7 @@ export default function CloseShiftWizard() {
         </CardBody>
         <CardFoot>
           <Back to="validate" />
-          <Next to="payments" disabled={!canContinue} />
+          <Next to="payments" disabled={!canContinue || !countedSubmitted} />
         </CardFoot>
       </Card>
     )

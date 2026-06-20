@@ -174,6 +174,9 @@ function initState(): AppState {
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'LOGIN': {
+      if (state.currentShift !== null) {
+        return { ...state, currentUser: action.user, activePage: 'pos' }
+      }
       const shifts = [action.shift, ...state.shifts]
       storage.set('shifts', shifts)
       return { ...state, currentUser: action.user, currentShift: action.shift, shifts, activePage: 'pos' }
@@ -183,7 +186,7 @@ function reducer(state: AppState, action: Action): AppState {
         s.id === state.currentShift?.id ? { ...s, end: new Date().toISOString() } : s
       )
       storage.set('shifts', shifts)
-      return { ...state, currentUser: null, currentShift: null, shifts }
+      return { ...state, currentUser: null, currentShift: null, shifts, cart: [], cartPayMethod: 'cash', cartOrderType: 'dine-in', uiMode: 'pos' }
     }
     case 'CLOCK_OUT': {
       if (!state.currentShift) return state
@@ -211,6 +214,21 @@ function reducer(state: AppState, action: Action): AppState {
       const currentShift = state.currentShift
         ? { ...state.currentShift, txCount: state.currentShift.txCount + 1, revenue: state.currentShift.revenue + action.tx.total }
         : null
+      // Auto-deduct inventory on sale
+      if (action.tx.items && action.tx.items.length > 0) {
+        const inv = storage.get<Array<{ id: string; name: string; quantity: number; lowStockThreshold: number }>>('inventory') ?? []
+        if (inv.length > 0) {
+          let changed = false
+          const updatedInv = inv.map(invItem => {
+            const sold = action.tx.items!
+              .filter(ci => !ci.voided && ci.name.toLowerCase() === invItem.name.toLowerCase())
+              .reduce((s, ci) => s + ci.qty, 0)
+            if (sold > 0) { changed = true; return { ...invItem, quantity: Math.max(0, invItem.quantity - sold) } }
+            return invItem
+          })
+          if (changed) storage.set('inventory', updatedInv)
+        }
+      }
       return { ...state, transactions, currentShift }
     }
     case 'VOID_TRANSACTION': {

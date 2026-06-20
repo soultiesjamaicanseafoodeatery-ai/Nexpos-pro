@@ -244,6 +244,7 @@ export interface HeldOrder {
   discFlat: number
   gratuityPct: number
   gratuityOverride: boolean
+  openedAt?: string
   savedAt: string
   savedBy: string
 }

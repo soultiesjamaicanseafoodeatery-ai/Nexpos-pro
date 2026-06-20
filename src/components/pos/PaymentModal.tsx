@@ -68,7 +68,7 @@ export default function PaymentModal({
           userId: appState.currentUser?.id ?? '',
           action: newPct === 0 ? 'Gratuity Removed' : ('Gratuity Set to ' + newPct + '%'),
           detail: selTable ? ('Table ' + selTable) : (customerName || 'Current order'),
-          type: 'override',
+          type: 'warn',
           mod: 'system',
         },
       })

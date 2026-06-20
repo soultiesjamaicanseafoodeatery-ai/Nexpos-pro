@@ -1,5 +1,6 @@
 ﻿'use client'
 import { useState, useCallback } from 'react'
+import { useApp } from '@/lib/hooks/useAppStore'
 import type { OrderCalc, PaymentEntry, Surcharge, SurchargeType } from '@/types'
 
 const CARD_TERMINAL_ENABLED = false
@@ -54,6 +55,26 @@ export default function PaymentModal({
   const [newSurchargeDesc,    setNewSurchargeDesc]    = useState('')
   const [newSurchargeAmtType, setNewSurchargeAmtType] = useState<'percentage' | 'fixed'>('percentage')
   const [newSurchargeValue,   setNewSurchargeValue]   = useState('')
+
+  const { dispatch: appDispatch, state: appState } = useApp()
+  const changeGratuity = useCallback((newPct: number) => {
+    if (isManager) {
+      appDispatch({
+        type: 'ADD_AUDIT',
+        entry: {
+          id: crypto.randomUUID(),
+          ts: new Date().toISOString(),
+          user: appState.currentUser?.name ?? 'Manager',
+          userId: appState.currentUser?.id ?? '',
+          action: newPct === 0 ? 'Gratuity Removed' : ('Gratuity Set to ' + newPct + '%'),
+          detail: selTable ? ('Table ' + selTable) : (customerName || 'Current order'),
+          type: 'override',
+          mod: 'system',
+        },
+      })
+    }
+    onGratuityChange(newPct)
+  }, [appDispatch, appState.currentUser, isManager, selTable, customerName, onGratuityChange])
 
   const total    = calc.total
   const fmtN     = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -211,13 +232,13 @@ export default function PaymentModal({
       {isManager && !showCustomGrat && (
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {gratuityPct > 0 && (
-            <button onClick={() => onGratuityChange(0)} style={{
+            <button onClick={() => changeGratuity(0)} style={{
               padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
               border: '1.5px solid #ef444444', background: '#ef444411', color: '#ef4444',
             }}>Remove</button>
           )}
           {([10, 15, 18] as const).map(pct => (
-            <button key={pct} onClick={() => onGratuityChange(pct)} style={{
+            <button key={pct} onClick={() => changeGratuity(pct)} style={{
               padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
               border: `1.5px solid ${gratuityPct === pct ? 'var(--blue)' : 'var(--bdr)'}`,
               background: gratuityPct === pct ? 'var(--blue-bg, #1e40af22)' : 'var(--surf)',
@@ -240,7 +261,7 @@ export default function PaymentModal({
             style={{ flex: 1, background: 'var(--surf2)', border: '1.5px solid var(--blue)', borderRadius: 'var(--r)', padding: '6px 10px', fontSize: 13, color: 'var(--txt)' }}
           />
           <span style={{ fontSize: 12, color: 'var(--txt3)' }}>%</span>
-          <button onClick={() => { const v = parseFloat(customGratInput); if (v >= 0) onGratuityChange(v); setShowCustomGrat(false) }} style={{
+          <button onClick={() => { const v = parseFloat(customGratInput); if (v >= 0) changeGratuity(v); setShowCustomGrat(false) }} style={{
             padding: '6px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
             background: 'var(--blue)', color: '#fff', border: 'none',
           }}>Apply</button>
@@ -400,6 +421,17 @@ export default function PaymentModal({
             {gratuityPanel}
             {surchargePanel}
             <div style={{ padding: '16px 18px' }}>
+              {calc.orderType === 'delivery' && !surcharges.some(s => s.type === 'delivery_fee') && (
+                <div style={{ marginBottom: 12, padding: '9px 12px', borderRadius: 'var(--r3)', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: 'var(--ora)', flex: 1 }}>No delivery fee added</span>
+                  {[500, 1000, 1500].map(amt => (
+                    <button key={amt} onClick={() => onSurchargesChange([...surcharges, { id: crypto.randomUUID(), type: 'delivery_fee' as const, description: 'Delivery', amountType: 'fixed' as const, value: amt }])}
+                      style={{ padding: '4px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)' }}>
+                      +J{'$'}{'{'}amt.toLocaleString(){'}'}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Select Payment Method</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                 {([
@@ -425,6 +457,9 @@ export default function PaymentModal({
                     <span style={{ color: key === 'card' && !CARD_TERMINAL_ENABLED ? 'var(--txt3)' : color }}>{lbl}</span>
                     {key === 'card' && !CARD_TERMINAL_ENABLED && (
                       <span style={{ fontSize: 9, color: 'var(--txt3)', fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>Not configured</span>
+                    )}
+                    {key === 'gift' && (
+                      <span style={{ fontSize: 9, color: 'var(--txt3)', fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>No balance check</span>
                     )}
                   </button>
                 ))}

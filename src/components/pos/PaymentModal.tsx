@@ -1,6 +1,8 @@
-'use client'
+﻿'use client'
 import { useState, useCallback } from 'react'
 import type { OrderCalc, PaymentEntry, Surcharge, SurchargeType } from '@/types'
+
+const CARD_TERMINAL_ENABLED = false
 
 const SURCHARGE_LABELS: Record<SurchargeType, string> = {
   credit_card_fee: 'Credit Card Fee',

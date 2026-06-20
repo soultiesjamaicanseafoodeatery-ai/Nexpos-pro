@@ -62,7 +62,7 @@ export default function PaymentModal({
       appDispatch({
         type: 'ADD_AUDIT',
         entry: {
-          id: crypto.randomUUID(),
+          id: Date.now(),
           ts: new Date().toISOString(),
           user: appState.currentUser?.name ?? 'Manager',
           userId: appState.currentUser?.id ?? '',

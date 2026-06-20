@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
@@ -60,8 +61,28 @@ const ACCESS_DENIED = (
 )
 
 export default function AppShell() {
-  const { state } = useApp()
+  const { state, dispatch } = useApp()
   const { activePage, activeModule, currentUser, showEOD } = state
+
+
+  // 5-minute inactivity auto-logout
+  const INACTIVITY_MS = 5 * 60 * 1000
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const resetTimer = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (currentUser) {
+      timerRef.current = setTimeout(() => dispatch({ type: 'LOGOUT' }), INACTIVITY_MS)
+    }
+  }, [currentUser, dispatch])
+  useEffect(() => {
+    const events = ['mousedown', 'touchstart', 'keydown', 'scroll'] as const
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }))
+    resetTimer()
+    return () => {
+      events.forEach(e => window.removeEventListener(e, resetTimer))
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [resetTimer])
 
   const role = currentUser?.role ?? ''
   const allowed = (page: string) => (PAGE_ROLES[page] ?? ['admin']).includes(role)

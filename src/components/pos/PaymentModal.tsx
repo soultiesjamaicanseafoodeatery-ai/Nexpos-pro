@@ -69,7 +69,7 @@ export default function PaymentModal({
           action: newPct === 0 ? 'Gratuity Removed' : ('Gratuity Set to ' + newPct + '%'),
           detail: selTable ? ('Table ' + selTable) : (customerName || 'Current order'),
           type: 'warn',
-          mod: 'system',
+          mod: 'restaurant',
         },
       })
     }

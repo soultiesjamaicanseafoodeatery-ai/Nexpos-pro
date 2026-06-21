@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { VoidReason, VoidLog, RefundLog } from '@/types'
 import VoidReasonModal from '@/components/pos/VoidReasonModal'
@@ -8,15 +8,17 @@ import RefundModal from '@/components/pos/RefundModal'
 
 const MOD_COLOR: Record<string, string> = { restaurant: 'var(--ora)', bar: 'var(--pur)', carwash: 'var(--blue)' }
 const MOD_ICON: Record<string, string>  = { restaurant: '🍽️', bar: '🍺', carwash: '🚗' }
+const PAGE_SIZE = 50
 
 export default function TransactionsPage() {
   const { state, dispatch, toast, audit } = useApp()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<string>('all')
+  const [page, setPage] = useState(1)
   const [voidingTxId,   setVoidingTxId]   = useState<number | null>(null)
   const [refundingTxId, setRefundingTxId] = useState<number | null>(null)
 
-  const txs = state.transactions
+  const filtered = state.transactions
     .filter(t => {
       if (filter !== 'all' && t.mod !== filter) return false
       if (search) {
@@ -26,7 +28,12 @@ export default function TransactionsPage() {
       return true
     })
 
-  const totalRev = txs.filter(t => !t.voided).reduce((s, t) => s + t.total, 0)
+  useEffect(() => { setPage(1) }, [search, filter])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const txs = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  const totalRev = filtered.filter(t => !t.voided).reduce((s, t) => s + t.total, 0)
   const sym = state.biz.currencySymbol ?? 'J$'
   const currentUser = state.currentUser
 
@@ -72,7 +79,7 @@ export default function TransactionsPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 15 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>Transactions</div>
-          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>{txs.length} records · {sym}{totalRev.toFixed(2)} total</div>
+          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>{filtered.length} records · {sym}{totalRev.toFixed(2)} total</div>
         </div>
       </div>
 
@@ -136,10 +143,19 @@ export default function TransactionsPage() {
               ))}
             </tbody>
           </table>
-          {txs.length === 0 && (
+          {filtered.length === 0 && (
             <div style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>No transactions found</div>
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '12px 16px', borderTop: '1px solid var(--bdr)', fontSize: 12, color: 'var(--txt2)' }}>
+            <button className="btn btn-sm btn-gh" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
+            <span>Page <strong>{page}</strong> of <strong>{totalPages}</strong> &nbsp;·&nbsp; {filtered.length} transactions</span>
+            <button className="btn btn-sm btn-gh" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next →</button>
+          </div>
+        )}
       </div>
       <VoidReasonModal
         isOpen={!!voidingTx}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { VoidReason, VoidLog, RefundLog } from '@/types'
+import { buildCustomerReceipt, smartPrint } from '@/lib/utils/ticketPrinter'
 import VoidReasonModal from '@/components/pos/VoidReasonModal'
 import RefundModal from '@/components/pos/RefundModal'
 
@@ -74,6 +75,11 @@ export default function TransactionsPage() {
     setVoidingTxId(null)
   }
 
+  const handleReprint = async (tx: Parameters<typeof buildCustomerReceipt>[0]) => {
+    const html = buildCustomerReceipt(tx, state.biz, { width: 80 })
+    await smartPrint(html, 'Receipt Reprint', (state.biz as any).printerName, 80 as any, false)
+  }
+
   return (
     <div className="adm" style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 15 }}>
@@ -101,6 +107,7 @@ export default function TransactionsPage() {
               <tr>
                 <th>ID</th><th>Time</th><th>Module</th><th>Cashier</th>
                 <th>Customer</th><th>Item</th><th>Total</th><th>Payment</th><th>Status</th>
+                <th>Print</th>
                 <th></th>
               </tr>
             </thead>
@@ -128,6 +135,9 @@ export default function TransactionsPage() {
                     {tx.voided    ? <span className="b b-rd">VOIDED</span>
                     : tx.refunded ? <span className="b b-bl">REFUNDED</span>
                     :               <span className="b b-gn">Complete</span>}
+                  </td>
+                  <td style={{ padding: '6px 8px', verticalAlign: 'middle' }}>
+                    <button onClick={() => handleReprint(tx)} title="Reprint receipt" style={{ background: 'none', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '4px 8px', cursor: 'pointer', fontSize: 14, color: 'var(--txt3)', minHeight: 32, lineHeight: 1 }}>🖨️</button>
                   </td>
                   <td style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {!tx.voided && !tx.refunded && (state.currentUser?.role === 'admin' || state.currentUser?.role === 'manager') && (

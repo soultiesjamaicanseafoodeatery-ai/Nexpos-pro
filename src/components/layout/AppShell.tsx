@@ -28,7 +28,7 @@ import VoidReport from '@/components/admin/VoidReport'
 import CarwashServicesPage from '@/components/admin/CarwashServicesPage'
 import CloseShiftWizard from '@/components/admin/CloseShiftWizard'
 
-// Roles allowed per page — must match Sidebar NAV_ITEMS
+// Roles allowed per page -- must match Sidebar NAV_ITEMS
 const PAGE_ROLES: Record<string, string[]> = {
   pos:          ['admin','manager','supervisor','cashier','server','bartender','attendant'],
   tables:       ['admin','manager','supervisor','cashier'],
@@ -64,23 +64,74 @@ export default function AppShell() {
   const { state, dispatch } = useApp()
   const { activePage, activeModule, currentUser, showEOD } = state
 
+  // Keep a ref so inactivity timer closure always reads latest state (avoids stale cart).
+  const stateRef = useRef(state)
+  useEffect(() => { stateRef.current = state })
 
-  // 5-minute inactivity auto-logout
+  // Show a toast whenever QZ Tray silently fails to print.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ message?: string }>).detail
+      dispatch({
+        type: 'ADD_TOAST',
+        msg: '⚠️ ' + (detail?.message || 'Printer offline — check QZ Tray is running'),
+        toastType: 'error',
+        id: Date.now(),
+      })
+    }
+    window.addEventListener('print-failed', handler)
+    return () => window.removeEventListener('print-failed', handler)
+  }, [dispatch])
+
+  // Inactivity auto-logout: warn at 4 min, log out at 5 min.
+  // Cart is auto-saved to held orders so no work is lost.
+  const WARN_MS     = 4 * 60 * 1000
   const INACTIVITY_MS = 5 * 60 * 1000
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const resetTimer = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current)
+    if (timerRef.current)     clearTimeout(timerRef.current)
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current)
     if (currentUser) {
-      timerRef.current = setTimeout(() => dispatch({ type: 'LOGOUT' }), INACTIVITY_MS)
+      warnTimerRef.current = setTimeout(() => {
+        dispatch({
+          type: 'ADD_TOAST',
+          msg: '⏱️ You will be logged out in 60 seconds due to inactivity. Tap anywhere to stay.',
+          toastType: 'warning',
+          id: Date.now(),
+        })
+      }, WARN_MS)
+
+      timerRef.current = setTimeout(() => {
+        const s = stateRef.current
+        // Auto-save cart as a held order so the cashier can recover it on next login.
+        if (s.cart && s.cart.length > 0) {
+          dispatch({
+            type: 'HOLD_ORDER',
+            order: {
+              id: `auto-${Date.now()}`,
+              label: `Auto-saved (${s.currentUser?.name ?? 'Staff'} — inactivity logout)`,
+              cart: s.cart,
+              tableId: s.posState[s.activeModule]?.selTable ?? undefined,
+              module: s.activeModule,
+              openedAt: new Date().toISOString(),
+            },
+          })
+        }
+        dispatch({ type: 'LOGOUT' })
+      }, INACTIVITY_MS)
     }
   }, [currentUser, dispatch])
+
   useEffect(() => {
     const events = ['mousedown', 'touchstart', 'keydown', 'scroll'] as const
     events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }))
     resetTimer()
     return () => {
       events.forEach(e => window.removeEventListener(e, resetTimer))
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (timerRef.current)     clearTimeout(timerRef.current)
+      if (warnTimerRef.current) clearTimeout(warnTimerRef.current)
     }
   }, [resetTimer])
 

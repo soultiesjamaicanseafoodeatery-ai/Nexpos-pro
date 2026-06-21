@@ -139,8 +139,8 @@ const defaultPOS = (): POSState => ({
 
 function initState(): AppState {
   return {
-    currentUser: null,
-    currentShift: null,
+    currentUser: storage.get<User>('current_user') ?? null,
+    currentShift: storage.get<Shift>('current_shift') ?? null,
     users: storage.get<User[]>('users') ?? SEED_USERS,
     activeModule: 'restaurant',
     activePage: 'pos',
@@ -174,9 +174,11 @@ function initState(): AppState {
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'LOGIN': {
+      storage.set('current_user', action.user)
       if (state.currentShift !== null) {
         return { ...state, currentUser: action.user, activePage: 'pos' }
       }
+      storage.set('current_shift', action.shift)
       const shifts = [action.shift, ...state.shifts]
       storage.set('shifts', shifts)
       return { ...state, currentUser: action.user, currentShift: action.shift, shifts, activePage: 'pos' }
@@ -186,6 +188,8 @@ function reducer(state: AppState, action: Action): AppState {
         s.id === state.currentShift?.id ? { ...s, end: new Date().toISOString() } : s
       )
       storage.set('shifts', shifts)
+      storage.set('current_user', null)
+      storage.set('current_shift', null)
       return { ...state, currentUser: null, currentShift: null, shifts, cart: [], cartPayMethod: 'cash', cartOrderType: 'dine-in', uiMode: 'pos' }
     }
     case 'CLOCK_OUT': {

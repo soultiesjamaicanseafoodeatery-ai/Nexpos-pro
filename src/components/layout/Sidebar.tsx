@@ -129,7 +129,7 @@ export default function Sidebar() {
                 width: '100%', display: 'flex', alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 gap: collapsed ? 0 : 8,
-                padding: collapsed ? '8px 0' : '7px 10px',
+                padding: collapsed ? '10px 0' : '10px 12px',
                 borderRadius: 'var(--r2)', cursor: canUse ? 'pointer' : 'not-allowed',
                 color: isOn ? colors.active : 'var(--txt2)', fontSize: 12, fontWeight: 600, marginBottom: 3,
                 border: isOn ? `1.5px solid ${colors.border}` : '1.5px solid transparent',
@@ -165,7 +165,7 @@ export default function Sidebar() {
                 display: 'flex', alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 gap: collapsed ? 0 : 8,
-                padding: collapsed ? '9px 0' : '7px 10px',
+                padding: collapsed ? '12px 0' : '10px 12px',
                 borderRadius: 'var(--r2)', cursor: accessible ? 'pointer' : 'not-allowed',
                 color: isOn ? active : 'var(--txt2)', fontSize: collapsed ? 16 : 12,
                 fontWeight: isOn ? 700 : 500, marginBottom: 2, transition: 'all .12s',
@@ -175,7 +175,7 @@ export default function Sidebar() {
               {collapsed ? (
                 <span>{item.ic}</span>
               ) : (
-                <span>{item.lbl}</span>
+                <><span style={{marginRight:6}}>{item.ic}</span>{item.lbl}</>
               )}
             </div>
           )
@@ -195,7 +195,7 @@ export default function Sidebar() {
                   fontWeight: activePage === item.id ? 700 : 500, marginBottom: 2, transition: 'all .12s',
                   background: activePage === item.id ? 'var(--surf2)' : 'transparent',
                 }}>
-                <span>{item.lbl}</span>
+                <><span style={{marginRight:6}}>{item.ic}</span>{item.lbl}</>
               </div>
             ))}
           </>
@@ -219,7 +219,7 @@ export default function Sidebar() {
         <button onClick={toggleCollapse}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           style={{
-            width: '100%', padding: '7px 0', borderRadius: 'var(--r2)',
+            width: '100%', padding: '10px 0', borderRadius: 'var(--r2)',
             background: 'transparent', border: '1px solid var(--bdr)', color: 'var(--txt3)',
             cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center',
             justifyContent: 'center', gap: 5, transition: 'all .12s',

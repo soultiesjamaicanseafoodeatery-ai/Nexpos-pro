@@ -39,6 +39,7 @@ export default function PaymentModal({
 }: Props) {
   const [step, setStep]               = useState<Step>('choose')
   const [submitting, setSubmitting]   = useState(false)
+  const [giftCardNumber, setGiftCardNumber] = useState('')
   const [tender, setTender]           = useState('')
   const [cardProcessing, setCardProcessing] = useState(false)
   const [cardDone, setCardDone]       = useState(false)
@@ -615,12 +616,13 @@ export default function PaymentModal({
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '24px 18px', textAlign: 'center' }}>
             <div style={{ fontSize: 48 }}>🎁</div>
             <div style={{ fontSize: 14, color: 'var(--txt3)' }}>Swipe or scan gift card</div>
+            <input type="text" placeholder="Gift Card Number (required)" value={giftCardNumber} onChange={e => setGiftCardNumber(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--r)', border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', fontSize: 14, marginTop: 8, boxSizing: 'border-box' as const }} />
           </div>
           <div style={{ padding: '0 18px 16px', flexShrink: 0 }}>
-            <button onClick={() => {
-              if (submitting) return
+            <button disabled={!giftCardNumber.trim()} onClick={() => {
+              if (submitting || !giftCardNumber.trim()) return
               setSubmitting(true)
-              const data = { method: 'gift_card' }
+              const data = { method: 'gift_card', giftCardNumber: giftCardNumber.trim() }
               setSuccessData(data)
               setStep('success')
               onComplete(data)
@@ -690,7 +692,7 @@ export default function PaymentModal({
                   onChange={e => setSplits(prev => prev.map((p, j) => j === i ? { ...p, method: e.target.value } : p))}
                   style={{ background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', padding: '9px 8px', fontSize: 12, color: 'var(--txt)', flex: '0 0 110px' }}>
                   <option value="cash">Cash</option>
-                  <option value="card">Card</option>
+                  {CARD_TERMINAL_ENABLED && <option value="card">Card</option>}
                   <option value="gift_card">Gift Card</option>
                 </select>
                 <input type="number" min={0} step="0.01" value={sp.amount}

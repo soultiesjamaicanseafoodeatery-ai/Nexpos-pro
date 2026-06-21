@@ -60,6 +60,11 @@ export default function OutsideOrders({ onCountChange }: Props) {
 
   const cancel = async (order: OutsideOrder) => {
     if (!supabase) return
+    const orderId = String(order.id).slice(-6).toUpperCase()
+    const confirmed = window.confirm(
+      `Cancel order #\?\n\nThis cannot be undone. The customer's order will be cancelled.`
+    )
+    if (!confirmed) return
     await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order.id)
     toast('Order cancelled', 'warn')
   }

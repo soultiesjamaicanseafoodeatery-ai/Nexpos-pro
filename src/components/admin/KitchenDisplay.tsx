@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { KitchenStatus, BarStatus, CarwashStatus, OrderTicket } from '@/types'
 import { buildKitchenTicket, buildBarTicket, smartPrint } from '@/lib/utils/ticketPrinter'
@@ -31,17 +31,21 @@ const CW_BADGE: Record<CarwashStatus, { bg: string; color: string }> = {
 function elapsed(createdTime: string | undefined): string {
   if (!createdTime) return '—'
   try {
-    const now = new Date()
-    const [h, m] = createdTime.replace(/[AP]M/i, '').trim().split(':').map(Number)
-    if (isNaN(h) || isNaN(m)) return '—'
-    const isPM = /pm/i.test(createdTime)
-    const hour = isPM && h !== 12 ? h + 12 : (!isPM && h === 12 ? 0 : h)
-    const created = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, m)
-    if (created > now) created.setDate(created.getDate() - 1)
-    const diff = Math.floor((now.getTime() - created.getTime()) / 60000)
+    let created = new Date(createdTime)
+    if (isNaN(created.getTime())) {
+      const now = new Date()
+      const [h, m] = createdTime.replace(/[AP]M/i, '').trim().split(':').map(Number)
+      if (isNaN(h) || isNaN(m)) return '—'
+      const isPM = /pm/i.test(createdTime)
+      const hour = isPM && h !== 12 ? h + 12 : (!isPM && h === 12 ? 0 : h)
+      created = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, m)
+      if (created > now) created.setDate(created.getDate() - 1)
+    }
+    const diff = Math.floor((Date.now() - created.getTime()) / 60000)
     if (diff < 0 || diff > 1440) return '—'
-    if (diff < 60) return `${diff}m`
-    return `${Math.floor(diff / 60)}h ${diff % 60}m`
+    if (diff < 1) return '< 1m'
+    if (diff < 60) return `\m`
+    return `\h \m`
   } catch {
     return '—'
   }
@@ -52,11 +56,36 @@ export default function KitchenDisplay() {
   const { orderTickets, currentUser, biz } = state
 
   const [filter,       setFilter]       = useState<FilterMode>('all')
+  const [newOrderAlert, setNewOrderAlert] = useState(false)
+  const prevPendingRef                    = useRef(0)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [searchQ,      setSearchQ]      = useState('')
   const [printing,     setPrinting]     = useState<string | null>(null)
 
   const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  const pendingCount = orderTickets.filter(t => t.kitchenStatus === 'pending').length
+  useEffect(() => {
+    if (pendingCount > prevPendingRef.current) {
+      setNewOrderAlert(true)
+      const t = setTimeout(() => setNewOrderAlert(false), 4000)
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification('New Order', { body: `\ order(s) waiting`, icon: '/favicon.ico' })
+      }
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.frequency.value = 880
+        gain.gain.setValueAtTime(0.4, ctx.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.6)
+        setTimeout(() => ctx.close(), 1000)
+      } catch {}
+      return () => clearTimeout(t)
+    }
+    prevPendingRef.current = pendingCount
+  }, [pendingCount])
 
   const updateKitchen = (ticket: OrderTicket, status: KitchenStatus) => {
     const timeline = { ...ticket.timeline }

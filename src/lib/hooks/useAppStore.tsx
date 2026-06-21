@@ -56,7 +56,7 @@ import {
   SEED_TRANSACTIONS, SEED_FLEET, SEED_PROMOS,
 } from '@/lib/data/seed'
 
-// ── State shape ───────────────────────────────────────────────
+// â”€â”€ State shape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface AppState {
   // Auth
   currentUser: User | null
@@ -109,6 +109,7 @@ type Action =
   | { type: 'ADD_TO_CART'; item: CartItem }
   | { type: 'REMOVE_FROM_CART'; id: string }
   | { type: 'UPDATE_CART_QTY'; id: string; qty: number }
+  | { type: 'UPDATE_CART_NOTE'; id: string; note: string }
   | { type: 'CLEAR_CART' }
   | { type: 'SET_CART_PAY'; method: string }
   | { type: 'SET_CART_ORDER_TYPE'; orderType: OrderType }
@@ -264,7 +265,7 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, isOnline: action.online }
     case 'ADD_TO_CART': {
       const incoming = action.item
-      // Deduplicate: same itemId + same addon ids + same plate → increment qty
+      // Deduplicate: same itemId + same addon ids + same plate â†’ increment qty
       const existingIdx = state.cart.findIndex(ci =>
         ci.itemId === incoming.itemId &&
         ci.plate === incoming.plate &&
@@ -290,6 +291,11 @@ function reducer(state: AppState, action: Action): AppState {
         cart: state.cart.map(ci => ci.id === action.id ? { ...ci, qty: action.qty } : ci),
       }
     }
+    case 'UPDATE_CART_NOTE':
+      return {
+        ...state,
+        cart: state.cart.map(ci => ci.id === action.id ? { ...ci, note: action.note } : ci),
+      }
     case 'CLEAR_CART':
       return { ...state, cart: [] }
     case 'SET_CART_PAY':
@@ -390,7 +396,7 @@ function reducer(state: AppState, action: Action): AppState {
   }
 }
 
-// ── Context ───────────────────────────────────────────────────
+// â”€â”€ Context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface AppContextValue {
   state: AppState
   dispatch: React.Dispatch<Action>
@@ -405,7 +411,7 @@ const AppContext = createContext<AppContextValue | null>(null)
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, initState)
 
-  // Load staff from Supabase — overwrites seed/cache on success
+  // Load staff from Supabase â€” overwrites seed/cache on success
   const staffFetched = useRef(false)
   useEffect(() => {
     if (staffFetched.current) return

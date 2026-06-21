@@ -6,6 +6,8 @@ import type { User, Shift } from '@/types'
 import { ROLES } from '@/lib/data/seed'
 import { hashPin } from '@/lib/utils/hash'
 
+const WEAK_PINS = ['1234', '2222', '3333', '4444', '5555', '6666', '0000', '1111', '9999', '1212']
+
 const MOD_TAG_CLS: Record<string, string> = {
   restaurant: 'mod-rest',
   bar:        'mod-bar',
@@ -18,7 +20,7 @@ const MOD_TAG_LBL: Record<string, string> = {
 }
 
 
-// ── PIN lockout helpers ───────────────────────────────────────
+// â”€â”€ PIN lockout helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MAX_PIN_ATTEMPTS = 5
 const LOCKOUT_DURATION_MS = 10 * 60 * 1000
 
@@ -61,6 +63,7 @@ export default function AuthScreen() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [pinState, setPinState] = useState<'idle' | 'error' | 'success'>('idle')
+  const [showWeakPinWarning, setShowWeakPinWarning] = useState(false)
   const [lockoutInfo, setLockoutInfo] = useState<{ locked: boolean; remaining: number }>({ locked: false, remaining: 0 })
 
   const activeUsers = state.users.filter(u => u.active)
@@ -83,7 +86,7 @@ export default function AuthScreen() {
   const pressKey = useCallback((digit: string) => {
     if (!selectedUser) { toast('Tap your name first', 'warn'); return }
     const lockout = isLockedOut(selectedUser.id)
-    if (lockout.locked) { setLockoutInfo(lockout); setError(`Account locked — try again in \ min`); return }
+    if (lockout.locked) { setLockoutInfo(lockout); setError(`Account locked â€” try again in \ min`); return }
     if (pin.length >= 4) return
     setError('')
     const newPin = pin + digit
@@ -115,6 +118,7 @@ export default function AuthScreen() {
             }
             clearFailedAttempts(selectedUser.id)
             dispatch({ type: 'LOGIN', user: selectedUser, shift })
+            if (WEAK_PINS.includes(newPin)) setShowWeakPinWarning(true)
             toast(`Welcome ${selectedUser.name.split(' ')[0]}!`, 'success')
           }, 280)
         } else {
@@ -122,7 +126,7 @@ export default function AuthScreen() {
           const lockout = isLockedOut(selectedUser.id)
           setLockoutInfo(lockout)
           setPinState('error')
-          setError(lockout.locked ? `Account locked for \ min — too many failed attempts` : `Incorrect PIN — try again (\/\)`)
+          setError(lockout.locked ? `Account locked for \ min â€” too many failed attempts` : `Incorrect PIN â€” try again (\/\)`)
           setTimeout(() => {
             setPin('')
             setPinState('idle')
@@ -143,7 +147,7 @@ export default function AuthScreen() {
     setPinState('idle')
   }, [])
 
-  // Keyboard support — digits, Backspace, Escape
+  // Keyboard support â€” digits, Backspace, Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key >= '0' && e.key <= '9') {
@@ -170,7 +174,7 @@ export default function AuthScreen() {
         overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,.6)',
         display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 500,
       }}>
-        {/* LEFT — name list */}
+        {/* LEFT â€” name list */}
         <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--bdr)' }}>
           <div style={{
             padding: '20px 20px 14px', textAlign: 'center',
@@ -217,14 +221,14 @@ export default function AuthScreen() {
                       }
                     </div>
                   </div>
-                  <span style={{ fontSize: 16, color: isSelected ? 'var(--blue)' : 'var(--txt3)', opacity: isSelected ? 1 : 0, transition: 'opacity .15s' }}>→</span>
+                  <span style={{ fontSize: 16, color: isSelected ? 'var(--blue)' : 'var(--txt3)', opacity: isSelected ? 1 : 0, transition: 'opacity .15s' }}>â†’</span>
                 </button>
               )
             })}
           </div>
         </div>
 
-        {/* RIGHT — PIN entry */}
+        {/* RIGHT â€” PIN entry */}
         <div style={{ display: 'flex', flexDirection: 'column', padding: 20 }}>
           {!selectedUser ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--txt3)', textAlign: 'center', gap: 12 }}>
@@ -241,11 +245,17 @@ export default function AuthScreen() {
                   <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>{selectedUser.name}</div>
                   <div style={{ fontSize: 10.5, color: 'var(--txt3)', marginTop: 1 }}>{ROLES[selectedUser.role]?.label}</div>
                 </div>
-                <button onClick={resetAuth} style={{ background: 'transparent', border: 'none', color: 'var(--txt3)', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                <button onClick={resetAuth} style={{ background: 'transparent', border: 'none', color: 'var(--txt3)', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>Ã—</button>
               </div>
 
               {/* PIN dots */}
               <div style={{ fontSize: 11, color: 'var(--txt3)', textAlign: 'center', marginBottom: 8 }}>Enter your 4-digit PIN</div>
+              {showWeakPinWarning && (
+                <div style={{ background: '#7f1d1d', color: '#fca5a5', padding: '8px 12px', borderRadius: 8, marginBottom: 8, fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <span>⚠️ Weak PIN detected. Ask your manager to update your PIN in Staff settings.</span>
+                  <button onClick={() => setShowWeakPinWarning(false)} style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 16, padding: 0, flexShrink: 0 }}>✕</button>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 8 }}>
                 {[0,1,2,3].map(i => (
                   <div key={i} style={{
@@ -281,7 +291,7 @@ export default function AuthScreen() {
                 ))}
                 <button onClick={clearKey} style={{ padding: '15px 8px', borderRadius: 'var(--r)', background: 'var(--surf)', border: '1px solid var(--bdr)', fontSize: 12, color: 'var(--txt3)', cursor: 'pointer', transition: 'all .12s' }}>CLR</button>
                 <button onClick={() => pressKey('0')} style={{ padding: '15px 8px', borderRadius: 'var(--r)', background: 'var(--surf)', border: '1px solid var(--bdr)', fontSize: 19, fontWeight: 700, color: 'var(--txt)', cursor: 'pointer', textAlign: 'center', transition: 'all .12s', fontFamily: 'var(--mono)' }}>0</button>
-                <button onClick={delKey} style={{ padding: '15px 8px', borderRadius: 'var(--r)', background: 'var(--surf)', border: '1px solid var(--bdr)', fontSize: 15, color: 'var(--txt3)', cursor: 'pointer', transition: 'all .12s' }}>⌫</button>
+                <button onClick={delKey} style={{ padding: '15px 8px', borderRadius: 'var(--r)', background: 'var(--surf)', border: '1px solid var(--bdr)', fontSize: 15, color: 'var(--txt3)', cursor: 'pointer', transition: 'all .12s' }}>âŒ«</button>
               </div>
 
               <div style={{ color: 'var(--red)', fontSize: 12, fontWeight: 700, minHeight: 18, textAlign: 'center', marginTop: 8 }}>{error}</div>
@@ -291,7 +301,7 @@ export default function AuthScreen() {
 
         {/* Footer */}
         <div style={{ padding: '10px 20px', borderTop: '1px solid var(--bdr)', textAlign: 'center', fontSize: 10.5, color: 'var(--txt3)', gridColumn: '1 / -1' }}>
-          NexPOS Pro · Multi-module POS System
+          NexPOS Pro Â· Multi-module POS System
         </div>
       </div>
     </div>

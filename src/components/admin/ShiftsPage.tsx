@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
+import EODWizard from './EODWizard'
 import type { Transaction } from '@/types'
 
 function duration(start: string, end: string | null) {
@@ -52,6 +53,7 @@ export default function ShiftsPage() {
   const fmt = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const todayStr = new Date().toISOString().slice(0, 10)
+  const [showEOD, setShowEOD] = useState(false)
   const [eodDate,      setEodDate]      = useState(todayStr)
   const [openingFloat, setOpeningFloat] = useState('')
   const [actualCash,   setActualCash]   = useState('')
@@ -110,7 +112,22 @@ export default function ShiftsPage() {
         </div>
       )}
 
-      {/* ── EOD Cash Reconciliation ───────────────────────────── */}
+      <button
+          onClick={() => setShowEOD(true)}
+          style={{
+            background: 'var(--grn)', color: '#fff', border: 'none',
+            borderRadius: 'var(--r2)', padding: '12px 22px',
+            fontWeight: 700, fontSize: 14, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 8,
+            marginBottom: 16, minHeight: 44,
+          }}
+        >
+          📋 Start End of Day
+        </button>
+
+        {showEOD && <EODWizard onClose={() => setShowEOD(false)} />}
+
+        {/* ── EOD Cash Reconciliation ───────────────────────────── */}
       <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', marginBottom: 18 }}>
 
         {/* Panel header */}

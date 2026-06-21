@@ -110,14 +110,21 @@ export default function KitchenDisplay() {
 
   const handleReprint = async (ticket: OrderTicket, type: 'kitchen' | 'bar') => {
     if (printing) return
-    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
-    const time  = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const originalTs = ticket.timeline?.created
+    const originalDate = originalTs ? (() => { const d = new Date(originalTs); return isNaN(d.getTime()) ? null : d })() : null
+    const today = originalDate
+      ? originalDate.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+    const time = originalDate
+      ? originalDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      : (originalTs ?? new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }))
     const pw    = (biz.printers?.width ?? 80) as 58 | 80
     const orderData = {
       orderNum: ticket.orderNum, table: ticket.table, server: ticket.server,
       guestCount: ticket.guestCount, orderType: ticket.orderType,
       date: today, time, items: ticket.items,
-      orderNote: ticket.orderNote, customerName: ticket.customerName,
+      orderNote: ticket.orderNote ? ("*** REPRINT *** | " + ticket.orderNote) : '*** REPRINT ***',
+      customerName: ticket.customerName,
     }
     const html        = type === 'kitchen' ? buildKitchenTicket(orderData, { width: pw }) : buildBarTicket(orderData, { width: pw })
     const printerName = type === 'kitchen' ? biz.printers?.kitchen : (biz.printers?.bar || biz.printers?.kitchen)

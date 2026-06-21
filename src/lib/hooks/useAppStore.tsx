@@ -378,8 +378,8 @@ function reducer(state: AppState, action: Action): AppState {
           : s
       )
       storage.set('shifts', shifts)
-      storage.set('held_orders', [])
-      return { ...state, currentShift: null, shifts, heldOrders: [] }
+      // Held orders survive shift boundaries - next shift inherits open tables
+      return { ...state, currentShift: null, shifts }
     }
     default:
       return state

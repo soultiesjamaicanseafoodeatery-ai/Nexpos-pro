@@ -16,7 +16,7 @@ import { MODULE_DATA } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
 import { storage } from '@/lib/utils/storage'
 
-// ── Relational menu types (used by live state in POSPage) ─────
+// â”€â”€ Relational menu types (used by live state in POSPage) â”€â”€â”€â”€â”€
 interface FlavourRow { id: string; name: string; active: boolean }
 interface SideRow { id: string; name: string; price: number; active: boolean }
 interface AddonRow { id: string; name: string; description: string; price: number; icon?: string; active: boolean }
@@ -87,6 +87,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
   // Void system
   const [voidTarget,      setVoidTarget]      = useState<{ item: CartItem; ticketId?: string } | null>(null)
+  const [editingNoteId,  setEditingNoteId]  = useState<string | null>(null)
+  const [noteInput,      setNoteInput]      = useState('')
   const [voidOrderTarget, setVoidOrderTarget] = useState<OrderTicket | null>(null)
   // Add-to-existing-order mode
   const [addToOrderMode,  setAddToOrderMode]  = useState(false)
@@ -132,7 +134,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setGratuityPct(cartOrderType === 'dine-in' ? 15 : 0)
   }, [cartOrderType, gratuityOverride])
 
-  // Live data — loaded from localStorage immediately, refreshed from Supabase in background
+  // Live data â€” loaded from localStorage immediately, refreshed from Supabase in background
   const [liveMenuItems,    setLiveMenuItems]    = useState<MenuItem[] | null>(null)
   const [liveCarwashItems, setLiveCarwashItems] = useState<MenuItem[] | null>(null)
   const [liveAddons,       setLiveAddons]       = useState<Addon[] | null>(null)
@@ -149,7 +151,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     if (hasFetched.current) return
     hasFetched.current = true
 
-    // ── Step 1: Load from localStorage immediately (works offline) ──
+    // â”€â”€ Step 1: Load from localStorage immediately (works offline) â”€â”€
     // Handles both raw Supabase format (description/category) and mapped format (desc/cat)
     type RawItem = MenuItem & { description?: string; category?: string; is_available?: boolean }
     type RawAddon = Addon & { description?: string }
@@ -186,7 +188,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     if (cachedRestAddonsRaw && cachedRestAddonsRaw.length > 0)
       setLiveRestAddons(cachedRestAddonsRaw.map(normAddon).filter(i => i.active))
 
-    // ── Load relational menu data from localStorage cache ──
+    // â”€â”€ Load relational menu data from localStorage cache â”€â”€
     const cachedFlavours  = storage.get<FlavourRow[]>('pos_flavours')
     const cachedSides     = storage.get<SideRow[]>('pos_sides')
     const cachedPosAddons = storage.get<AddonRow[]>('pos_addons')
@@ -220,11 +222,11 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       })
     }
 
-    // ── Step 2: Background sync ──
+    // â”€â”€ Step 2: Background sync â”€â”€
     async function syncFromSupabase() {
       const WAPI = ''
       try {
-        // ── Menu items via website API (same source as Menu Manager) ──
+        // â”€â”€ Menu items via website API (same source as Menu Manager) â”€â”€
         const menuRes = await fetch(`${WAPI}/api/menu`)
         if (menuRes.ok) {
           type ApiItem = { id: string; name: string; description?: string; price: number; category: string; emoji?: string; active?: boolean; is_available?: boolean; module?: string }
@@ -251,7 +253,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
           }
         }
 
-        // ── Carwash services via Supabase (no website API for these yet) ──
+        // â”€â”€ Carwash services via Supabase (no website API for these yet) â”€â”€
         if (!supabase) {
           // Skip carwash Supabase sync if client not configured
         } else {
@@ -285,7 +287,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
         } // end supabase carwash block
 
-        // ── Relational data (flavours, sides, addons, sizes, assignments) ──
+        // â”€â”€ Relational data (flavours, sides, addons, sizes, assignments) â”€â”€
         const [flvRes, sideRes, addRes, szRes, asgRes] = await Promise.allSettled([
           fetch(`${WAPI}/api/flavours`).then(r => r.ok ? r.json() : []),
           fetch(`${WAPI}/api/sides`).then(r => r.ok ? r.json() : []),
@@ -317,10 +319,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
   // Build the effective module data.
   // Seed items are only used when Supabase is not configured at all (no URL/key).
-  // If Supabase IS configured, show live data (or empty) — never show demo items in production.
+  // If Supabase IS configured, show live data (or empty) â€” never show demo items in production.
   const seedMod = MODULE_DATA[activeModule]
   const supabaseConfigured = !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-  // Menu items always come from website API now — supabaseConfigured only governs carwash/addon fallbacks
+  // Menu items always come from website API now â€” supabaseConfigured only governs carwash/addon fallbacks
   const mod: ModuleData = {
     ...seedMod,
     items: (() => {
@@ -334,7 +336,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
           // If module filter returns nothing, show all live items so POS is never blank
           return modItems.length > 0 ? modItems : liveMenuItems
         }
-        return []  // loading — show empty grid, not fake seed data
+        return []  // loading â€” show empty grid, not fake seed data
       }
       if (activeModule === 'carwash') {
         if (liveCarwashItems && liveCarwashItems.length > 0) return liveCarwashItems
@@ -347,7 +349,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         if (liveAddons && liveAddons.length > 0) return liveAddons
         return supabaseConfigured ? [] : seedMod.addons
       }
-      // restaurant and bar — use Supabase addons if available, else seed fallback
+      // restaurant and bar â€” use Supabase addons if available, else seed fallback
       if (liveRestAddons && liveRestAddons.length > 0) return liveRestAddons
       return seedMod.addons
     })(),
@@ -467,7 +469,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     toast(`Added: ${item.name}`, 'success')
   }
 
-  // Handle item click — open modal only if the item has assigned add-ons/flavours/sizes/sides
+  // Handle item click â€” open modal only if the item has assigned add-ons/flavours/sizes/sides
   const handleItemClick = (item: MenuItem) => {
     const assignment = liveAssignments[item.id]
     const hasFlavours     = (assignment?.flavour_ids?.length ?? 0) > 0
@@ -499,7 +501,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       : payData.method === 'tab' ? 'Tab'
       : payData.method
 
-    // ── Path A: Paying an existing open (sent) order ─────────────
+    // â”€â”€ Path A: Paying an existing open (sent) order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (payingTicket) {
       const finalCalc = overrideCalc ?? payCalc
       const modules = Array.from(new Set(payingTicket.items.map(ci => ci.module)))
@@ -512,7 +514,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         cashier:  currentUser.name,
         userId:   currentUser.id,
         customer: payingTicket.customerName || (payingTicket.table ? `Table ${payingTicket.table}` : 'Walk-in'),
-        item:     `Order #${payingTicket.orderNum} · ${payingTicket.items.length} items`,
+        item:     `Order #${payingTicket.orderNum} Â· ${payingTicket.items.length} items`,
         addons:   payingTicket.items.flatMap(ci => ci.addons.map(a => a.name)),
         sub:      finalCalc.sub,
         disc:     finalCalc.disc,
@@ -553,13 +555,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       setSplitTarget(null)
       if (payData.method === 'cash' && biz.printers?.drawerEnabled && biz.printers?.receipt)
         qzOpenDrawer(biz.printers.receipt)
-      audit('PAYMENT', `Order #${payingTicket.orderNum} — ${fmt(finalCalc.total, sym)} · ${payMethodLabel}`, 'success')
-      toast(`Order #${payingTicket.orderNum} paid — ${fmt(finalCalc.total, sym)}`, 'success')
+      audit('PAYMENT', `Order #${payingTicket.orderNum} â€” ${fmt(finalCalc.total, sym)} Â· ${payMethodLabel}`, 'success')
+      toast(`Order #${payingTicket.orderNum} paid â€” ${fmt(finalCalc.total, sym)}`, 'success')
       setTimeout(() => setShowTicket(true), 200)
       return
     }
 
-    // ── Path B: Direct pay from current cart (quick / counter sale) ──
+    // â”€â”€ Path B: Direct pay from current cart (quick / counter sale) â”€â”€
     if (cart.length === 0 && !overrideCalc) return
 
     const finalCalc  = overrideCalc ?? calc
@@ -568,12 +570,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const plates     = Array.from(new Set(cart.filter(ci => ci.plate).map(ci => ci.plate!)))
     const selTable   = posState['restaurant'].selTable ?? posState['bar'].selTable
     const tableInfo  = selTable ? `Table ${selTable}` : ''
-    const nameDisplay = customerPhone ? `${customerName || 'Customer'} · ${customerPhone}` : customerName
+    const nameDisplay = customerPhone ? `${customerName || 'Customer'} Â· ${customerPhone}` : customerName
     const customer   = nameDisplay || (plates.length > 0
-      ? plates.join(', ') + (tableInfo ? ` · ${tableInfo}` : '')
+      ? plates.join(', ') + (tableInfo ? ` Â· ${tableInfo}` : '')
       : (tableInfo || 'Walk-in'))
     const itemSummary = cart.length === 1
-      ? `${cart[0].name}${cart[0].qty > 1 ? ` ×${cart[0].qty}` : ''}`
+      ? `${cart[0].name}${cart[0].qty > 1 ? ` Ã—${cart[0].qty}` : ''}`
       : `${cart.length} items (${modules.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(' + ')})`
 
     const tx: Transaction = {
@@ -665,7 +667,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       const html = buildCarwashWorkOrder(ticketData, { width: pw })
       smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw, true)
     }
-    // Auto-print receipt if enabled in Settings → Printers
+    // Auto-print receipt if enabled in Settings â†’ Printers
     if (biz.printers?.autoPrint && biz.printers?.receipt) {
       const receiptHTML = buildCustomerReceipt(tx, biz, { width: pw })
       smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw, true)
@@ -684,15 +686,15 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setGratuityOverride(false)
     setSurcharges([])
     setSplitTarget(null)
-    audit('PAYMENT', `${itemSummary} — ${fmt(tx.total, sym)} · ${payMethodLabel}`, 'success')
-    toast(`✓ ${fmt(tx.total, sym)} charged`, 'success')
+    audit('PAYMENT', `${itemSummary} â€” ${fmt(tx.total, sym)} Â· ${payMethodLabel}`, 'success')
+    toast(`âœ“ ${fmt(tx.total, sym)} charged`, 'success')
     dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: null } })
     dispatch({ type: 'SET_POS_STATE', mod: 'bar',        patch: { selTable: null } })
     dispatch({ type: 'SET_POS_STATE', mod: 'carwash',    patch: { plate: '' } })
     setTimeout(() => setShowTicket(true), 200)
   }
 
-  // ── Send Order: print kitchen/bar tickets, keep order open ────
+  // â”€â”€ Send Order: print kitchen/bar tickets, keep order open â”€â”€â”€â”€
   const sendOrder = () => {
     if (activeCart.length === 0) { toast('Add items before sending', 'warn'); return }
     if (!currentUser) return
@@ -769,12 +771,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setShowOpen(true)
   }
 
-  // ── Permission helpers ─────────────────────────────────────
+  // â”€â”€ Permission helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const role = currentUser?.role ?? ''
   const canVoidCartItem  = ['admin','manager','supervisor','cashier'].includes(role)
   const canVoidSentItem  = ['admin','manager','supervisor'].includes(role)
 
-  // ── Void a cart item (pre-send) ────────────────────────────
+  // â”€â”€ Void a cart item (pre-send) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleVoidCartItem = (item: CartItem, reason: VoidReason, reasonText: string) => {
     if (!currentUser) return
     const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -788,12 +790,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       mod: item.module,
     }
     dispatch({ type: 'ADD_VOID_LOG', entry: logEntry })
-    audit('VOID_ITEM', `Voided ${item.name} from cart — ${reasonText}`, 'warn')
+    audit('VOID_ITEM', `Voided ${item.name} from cart â€” ${reasonText}`, 'warn')
     toast(`Voided: ${item.name}`, 'warn')
     setVoidTarget(null)
   }
 
-  // ── Void an item on a sent open order ─────────────────────
+  // â”€â”€ Void an item on a sent open order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleVoidTicketItem = (ticket: OrderTicket, item: CartItem, reason: VoidReason, reasonText: string) => {
     if (!currentUser) return
     const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -813,12 +815,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       { reason: reasonText, qty: item.qty }
     )
     printTicket(html, 'VOID Ticket')
-    audit('VOID_ITEM', `Voided ${item.name} from Order #${ticket.orderNum} — ${reasonText}`, 'warn')
-    toast(`Voided: ${item.name} — void ticket printed`, 'warn')
+    audit('VOID_ITEM', `Voided ${item.name} from Order #${ticket.orderNum} â€” ${reasonText}`, 'warn')
+    toast(`Voided: ${item.name} â€” void ticket printed`, 'warn')
     setVoidTarget(null)
   }
 
-  // ── Void entire open order (manager/admin only) ────────────
+  // â”€â”€ Void entire open order (manager/admin only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const isManager = ['admin','manager'].includes(role)
   const handleVoidEntireOrder = (ticket: OrderTicket, reason: VoidReason, reasonText: string) => {
     if (!currentUser) return
@@ -836,14 +838,14 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     }})
     if (ticket.hasKitchen || ticket.hasBar) {
       const html = buildVoidTicket(ticket.orderNum, `ENTIRE ORDER (${ticket.items.filter(ci => !ci.voided).length} items)`, currentUser.name, nowTime, { reason: reasonText })
-      printTicket(html, 'VOID — Entire Order')
+      printTicket(html, 'VOID â€” Entire Order')
     }
-    audit('VOID_ORDER', `Order #${ticket.orderNum} voided — ${reasonText}`, 'warn')
+    audit('VOID_ORDER', `Order #${ticket.orderNum} voided â€” ${reasonText}`, 'warn')
     toast(`Order #${ticket.orderNum} voided`, 'warn')
     setVoidOrderTarget(null)
   }
 
-  // ── Add current cart items to an existing open order ───────
+  // â”€â”€ Add current cart items to an existing open order â”€â”€â”€â”€â”€â”€â”€
   const addToExistingOrder = (ticket: OrderTicket) => {
     if (activeCart.length === 0) { toast('Cart is empty', 'warn'); return }
     if (!currentUser) return
@@ -860,15 +862,15 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     }})
     const addData = { orderNum: ticket.orderNum, table: ticket.table, server: currentUser.name, orderType: ticket.orderType, date: today, time: nowTime, items: [...activeCart], orderNote: `++ ADDITIONAL ITEMS ++` }
     const pw3 = (biz.printers?.width ?? 80) as 58 | 80
-    if (newHasKitchen) { const h = buildKitchenTicket(addData, { width: pw3 }); smartPrint(h, 'Kitchen Ticket — Addition', biz.printers?.kitchen, pw3, true) }
-    if (newHasBar)     { const h = buildBarTicket(addData, { width: pw3 });     smartPrint(h, 'Bar Ticket — Addition', biz.printers?.bar || biz.printers?.kitchen, pw3, true) }
+    if (newHasKitchen) { const h = buildKitchenTicket(addData, { width: pw3 }); smartPrint(h, 'Kitchen Ticket â€” Addition', biz.printers?.kitchen, pw3, true) }
+    if (newHasBar)     { const h = buildBarTicket(addData, { width: pw3 });     smartPrint(h, 'Bar Ticket â€” Addition', biz.printers?.bar || biz.printers?.kitchen, pw3, true) }
     dispatch({ type: 'CLEAR_CART' })
     setAddToOrderMode(false); setShowOpen(false)
     audit('ADD_TO_ORDER', `Added ${activeCart.length} item(s) to Order #${ticket.orderNum}`, 'info')
     toast(`Added to Order #${ticket.orderNum}`, 'success')
   }
 
-  // ── Transfer table ──────────────────────────────────────────
+  // â”€â”€ Transfer table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const transferTable = (ticketId: string, newTable: string) => {
     dispatch({ type: 'UPDATE_ORDER_TICKET', id: ticketId, patch: { table: newTable } })
     audit('TRANSFER_TABLE', `Order moved to Table ${newTable}`, 'info')
@@ -947,7 +949,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const activeCart = cart.filter(ci => !ci.voided)
   const calc = calcCart(activeCart, { orderType: cartOrderType, taxOverride: null, ...discOpts, gratuityPct, surcharges })
 
-  // Open (sent, unpaid) orders — excludes legacy, paid, and voided tickets
+  // Open (sent, unpaid) orders â€” excludes legacy, paid, and voided tickets
   const openOrders = state.orderTickets.filter(t => {
     const s = t.status ?? 'paid'
     return s !== 'paid' && s !== 'voided'
@@ -967,7 +969,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   // Active add-ons for modal display
   const activeAddons = mod.addons.filter((a: Addon) => a.active)
 
-  // Floor plan: map table → open ticket
+  // Floor plan: map table â†’ open ticket
   const tableOrderMap: Record<string, OrderTicket> = {}
   openOrders.forEach(t => { if (t.table) tableOrderMap[t.table] = t })
 
@@ -986,7 +988,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       .slice(0, 8)
   })()
 
-  // Filtered items — applies search on top of category filter
+  // Filtered items â€” applies search on top of category filter
   const liveInvQty = (() => {
     const inv = storage.get<Array<{ name: string; quantity: number }>>('inventory') ?? []
     const m: Record<string, number> = {}
@@ -1022,7 +1024,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
 
-      {/* ── Order Workspace Header ── */}
+      {/* â”€â”€ Order Workspace Header â”€â”€ */}
       {onBack && orderContext && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
@@ -1031,7 +1033,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         }}>
           {/* Service type label */}
           <span style={{ fontSize: 12, fontWeight: 900, color: mod.color, textTransform: 'uppercase', letterSpacing: '.6px', flexShrink: 0 }}>
-            {orderContext.orderType === 'dine-in' ? '🍽 Dine-In' : orderContext.orderType === 'takeout' ? '🥡 Takeout' : '🚗 Delivery'}
+            {orderContext.orderType === 'dine-in' ? 'ðŸ½ Dine-In' : orderContext.orderType === 'takeout' ? 'ðŸ¥¡ Takeout' : 'ðŸš— Delivery'}
           </span>
 
           {/* Table pill */}
@@ -1041,10 +1043,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             </span>
           )}
 
-          {/* Guest count — editable for dine-in */}
+          {/* Guest count â€” editable for dine-in */}
           {orderContext.orderType === 'dine-in' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-              <button onClick={() => setGuestCount(g => Math.max(1, g - 1))} style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+              <button onClick={() => setGuestCount(g => Math.max(1, g - 1))} style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>âˆ’</button>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--txt2)', minWidth: 60, textAlign: 'center' }}>{guestCount} {guestCount === 1 ? 'Guest' : 'Guests'}</span>
               <button onClick={() => setGuestCount(g => g + 1)} style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
             </div>
@@ -1067,18 +1069,18 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
           {/* Delivery address */}
           {orderContext.address && (
             <span style={{ fontSize: 12, color: 'var(--txt3)', fontWeight: 600, flexShrink: 0 }}>
-              📍 {orderContext.address}
+              ðŸ“ {orderContext.address}
             </span>
           )}
 
           {/* Server */}
-          <span style={{ fontSize: 11, color: 'var(--txt3)' }}>· {currentUser?.name}</span>
+          <span style={{ fontSize: 11, color: 'var(--txt3)' }}>Â· {currentUser?.name}</span>
 
           {/* Kitchen status chips */}
           {activeTableOrder && (
             <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
               {[
-                { label: 'Sent ✓', done: true },
+                { label: 'Sent âœ“', done: true },
                 { label: 'Ready', done: activeTableOrder.kitchenStatus === 'ready' || activeTableOrder.status === 'ready' || activeTableOrder.status === 'served' },
                 { label: 'Served', done: activeTableOrder.status === 'served' },
               ].map(s => (
@@ -1099,12 +1101,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
           {/* Back link */}
           <button onClick={onBack} style={{ padding: '5px 12px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
-            ← Back
+            â† Back
           </button>
         </div>
       )}
 
-      {/* ── Legacy nav bar — when onBack is set but no orderContext ── */}
+      {/* â”€â”€ Legacy nav bar â€” when onBack is set but no orderContext â”€â”€ */}
       {onBack && !orderContext && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
@@ -1114,17 +1116,17 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             padding: '6px 14px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)',
             background: 'var(--surf)', color: 'var(--txt2)', fontSize: 12, fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-          }}>← Dashboard</button>
+          }}>â† Dashboard</button>
           <div style={{ fontSize: 12, color: 'var(--txt3)', fontWeight: 600 }}>
-            {cartOrderType === 'dine-in'  ? '🍽 Dine-In'  :
-             cartOrderType === 'takeout'  ? '🥡 Takeout'  :
-             cartOrderType === 'delivery' ? '🚗 Delivery'  : 'Order Entry'}
-            {posState['restaurant'].selTable ? ` · Table ${posState['restaurant'].selTable}` : ''}
+            {cartOrderType === 'dine-in'  ? 'ðŸ½ Dine-In'  :
+             cartOrderType === 'takeout'  ? 'ðŸ¥¡ Takeout'  :
+             cartOrderType === 'delivery' ? 'ðŸš— Delivery'  : 'Order Entry'}
+            {posState['restaurant'].selTable ? ` Â· Table ${posState['restaurant'].selTable}` : ''}
           </div>
         </div>
       )}
 
-      {/* ── Carwash toolbar (bay, plate, tabs) ── */}
+      {/* â”€â”€ Carwash toolbar (bay, plate, tabs) â”€â”€ */}
       {activeModule === 'carwash' && (
 
         <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, background: 'var(--bg2)' }}>
@@ -1154,7 +1156,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 onChange={e => setPOS({ selTable: e.target.value || null })}
                 style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', fontSize: 12, fontWeight: 600, cursor: 'pointer', minWidth: 110 }}
               >
-                <option value="">— Bay —</option>
+                <option value="">â€” Bay â€”</option>
                 {(mod.bays as string[])?.map((b: string) => (
                   <option key={b} value={b}>{b} {mod.bayStatus?.[b] === 'occupied' ? '(Busy)' : '(Open)'}</option>
                 ))}
@@ -1171,15 +1173,15 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         </div>
       )}
 
-      {/* ── Outside orders panel ── */}
+      {/* â”€â”€ Outside orders panel â”€â”€ */}
       {activeModule === 'carwash' && cwTab === 'orders' ? (
         <OutsideOrders onCountChange={setPendingCount} />
       ) : (
 
-        /* ── Redesigned 2-panel POS ── */
+        /* â”€â”€ Redesigned 2-panel POS â”€â”€ */
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-          {/* ── LEFT: Menu panel (40%) ── */}
+          {/* â”€â”€ LEFT: Menu panel (40%) â”€â”€ */}
           <div style={{ flex: '0 0 40%', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--bdr)' }}>
 
             {/* Category tabs + search bar */}
@@ -1197,12 +1199,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
               </div>
               <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: 1, position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--txt3)', pointerEvents: 'none' }}>🔍</span>
+                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--txt3)', pointerEvents: 'none' }}>ðŸ”</span>
                   <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search menu..."
                     style={{ width: '100%', padding: '8px 10px 8px 34px', borderRadius: 10, border: `1.5px solid ${searchQuery ? mod.color : 'var(--bdr)'}`, background: 'var(--surf2)', color: 'var(--txt)', fontSize: 13, fontWeight: 500, boxSizing: 'border-box' }} />
                 </div>
                 {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 20, padding: '0 4px', lineHeight: 1 }}>×</button>
+                  <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 20, padding: '0 4px', lineHeight: 1 }}>Ã—</button>
                 )}
               </div>
             </div>
@@ -1213,7 +1215,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
               {/* Quick Picks */}
               {quickPicks.length > 0 && !searchQuery && (
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: mod.color, textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 8 }}>⚡ Quick Picks</div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: mod.color, textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 8 }}>âš¡ Quick Picks</div>
                   <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                     {quickPicks.map((item: MenuItem) => (
                       <button key={item.id} onClick={() => handleItemClick(item)} style={{
@@ -1237,10 +1239,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 </div>
               )}
 
-              {/* Item grid — 3 columns */}
+              {/* Item grid â€” 3 columns */}
               {liveMenuItems === null && (activeModule === 'restaurant' || activeModule === 'bar') ? (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--txt3)', fontSize: 13 }}>
-                  Loading menu…
+                  Loading menuâ€¦
                 </div>
               ) : searchFiltered.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--txt3)', fontSize: 13 }}>
@@ -1259,7 +1261,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                       opacity: eightySixed ? 0.55 : 1,
                     }}>
                       {eightySixed ? (
-                        <div style={{ padding: '3px 8px', background: '#7f1d1d33', borderBottom: '1px solid #ef444433', fontSize: 10, fontWeight: 800, color: '#ef4444', textAlign: 'center', letterSpacing: '.5px' }}>{'86\'d — OUT'}</div>
+                        <div style={{ padding: '3px 8px', background: '#7f1d1d33', borderBottom: '1px solid #ef444433', fontSize: 10, fontWeight: 800, color: '#ef4444', textAlign: 'center', letterSpacing: '.5px' }}>{'86\'d â€” OUT'}</div>
                       ) : item.duration ? (
                         <div style={{ padding: '3px 8px', background: 'var(--surf2)', borderBottom: '1px solid var(--bdr)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)' }}>{item.duration}</div>
                       ) : null}
@@ -1279,10 +1281,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             </div>
           </div>
 
-          {/* ── RIGHT: Order ticket (60%) ── */}
+          {/* â”€â”€ RIGHT: Order ticket (60%) â”€â”€ */}
           <div style={{ flex: '0 0 60%', minWidth: 340, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            {/* Table / Server / Status header — hidden when workspace header is active */}
+            {/* Table / Server / Status header â€” hidden when workspace header is active */}
             {!orderContext && <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
                 <div>
@@ -1292,7 +1294,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--txt3)' }}>No Table Selected</div>
                   )}
                   <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>
-                    {currentUser?.name}{guestCount > 1 ? ` · ${guestCount} guests` : ' · 1 guest'}
+                    {currentUser?.name}{guestCount > 1 ? ` Â· ${guestCount} guests` : ' Â· 1 guest'}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
@@ -1312,7 +1314,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
               {activeTableOrder && (
                 <div style={{ display: 'flex', gap: 5, marginBottom: 8, flexWrap: 'wrap' }}>
                   {[
-                    { label: 'Kitchen Sent ✓', done: true },
+                    { label: 'Kitchen Sent âœ“', done: true },
                     { label: 'Food Ready', done: activeTableOrder.kitchenStatus === 'ready' || activeTableOrder.status === 'ready' || activeTableOrder.status === 'served' },
                     { label: 'Served', done: activeTableOrder.status === 'served' },
                   ].map(step => (
@@ -1321,17 +1323,17 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 </div>
               )}
 
-              {/* Table selector — floor plan or dropdown */}
+              {/* Table selector â€” floor plan or dropdown */}
               {(activeModule === 'restaurant' || activeModule === 'bar') && (mod.tables as string[])?.length > 0 && (
                 showFloorPlan ? (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
                       <span style={{ fontSize: 10, fontWeight: 800, color: mod.color, textTransform: 'uppercase', letterSpacing: '.5px' }}>Floor Plan</span>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 9, color: 'var(--txt3)' }}>
-                        <span style={{ color: 'var(--grn)' }}>● Free</span>
-                        <span style={{ color: 'var(--ora)' }}>● Occupied</span>
-                        <span style={{ color: '#ef4444' }}>● Pay Now</span>
-                        <button onClick={() => setShowFloorPlan(false)} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer', fontWeight: 700 }}>List ▾</button>
+                        <span style={{ color: 'var(--grn)' }}>â— Free</span>
+                        <span style={{ color: 'var(--ora)' }}>â— Occupied</span>
+                        <span style={{ color: '#ef4444' }}>â— Pay Now</span>
+                        <button onClick={() => setShowFloorPlan(false)} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer', fontWeight: 700 }}>List â–¾</button>
                       </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, maxHeight: 160, overflowY: 'auto' }}>
@@ -1355,27 +1357,27 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <select value={ps.selTable ?? ''} onChange={e => setPOS({ selTable: e.target.value || null })}
                       style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: ps.selTable ? 'var(--txt)' : 'var(--txt3)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                      <option value="">— Select Table —</option>
+                      <option value="">â€” Select Table â€”</option>
                       {(mod.tables as string[]).map((tbl: string) => {
                         const tOrder = tableOrderMap[tbl]
                         const tStatus = (mod.tableStatus as Record<string, string>)?.[tbl] ?? 'free'
                         return <option key={tbl} value={tbl}>{tbl}{tOrder ? ` (Order #${tOrder.orderNum})` : tStatus === 'reserved' ? ' (Reserved)' : ''}</option>
                       })}
                     </select>
-                    <button onClick={() => setShowFloorPlan(true)} title="Floor plan view" style={{ flexShrink: 0, padding: '7px 11px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt3)', cursor: 'pointer', fontSize: 15 }}>⊞</button>
+                    <button onClick={() => setShowFloorPlan(true)} title="Floor plan view" style={{ flexShrink: 0, padding: '7px 11px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt3)', cursor: 'pointer', fontSize: 15 }}>âŠž</button>
                   </div>
                 )
               )}
             </div>}
 
-            {/* Customer / order type / guests — only when no orderContext (workspace mode hides this) */}
+            {/* Customer / order type / guests â€” only when no orderContext (workspace mode hides this) */}
             {(activeModule === 'restaurant' || activeModule === 'bar') && !orderContext && (
               <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginBottom: 6 }}>
                   <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name (optional)"
                     style={{ padding: '6px 9px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 11, fontWeight: 600 }} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <button onClick={() => setGuestCount(g => Math.max(1, g-1))} style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                    <button onClick={() => setGuestCount(g => Math.max(1, g-1))} style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>âˆ’</button>
                     <span style={{ fontSize: 14, fontWeight: 800, minWidth: 20, textAlign: 'center', color: 'var(--txt)' }}>{guestCount}</span>
                     <button onClick={() => setGuestCount(g => g+1)} style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                   </div>
@@ -1383,11 +1385,11 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
               </div>
             )}
 
-            {/* Cart items — scrollable */}
+            {/* Cart items â€” scrollable */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px', minHeight: 0 }}>
               {cart.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '28px 10px', color: 'var(--txt3)' }}>
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>🍽</div>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>ðŸ½</div>
                   <div style={{ fontSize: 12, fontWeight: 600 }}>Tap menu items to add</div>
                 </div>
               ) : (
@@ -1402,13 +1404,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
                           <div style={{ flex: 1 }}>
                             <span style={{ fontSize: 13, fontWeight: 800, color: isVoided ? 'var(--txt3)' : 'var(--txt)', textDecoration: isVoided ? 'line-through' : 'none', lineHeight: 1.2 }}>{ci.name}</span>
-                            <span style={{ fontSize: 11, color: 'var(--txt3)', marginLeft: 5 }}>×{ci.qty}</span>
+                            <span style={{ fontSize: 11, color: 'var(--txt3)', marginLeft: 5 }}>Ã—{ci.qty}</span>
                             {isVoided && <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', marginLeft: 6 }}>VOID</span>}
                           </div>
                           <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--mono)', color: isVoided ? 'var(--txt3)' : 'var(--txt)', flexShrink: 0, textDecoration: isVoided ? 'line-through' : 'none' }}>{fmt(lineTotal, sym)}</span>
                         </div>
                         {isVoided && ci.voidReason && (
-                          <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 3 }}>{ci.voidReasonText || VOID_REASON_LABELS[ci.voidReason]} · {ci.voidedBy}</div>
+                          <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 3 }}>{ci.voidReasonText || VOID_REASON_LABELS[ci.voidReason]} Â· {ci.voidedBy}</div>
                         )}
                         {!isVoided && (
                           <>
@@ -1421,12 +1423,23 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                               </div>
                             ))}
                             {ci.plate && <div style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--mono)', fontWeight: 700 }}>Plate: {ci.plate}</div>}
+                            {ci.note && editingNoteId !== ci.id && <div style={{ fontSize: 11, color: 'var(--txt3)', fontStyle: 'italic', marginTop: 2 }}>Note: {ci.note}</div>}
+                            {editingNoteId === ci.id && (
+                              <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                                <textarea autoFocus value={noteInput} onChange={e => setNoteInput(e.target.value)} placeholder="Special instructions..." rows={2} style={{ flex: 1, padding: '6px 8px', borderRadius: 'var(--r)', border: '1.5px solid var(--blue)', background: 'var(--bg3)', color: 'var(--txt)', fontSize: 12, resize: 'none' }} />
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <button onClick={() => { dispatch({ type: 'UPDATE_CART_NOTE', id: ci.id, note: noteInput }); setEditingNoteId(null) }} style={{ padding: '4px 8px', borderRadius: 'var(--r)', background: 'var(--grn)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Save</button>
+                                  <button onClick={() => setEditingNoteId(null)} style={{ padding: '4px 8px', borderRadius: 'var(--r)', background: 'var(--bg3)', color: 'var(--txt3)', border: '1px solid var(--bdr)', cursor: 'pointer', fontSize: 11 }}>Cancel</button>
+                                </div>
+                              </div>
+                            )}
                           </>
                         )}
                         {!isVoided && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
+                            {!isVoided && (<button onClick={() => { setNoteInput(ci.note ?? ''); setEditingNoteId(editingNoteId === ci.id ? null : ci.id) }} title="Edit note" style={{ background: editingNoteId === ci.id ? 'var(--blue)' : 'var(--bg3)', border: '1px solid var(--bdr)', color: editingNoteId === ci.id ? '#fff' : ci.note ? 'var(--blue)' : 'var(--txt3)', borderRadius: 'var(--r)', width: 28, height: 28, cursor: 'pointer', fontSize: 13 }}>✏️</button>)}
                             <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty - 1 })}
-                              style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800 }}>−</button>
+                              style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800 }}>âˆ’</button>
                             <span style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 800, minWidth: 22, textAlign: 'center', color: 'var(--txt)' }}>{ci.qty}</span>
                             <button onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: ci.id, qty: ci.qty + 1 })}
                               style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800 }}>+</button>
@@ -1443,10 +1456,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
               )}
             </div>
 
-            {/* ── STICKY TOTALS + ACTIONS ── */}
+            {/* â”€â”€ STICKY TOTALS + ACTIONS â”€â”€ */}
             <div style={{ borderTop: '2px solid var(--bdr)', background: 'var(--bg3)', flexShrink: 0 }}>
 
-              {/* Discount — visible only when Pay is open */}
+              {/* Discount â€” visible only when Pay is open */}
               {showDetails && <div style={{ padding: '7px 12px', borderBottom: '1px solid var(--bdr2)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 11, color: 'var(--txt3)', flex: 1 }}>Discount</span>
                 <button onClick={() => { setDiscMode(m => m === 'pct' ? 'flat' : 'pct'); setDiscPct(0); setDiscFlat(0) }}
@@ -1467,16 +1480,16 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                   </>
                 )}
                 {(discPct > 0 || discFlat > 0) && (
-                  <button onClick={() => { setDiscPct(0); setDiscFlat(0) }} style={{ fontSize: 14, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
+                  <button onClick={() => { setDiscPct(0); setDiscFlat(0) }} style={{ fontSize: 14, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}>âœ•</button>
                 )}
               </div>}
 
               {/* Totals */}
               <div style={{ padding: '8px 14px' }}>
-                {/* Subtotal / disc / GCT / service — only when Pay is open */}
+                {/* Subtotal / disc / GCT / service â€” only when Pay is open */}
                 {showDetails && ([
                   { label: 'Subtotal', value: fmt(calc.sub, sym), color: 'var(--txt3)' },
-                  calc.disc > 0 && { label: discMode==='pct' ? `Discount (${discPct}%)` : 'Discount', value: `−${fmt(calc.disc,sym)}`, color: 'var(--grn)' },
+                  calc.disc > 0 && { label: discMode==='pct' ? `Discount (${discPct}%)` : 'Discount', value: `âˆ’${fmt(calc.disc,sym)}`, color: 'var(--grn)' },
                   calc.gct > 0  && { label: `GCT (${(calc.gctRate*100).toFixed(0)}%)`, value: fmt(calc.gct,sym), color: 'var(--txt3)' },
                   calc.serviceCharge > 0 && { label: `Service (${(calc.scRate*100).toFixed(0)}%)`, value: fmt(calc.serviceCharge,sym), color: 'var(--txt3)' },
                 ].filter(Boolean) as {label:string;value:string;color:string}[]).map((row, i) => (
@@ -1486,7 +1499,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                   </div>
                 ))}
 
-                {/* Gratuity — only when Pay is open */}
+                {/* Gratuity â€” only when Pay is open */}
                 {showDetails && hasRestaurantItems && cartOrderType === 'dine-in' && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1501,12 +1514,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                             style={{ width: 38, padding: '1px 5px', borderRadius: 5, border: '1px solid var(--bdr)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 11, textAlign: 'center' }} />
                           <span style={{ fontSize: 9, color: 'var(--txt3)' }}>%</span>
                           <button onClick={() => { const v = Math.max(0, Math.min(50, parseFloat(gratInput)||0)); setGratuityPct(v); setGratuityOverride(true); setShowGratEdit(false); audit('GRATUITY_OVERRIDE',`Set gratuity to ${v}%`,'warn') }}
-                            style={{ fontSize: 9, padding: '1px 5px', borderRadius: 5, border: '1px solid var(--grn)', background: '#14532d22', color: 'var(--grn)', cursor: 'pointer', fontWeight: 700 }}>✓</button>
-                          <button onClick={() => setShowGratEdit(false)} style={{ fontSize: 9, padding: '1px 5px', borderRadius: 5, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer' }}>✕</button>
+                            style={{ fontSize: 9, padding: '1px 5px', borderRadius: 5, border: '1px solid var(--grn)', background: '#14532d22', color: 'var(--grn)', cursor: 'pointer', fontWeight: 700 }}>âœ“</button>
+                          <button onClick={() => setShowGratEdit(false)} style={{ fontSize: 9, padding: '1px 5px', borderRadius: 5, border: '1px solid var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer' }}>âœ•</button>
                         </div>
                       )}
                     </div>
-                    <span style={{ fontWeight: 700, color: gratuityPct>0?'var(--txt2)':'var(--txt3)', fontFamily: 'var(--mono)', fontSize: 12 }}>{gratuityPct>0?fmt(calc.gratuity,sym):'—'}</span>
+                    <span style={{ fontWeight: 700, color: gratuityPct>0?'var(--txt2)':'var(--txt3)', fontFamily: 'var(--mono)', fontSize: 12 }}>{gratuityPct>0?fmt(calc.gratuity,sym):'â€”'}</span>
                   </div>
                 )}
 
@@ -1534,7 +1547,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
                 {/* Pay */}
                 <button onClick={() => { if (cart.length===0){toast('Add items first','warn');return}; setShowDetails(true); setShowPayment(true) }} disabled={cart.length === 0} style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r)', fontSize: 12, fontWeight: 900, border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', color: cart.length > 0 ? '#fff' : 'var(--txt3)', background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)', letterSpacing: '.3px', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  ✓ Pay {cart.length > 0 ? fmt(calc.total, sym) : '—'}
+                  âœ“ Pay {cart.length > 0 ? fmt(calc.total, sym) : 'â€”'}
                 </button>
 
                 {/* Split / Hold / Clear */}
@@ -1560,13 +1573,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         </div>
       )}
 
-      {/* ── Held Orders Panel ── */}
+      {/* â”€â”€ Held Orders Panel â”€â”€ */}
       {showHeld && (
         <div onClick={() => setShowHeld(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 400, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>Held Orders</span>
-              <button onClick={() => setShowHeld(false)} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 22 }}>×</button>
+              <button onClick={() => setShowHeld(false)} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 22 }}>Ã—</button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
               {state.heldOrders.length === 0 ? (
@@ -1577,8 +1590,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>{h.label}</div>
                       <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>
-                        {h.cart.length} items · Saved {h.savedAt} by {h.savedBy}
-                        {h.openedAt && (() => { const t = elapsedTime(h.openedAt!); return t ? <span style={{ color: elapsedColor(h.openedAt!), fontWeight: 700, marginLeft: 4 }}>· {t}</span> : null })()}
+                        {h.cart.length} items Â· Saved {h.savedAt} by {h.savedBy}
+                        {h.openedAt && (() => { const t = elapsedTime(h.openedAt!); return t ? <span style={{ color: elapsedColor(h.openedAt!), fontWeight: 700, marginLeft: 4 }}>Â· {t}</span> : null })()}
                       </div>
                     </div>
                     <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--blue)' }}>
@@ -1601,7 +1614,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         </div>
       )}
 
-      {/* ── Open Orders Panel ── */}
+      {/* â”€â”€ Open Orders Panel â”€â”€ */}
       {showOpen && (
         <div onClick={() => { setShowOpen(false); setAddToOrderMode(false); setTransferTarget(null) }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 460, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1610,7 +1623,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 {addToOrderMode ? `Add ${activeCart.length} item(s) to Order` : 'Open Orders'}
               </span>
               {addToOrderMode && <button onClick={() => setAddToOrderMode(false)} style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>Cancel</button>}
-              <button onClick={() => { setShowOpen(false); setAddToOrderMode(false); setTransferTarget(null) }} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 22 }}>×</button>
+              <button onClick={() => { setShowOpen(false); setAddToOrderMode(false); setTransferTarget(null) }} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 22 }}>Ã—</button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
               {openOrders.length === 0 ? (
@@ -1647,14 +1660,14 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                           <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
                             <select onChange={e => { if (e.target.value) transferTable(t.id, e.target.value) }} defaultValue=""
                               style={{ flex: 1, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--grn)', background: 'var(--surf2)', color: 'var(--txt)', fontSize: 12 }}>
-                              <option value="">— Move to table —</option>
+                              <option value="">â€” Move to table â€”</option>
                               {allTables.map(tbl => <option key={tbl} value={tbl}>{tbl}</option>)}
                             </select>
-                            <button onClick={() => setTransferTarget(null)} style={{ fontSize: 11, color: 'var(--txt3)', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                            <button onClick={() => setTransferTarget(null)} style={{ fontSize: 11, color: 'var(--txt3)', background: 'none', border: 'none', cursor: 'pointer' }}>âœ•</button>
                           </div>
                         )}
                         <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 3 }}>
-                          {activeItems.length} items · {t.server}{t.customerName ? ` · ${t.customerName}` : ''}
+                          {activeItems.length} items Â· {t.server}{t.customerName ? ` Â· ${t.customerName}` : ''}
                         </div>
                       </div>
                       <div style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 700, color: 'var(--grn)' }}>
@@ -1665,7 +1678,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     <div style={{ marginBottom: 8, maxHeight: 110, overflowY: 'auto' }}>
                       {t.items.map((ci, i) => (
                         <div key={i} style={{ fontSize: 11, color: ci.voided ? '#ef444488' : 'var(--txt2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0', gap: 6, textDecoration: ci.voided ? 'line-through' : 'none' }}>
-                          <span style={{ flex: 1 }}>{ci.qty}× {ci.name}{ci.voided ? ' [VOID]' : ''}</span>
+                          <span style={{ flex: 1 }}>{ci.qty}Ã— {ci.name}{ci.voided ? ' [VOID]' : ''}</span>
                           <span style={{ fontFamily: 'var(--mono)', flexShrink: 0 }}>{fmt(ci.price * ci.qty, sym)}</span>
                           {!ci.voided && canVoidSentItem && (
                             <button onClick={() => setVoidTarget({ item: ci, ticketId: t.id })}
@@ -1704,7 +1717,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         </div>
       )}
 
-      {/* ── Payment Modal ── */}
+      {/* â”€â”€ Payment Modal â”€â”€ */}
       <PaymentModal
         isOpen={showPayment}
         onClose={() => { setShowPayment(false); setPayingTicket(null); setShowDetails(false); setGratuityOverride(false); setSurcharges([]) }}
@@ -1721,7 +1734,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         onComplete={payData => completeCheckout(payData, splitTarget?.calc)}
       />
 
-      {/* ── Ticket Modal ── */}
+      {/* â”€â”€ Ticket Modal â”€â”€ */}
       {lastTx && lastTicket && (
         <TicketModal
           isOpen={showTicket}
@@ -1732,7 +1745,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         />
       )}
 
-      {/* ── Split Bill Modal ── */}
+      {/* â”€â”€ Split Bill Modal â”€â”€ */}
       <SplitBillModal
         isOpen={showSplitBill}
         onClose={() => setShowSplitBill(false)}
@@ -1757,7 +1770,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         }}
       />
 
-      {/* ── Void Item Modal ── */}
+      {/* â”€â”€ Void Item Modal â”€â”€ */}
       <VoidReasonModal
         isOpen={!!voidTarget}
         itemName={voidTarget?.item.name ?? ''}
@@ -1774,7 +1787,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         }}
       />
 
-      {/* ── Void Entire Order Modal ── */}
+      {/* â”€â”€ Void Entire Order Modal â”€â”€ */}
       <VoidReasonModal
         isOpen={!!voidOrderTarget}
         itemName={voidOrderTarget ? `Order #${voidOrderTarget.orderNum} (${voidOrderTarget.items.filter(ci => !ci.voided).length} items)` : ''}
@@ -1784,7 +1797,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         }}
       />
 
-      {/* ── Add-ons Modal ── */}
+      {/* â”€â”€ Add-ons Modal â”€â”€ */}
       {modalItem && (
         <div
           onClick={closeModal}
@@ -1805,7 +1818,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
               outline: 'none',
             }}
           >
-            {/* Modal header — item name + price */}
+            {/* Modal header â€” item name + price */}
             <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{modalItem.name}</div>
@@ -1818,7 +1831,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             {/* Scrollable modal body */}
             <div style={{ flex: 1, overflowY: 'auto', maxHeight: '60vh' }}>
 
-              {/* ─── Size picker ─── */}
+              {/* â”€â”€â”€ Size picker â”€â”€â”€ */}
               {(() => {
                 const assignment = liveAssignments[modalItem!.id]
                 const itemSizes = (assignment?.sizes ?? []).map(s => ({ ...liveSizesDefs.find(sz => sz.id === s.size_id), price: s.price })).filter(s => s.id)
@@ -1832,7 +1845,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                         return (
                           <button key={sz.id} onClick={() => { setModalSizeId(sz.id!); setModalSizePrice(sz.price) }}
                             style={{ padding: '8px 16px', borderRadius: 'var(--r)', border: `2px solid ${selected ? mod.color : 'var(--bdr)'}`, background: selected ? 'var(--surf2)' : 'transparent', color: selected ? 'var(--txt)' : 'var(--txt2)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                            {sz.name} — {sym}{sz.price.toLocaleString()}
+                            {sz.name} â€” {sym}{sz.price.toLocaleString()}
                           </button>
                         )
                       })}
@@ -1841,7 +1854,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 )
               })()}
 
-              {/* ─── Flavour picker ─── */}
+              {/* â”€â”€â”€ Flavour picker â”€â”€â”€ */}
               {(() => {
                 const assignment = liveAssignments[modalItem!.id]
                 const itemFlavours = (assignment?.flavour_ids ?? []).map(id => liveFlavours.find(f => f.id === id)).filter(Boolean)
@@ -1864,7 +1877,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 )
               })()}
 
-              {/* ─── Sides picker ─── */}
+              {/* â”€â”€â”€ Sides picker â”€â”€â”€ */}
               {(() => {
                 const assignment = liveAssignments[modalItem!.id]
                 const itemSides = (assignment?.side_ids ?? []).map(id => liveSides.find(s => s.id === id)).filter(Boolean)
@@ -1887,7 +1900,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 )
               })()}
 
-              {/* ─── Add-ons ─── */}
+              {/* â”€â”€â”€ Add-ons â”€â”€â”€ */}
               {(() => {
                 let displayAddons: Addon[]
                 if (activeModule === 'carwash') {
@@ -1913,7 +1926,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                       return (
                         <div key={addon.id} onClick={() => toggleModalAddon(addon)}
                           style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 'var(--r)', marginBottom: 6, cursor: 'pointer', background: checked ? 'var(--surf2)' : 'var(--surf)', border: `2px solid ${checked ? mod.color : 'var(--bdr)'}`, transition: 'all .14s' }}>
-                          <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? mod.color : 'var(--bdr2)'}`, background: checked ? mod.color : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>{checked ? '✓' : ''}</div>
+                          <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? mod.color : 'var(--bdr2)'}`, background: checked ? mod.color : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>{checked ? 'âœ“' : ''}</div>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{addon.name}</div>
                             {addon.desc && <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{addon.desc}</div>}
@@ -1935,7 +1948,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     width: 32, height: 32, borderRadius: 8, background: 'var(--surf2)', border: '1px solid var(--bdr)',
                     color: 'var(--txt)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 16, fontWeight: 800,
-                  }}>−</button>
+                  }}>âˆ’</button>
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 16, fontWeight: 800, minWidth: 28, textAlign: 'center' }}>{modalQty}</span>
                   <button onClick={() => setModalQty(q => q + 1)} style={{
                     width: 32, height: 32, borderRadius: 8, background: 'var(--surf2)', border: '1px solid var(--bdr)',
@@ -1959,7 +1972,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
             </div>{/* end scrollable body */}
 
-            {/* Footer — Cancel + Add to Cart */}
+            {/* Footer â€” Cancel + Add to Cart */}
             {(() => {
               const assignment = modalItem ? liveAssignments[modalItem.id] : null
               const needsSize    = (assignment?.sizes?.length ?? 0) > 0 && !modalSizeId
@@ -1977,7 +1990,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     background: canAddToCart ? mod.color : 'var(--surf3)', color: canAddToCart ? mod.cobText : 'var(--txt3)', border: 'none',
                     cursor: canAddToCart ? 'pointer' : 'not-allowed', transition: 'all .15s',
                   }}>
-                    {needsSize ? 'Select a size' : needsFlavour ? 'Select a flavour' : `Add to Cart ×${modalQty}`}
+                    {needsSize ? 'Select a size' : needsFlavour ? 'Select a flavour' : `Add to Cart Ã—${modalQty}`}
                   </button>
                 </div>
               )

@@ -444,7 +444,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({
       type: 'ADD_AUDIT',
       entry: {
-        id: Date.now(), ts: new Date().toLocaleString(),
+        id: crypto.randomUUID(), ts: new Date().toLocaleString(),
         user: state.currentUser?.name ?? 'System',
         userId: state.currentUser?.id ?? null,
         action, detail, type,

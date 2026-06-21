@@ -1,11 +1,11 @@
-// QZ Tray integration — enables direct printing to named USB/network printers
+// QZ Tray integration -- enables direct printing to named USB/network printers
 // from the browser without an OS print dialog.
 //
 // Requirements:
 //   1. Install QZ Tray (free) from https://qz.io
-//   2. Launch QZ Tray — it runs in the system tray
-//   3. In QZ Tray → Preferences → Site Manager, add this site to trusted sites
-//   4. Configure printer names in Settings → Printers
+//   2. Launch QZ Tray -- it runs in the system tray
+//   3. In QZ Tray -> Preferences -> Site Manager, add this site to trusted sites
+//   4. Configure printer names in Settings -> Printers
 
 interface QZConfig { name: string }
 interface QZPrintData { type: string; format: string; flavor: string; data: string }
@@ -37,21 +37,35 @@ function getQZ(): QZTrayAPI | null {
   return typeof window !== 'undefined' ? (window.qz ?? null) : null
 }
 
+function dispatchPrintFailed(message: string) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('print-failed', { detail: { message } }))
+  console.error('[QZ]', message)
+}
+
 async function loadScript(): Promise<boolean> {
   if (typeof window === 'undefined') return false
   if (window.qz) return true
   if (scriptLoaded)  return !!window.qz
 
+  // Try locally bundled /public/qz-tray.js first so printing works without internet.
+  // Falls back to CDN if the local copy is not present.
   return new Promise(resolve => {
     const script = document.createElement('script')
-    script.src = 'https://cdn.jsdelivr.net/npm/qz-tray/qz-tray.js'
-    script.onload  = () => { scriptLoaded = true; resolve(!!window.qz) }
-    script.onerror = () => resolve(false)
+    script.src = '/qz-tray.js'
+    script.onload = () => { scriptLoaded = true; resolve(!!window.qz) }
+    script.onerror = () => {
+      const cdn = document.createElement('script')
+      cdn.src = 'https://cdn.jsdelivr.net/npm/qz-tray/qz-tray.js'
+      cdn.onload  = () => { scriptLoaded = true; resolve(!!window.qz) }
+      cdn.onerror = () => resolve(false)
+      document.head.appendChild(cdn)
+    }
     document.head.appendChild(script)
   })
 }
 
-// Public certificate — safe to embed in source. Private key lives server-side in QZ_PRIVATE_KEY.
+// Public certificate -- safe to embed in source. Private key lives server-side in QZ_PRIVATE_KEY.
 const QZ_CERT = `-----BEGIN CERTIFICATE-----
 MIIDCzCCAfOgAwIBAgIUGVTRWimP+oBMK81fXOEA/O18ARgwDQYJKoZIhvcNAQEL
 BQAwFTETMBEGA1UEAwwKTmV4UE9TIFBybzAeFw0yNjA2MTkwMzQzNDVaFw0zNjA2
@@ -87,7 +101,7 @@ function setupSecurity(qz: QZTrayAPI) {
   })
 }
 
-// Connect to QZ Tray — returns true if connected, false if unavailable
+// Connect to QZ Tray -- returns true if connected, false if unavailable
 export async function qzConnect(): Promise<boolean> {
   if (connectPromise) return connectPromise
 
@@ -99,7 +113,7 @@ export async function qzConnect(): Promise<boolean> {
       if (!qz) return false
       setupSecurity(qz)
       if (qz.websocket.isActive()) return true
-      await qz.websocket.connect({ retries: 1, delay: 0.3 })
+      await qz.websocket.connect({ retries: 3, delay: 1 })
       return true
     } catch {
       return false
@@ -115,7 +129,7 @@ export function qzIsConnected(): boolean {
   return getQZ()?.websocket.isActive() ?? false
 }
 
-// List all printers visible to QZ Tray — useful for the settings UI
+// List all printers visible to QZ Tray -- useful for the settings UI
 export async function qzGetPrinters(): Promise<string[]> {
   try {
     const ok = await qzConnect()
@@ -130,7 +144,7 @@ export async function qzGetPrinters(): Promise<string[]> {
 }
 
 // Send ESC/POS cash drawer kick command to the receipt printer.
-// ESC p 0 25 250 — pulse on drawer port 0.
+// ESC p 0 25 250 -- pulse on drawer port 0.
 export async function qzOpenDrawer(printerName: string): Promise<boolean> {
   if (!printerName.trim()) return false
   try {
@@ -140,7 +154,6 @@ export async function qzOpenDrawer(printerName: string): Promise<boolean> {
     if (!qz) return false
 
     const config = qz.configs.create(printerName)
-    // Build base64-encoded ESC/POS drawer kick: 1B 70 00 19 FA
     const bytes = [0x1B, 0x70, 0x00, 0x19, 0xFA]
     const b64   = btoa(String.fromCharCode(...bytes))
     await qz.print(config, [{ type: 'raw', format: 'command', flavor: 'base64', data: b64 }])
@@ -157,9 +170,15 @@ export async function qzPrint(printerName: string, html: string, width: 58 | 80 
   if (!printerName.trim() || !html.trim()) return false
   try {
     const ok = await qzConnect()
-    if (!ok) return false
+    if (!ok) {
+      dispatchPrintFailed('Printer offline -- check that QZ Tray is running')
+      return false
+    }
     const qz = getQZ()
-    if (!qz) return false
+    if (!qz) {
+      dispatchPrintFailed('Printer offline -- QZ Tray not detected')
+      return false
+    }
 
     const config = qz.configs.create(printerName, {
       size: { width: `${width}mm`, units: 'mm' },
@@ -179,6 +198,7 @@ export async function qzPrint(printerName: string, html: string, width: 58 | 80 
     return true
   } catch (e) {
     console.error('[QZ Tray] Print failed:', e)
+    dispatchPrintFailed(`Print error -- ${e instanceof Error ? e.message : 'unknown error'}`)
     return false
   }
 }

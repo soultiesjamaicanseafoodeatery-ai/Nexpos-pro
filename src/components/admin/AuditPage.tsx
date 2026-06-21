@@ -30,6 +30,25 @@ export default function AuditPage() {
     }
     return true
   })
+  const exportCSV = () => {
+    const headers = ['Timestamp', 'Type', 'Module', 'User', 'Action', 'Detail']
+    const rows = entries.map(e => [
+      e.ts ?? '',
+      e.type ?? '',
+      e.mod ?? '',
+      e.user ?? '',
+      e.action ?? '',
+      String(e.detail ?? '').replace(/"/g, '""'),
+    ])
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `audit-log-${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>

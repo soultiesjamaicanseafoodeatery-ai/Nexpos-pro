@@ -42,7 +42,30 @@ export default function VoidReport() {
       if (typeFilter !== 'all'    && l.voidType !== typeFilter) return false
       if (search) {
         const q = search.toLowerCase()
-        return (l.itemName ?? '').toLowerCase().includes(q)
+  const exportCSV = () => {
+    const headers = ['Date/Time', 'Type', 'Order #', 'Item', 'Reason', 'Employee', 'Role', 'Module', 'Amount']
+    const rows = filtered.map((l: VoidLog) => [
+      l.ts ?? '',
+      l.voidType ?? '',
+      l.orderNum ? `#${l.orderNum}` : l.txId ? `Tx#${l.txId}` : '',
+      l.itemName ?? '',
+      VOID_REASON_LABELS[l.reason] ?? l.reason ?? '',
+      l.user ?? '',
+      l.role ?? '',
+      l.mod ?? '',
+      l.amount?.toFixed(2) ?? '0.00',
+    ])
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `void-report-${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (l.itemName ?? '').toLowerCase().includes(q)
           || l.user.toLowerCase().includes(q)
           || (l.orderNum ?? '').includes(q)
           || VOID_REASON_LABELS[l.reason].toLowerCase().includes(q)
@@ -84,6 +107,28 @@ export default function VoidReport() {
   }, [logs, rangeFilter])
 
   const totalFiltered = filtered.reduce((s, l) => s + l.amount, 0)
+  const exportCSV = () => {
+    const headers = ['Date/Time', 'Type', 'Order #', 'Item', 'Reason', 'Employee', 'Role', 'Module', 'Amount']
+    const rows = filtered.map((l: VoidLog) => [
+      l.ts ?? '',
+      l.voidType ?? '',
+      l.orderNum ? `#${l.orderNum}` : l.txId ? `Tx#${l.txId}` : '',
+      l.itemName ?? '',
+      VOID_REASON_LABELS[l.reason] ?? l.reason ?? '',
+      l.user ?? '',
+      l.role ?? '',
+      l.mod ?? '',
+      l.amount?.toFixed(2) ?? '0.00',
+    ])
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `void-report-${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
@@ -93,6 +138,7 @@ export default function VoidReport() {
           <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>{logs.length} total void events recorded</div>
         </div>
       </div>
+          <button onClick={exportCSV} style={{ background: 'var(--bg3)', color: 'var(--blue)', border: '1px solid var(--blue)', borderRadius: 'var(--r2)', padding: '8px 16px', fontWeight: 600, fontSize: 12, cursor: 'pointer', minHeight: 44 }}>⬇️ Export CSV</button>
 
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 18 }}>
@@ -141,7 +187,30 @@ export default function VoidReport() {
           ) : byReason.map(([reason, count], i) => {
             const maxCount = byReason[0][1]
             const pct = Math.round((count / maxCount) * 100)
-            return (
+  const exportCSV = () => {
+    const headers = ['Date/Time', 'Type', 'Order #', 'Item', 'Reason', 'Employee', 'Role', 'Module', 'Amount']
+    const rows = filtered.map((l: VoidLog) => [
+      l.ts ?? '',
+      l.voidType ?? '',
+      l.orderNum ? `#${l.orderNum}` : l.txId ? `Tx#${l.txId}` : '',
+      l.itemName ?? '',
+      VOID_REASON_LABELS[l.reason] ?? l.reason ?? '',
+      l.user ?? '',
+      l.role ?? '',
+      l.mod ?? '',
+      l.amount?.toFixed(2) ?? '0.00',
+    ])
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `void-report-${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
               <div key={reason} style={{ marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
                   <span style={{ color: i === 0 ? '#ef4444' : 'var(--txt2)', fontWeight: i === 0 ? 700 : 500 }}>{reason}</span>

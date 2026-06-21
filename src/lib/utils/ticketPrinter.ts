@@ -353,3 +353,116 @@ export function buildVoidTicket(
   L.push(div('!', w))
   return `<pre>${L.join('\n')}</pre>`
 }
+
+// -- Z-Report (End of Day Summary) -----------------------------------------------
+export interface ZReportData {
+  date: string
+  closedBy: string
+  openingFloat: number
+  restaurantSales: number
+  barSales: number
+  carwashSales: number
+  totalSales: number
+  cashSales: number
+  cardSales: number
+  giftCardSales: number
+  tabSales: number
+  otherSales: number
+  totalDiscounts: number
+  totalVoids: number
+  totalRefunds: number
+  voidCount: number
+  refundCount: number
+  totalGCT: number
+  totalServiceCharge: number
+  totalGratuity: number
+  restaurantCount: number
+  barCount: number
+  carwashCount: number
+  totalCount: number
+  expectedCash: number
+  actualCash: number
+  variance: number
+  denominations?: { label: string; qty: number; value: number }[]
+  gctRegNo?: string
+  trn?: string
+  sym: string
+}
+
+export function buildZReport(data: ZReportData, opts: { width?: PrintWidth } = {}): string {
+  const w = COLS[opts.width ?? 80]
+  const sym = data.sym
+  const fmtN = (n: number) =>
+    sym + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const L: string[] = []
+  const varianceLabel =
+    data.variance === 0 ? 'BALANCED'
+    : data.variance > 0 ? ('OVER +' + fmtN(data.variance))
+    : ('SHORT -' + fmtN(Math.abs(data.variance)))
+  L.push(div('=', w))
+  L.push(center('Z-REPORT -- END OF DAY', w))
+  L.push(div('=', w))
+  L.push(row('Date:', data.date, w))
+  L.push(row('Closed by:', esc(data.closedBy), w))
+  if (data.gctRegNo) L.push(row('GCT Reg:', esc(data.gctRegNo), w))
+  if (data.trn)      L.push(row('TRN:', esc(data.trn), w))
+  L.push(div('=', w))
+  L.push(center('SALES BY MODULE', w))
+  L.push(div('-', w))
+  if (data.restaurantCount > 0) L.push(row('Restaurant (' + data.restaurantCount + ' tx)', fmtN(data.restaurantSales), w))
+  if (data.barCount > 0)        L.push(row('Bar (' + data.barCount + ' tx)', fmtN(data.barSales), w))
+  if (data.carwashCount > 0)    L.push(row('Car Wash (' + data.carwashCount + ' tx)', fmtN(data.carwashSales), w))
+  L.push(div('-', w))
+  L.push(row('TOTAL (' + data.totalCount + ' transactions)', fmtN(data.totalSales), w))
+  L.push(div('=', w))
+  L.push(center('PAYMENT METHODS', w))
+  L.push(div('-', w))
+  if (data.cashSales > 0)     L.push(row('Cash:', fmtN(data.cashSales), w))
+  if (data.cardSales > 0)     L.push(row('Card:', fmtN(data.cardSales), w))
+  if (data.giftCardSales > 0) L.push(row('Gift Card:', fmtN(data.giftCardSales), w))
+  if (data.tabSales > 0)      L.push(row('House Account/Tab:', fmtN(data.tabSales), w))
+  if (data.otherSales > 0)    L.push(row('Other:', fmtN(data.otherSales), w))
+  L.push(div('=', w))
+  L.push(center('ADJUSTMENTS', w))
+  L.push(div('-', w))
+  L.push(row('Discounts:', data.totalDiscounts > 0 ? ('-' + fmtN(data.totalDiscounts)) : fmtN(0), w))
+  L.push(row('Voids (' + data.voidCount + '):', data.totalVoids > 0 ? ('-' + fmtN(data.totalVoids)) : fmtN(0), w))
+  L.push(row('Refunds (' + data.refundCount + '):', data.totalRefunds > 0 ? ('-' + fmtN(data.totalRefunds)) : fmtN(0), w))
+  L.push(div('=', w))
+  L.push(center('TAX SUMMARY', w))
+  L.push(div('-', w))
+  L.push(row('GCT Collected (15%):', fmtN(data.totalGCT), w))
+  if (data.totalServiceCharge > 0) L.push(row('Service Charge (10%):', fmtN(data.totalServiceCharge), w))
+  if (data.totalGratuity > 0)      L.push(row('Gratuity:', fmtN(data.totalGratuity), w))
+  L.push(div('=', w))
+  L.push(center('CASH RECONCILIATION', w))
+  L.push(div('-', w))
+  L.push(row('Opening Float:', fmtN(data.openingFloat), w))
+  L.push(row('+ Cash Sales:', fmtN(data.cashSales), w))
+  L.push(div('-', w))
+  L.push(row('EXPECTED IN DRAWER:', fmtN(data.expectedCash), w))
+  L.push(row('ACTUAL COUNTED:', fmtN(data.actualCash), w))
+  L.push(div('=', w))
+  L.push(row('VARIANCE:', varianceLabel, w))
+  L.push(div('=', w))
+  if (data.denominations && data.denominations.some(d => d.qty > 0)) {
+    L.push(center('DENOMINATION BREAKDOWN', w))
+    L.push(div('-', w))
+    for (const d of data.denominations) {
+      if (d.qty > 0) L.push(row('  ' + d.label + ' x ' + d.qty, fmtN(d.value), w))
+    }
+    L.push(div('-', w))
+    L.push(row('TOTAL COUNTED:', fmtN(data.actualCash), w))
+    L.push(div('=', w))
+  }
+  L.push('')
+  L.push(row('Manager:', '_'.repeat(Math.floor(w * 0.55)), w))
+  L.push('')
+  L.push(row('Witnessed:', '_'.repeat(Math.floor(w * 0.52)), w))
+  L.push('')
+  L.push(row('Date/Time:', '_'.repeat(Math.floor(w * 0.54)), w))
+  L.push(div('=', w))
+  L.push(center('*** END OF DAY CLOSED ***', w))
+  L.push(div('=', w))
+  return '<pre>' + L.join('\n') + '</pre>'
+}

@@ -80,6 +80,136 @@ export default function TransactionsPage() {
     await smartPrint(html, 'Receipt Reprint', (state.biz as any).printerName, 80 as any, false)
   }
 
+
+  const sym2 = state.biz.currencySymbol ?? 'J
+    <div className="adm" style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 15 }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>Transactions</div>
+          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>{filtered.length} records · {sym}{totalRev.toFixed(2)} total</div>
+        </div>
+        <button onClick={exportCSV} style={{ background: 'var(--bg3)', color: 'var(--blue)', border: '1px solid var(--blue)', borderRadius: 'var(--r2)', padding: '8px 16px', fontWeight: 600, fontSize: 12, cursor: 'pointer', minHeight: 44 }}>⬇️ Export CSV</button>
+      </div>
+
+      {/* Filters */}
+      <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', marginBottom: 13 }}>
+        <div style={{ padding: '9px 12px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search transactions..."
+            style={{ background: 'var(--bg3)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '6px 10px', fontSize: 12, color: 'var(--txt)', width: 190 }} />
+          {['all','restaurant','bar','carwash'].map(f => (
+            <button key={f} onClick={() => setFilter(f)} className={`btn btn-sm ${filter === f ? 'btn-pr' : 'btn-gh'}`}>
+              {f === 'all' ? 'All' : `${MOD_ICON[f]} ${f.charAt(0).toUpperCase()+f.slice(1)}`}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table className="dt">
+            <thead>
+              <tr>
+                <th>ID</th><th>Time</th><th>Module</th><th>Cashier</th>
+                <th>Customer</th><th>Item</th><th>Total</th><th>Payment</th><th>Status</th>
+                <th>Print</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {txs.map(tx => (
+                <tr key={tx.id} style={{ opacity: tx.voided ? .5 : 1 }}>
+                  <td style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--txt3)' }}>#{tx.id}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{tx.ts}</td>
+                  <td>
+                    <span style={{ color: MOD_COLOR[tx.mod], fontWeight: 700 }}>
+                      {MOD_ICON[tx.mod]} {tx.mod.charAt(0).toUpperCase()+tx.mod.slice(1)}
+                    </span>
+                  </td>
+                  <td>{tx.cashier}</td>
+                  <td>{tx.customer}</td>
+                  <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {tx.item}
+                    {tx.addons?.length > 0 && <span style={{ color: 'var(--txt3)', fontSize: 11 }}> + {tx.addons.join(', ')}</span>}
+                  </td>
+                  <td style={{ fontFamily: 'var(--mono)', fontWeight: 800, color: 'var(--grn)' }}>{sym}{tx.total.toFixed(2)}</td>
+                  <td>
+                    <span className="b b-bl">{tx.pay}</span>
+                  </td>
+                  <td>
+                    {tx.voided    ? <span className="b b-rd">VOIDED</span>
+                    : tx.refunded ? <span className="b b-bl">REFUNDED</span>
+                    :               <span className="b b-gn">Complete</span>}
+                  </td>
+                  <td style={{ padding: '6px 8px', verticalAlign: 'middle' }}>
+                    <button onClick={() => handleReprint(tx)} title="Reprint receipt" style={{ background: 'none', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '4px 8px', cursor: 'pointer', fontSize: 14, color: 'var(--txt3)', minHeight: 32, lineHeight: 1 }}>🖨️</button>
+                  </td>
+                  <td style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {!tx.voided && !tx.refunded && (state.currentUser?.role === 'admin' || state.currentUser?.role === 'manager') && (
+                      <>
+                        <button className="btn btn-xs btn-gh" onClick={() => setVoidingTxId(tx.id)} style={{ color: '#ef4444', borderColor: '#ef444444' }}>Void</button>
+                        <button className="btn btn-xs btn-gh" onClick={() => setRefundingTxId(tx.id)} style={{ color: 'var(--blue)', borderColor: 'var(--blue)44' }}>Refund</button>
+                      </>
+                    )}
+                    {tx.voided    && tx.voidReason   && <span style={{ fontSize: 10, color: 'var(--txt3)' }}>{tx.voidReason}</span>}
+                    {tx.refunded  && tx.refundReason  && <span style={{ fontSize: 10, color: 'var(--txt3)' }}>{tx.refundReason} ({sym}{(tx.refundAmount ?? tx.total).toFixed(2)})</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && (
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>No transactions found</div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '12px 16px', borderTop: '1px solid var(--bdr)', fontSize: 12, color: 'var(--txt2)' }}>
+            <button className="btn btn-sm btn-gh" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
+            <span>Page <strong>{page}</strong> of <strong>{totalPages}</strong> &nbsp;·&nbsp; {filtered.length} transactions</span>
+            <button className="btn btn-sm btn-gh" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next →</button>
+          </div>
+        )}
+      </div>
+      <VoidReasonModal
+        isOpen={!!voidingTx}
+        itemName={voidingTx ? `Transaction #${voidingTx.id} — ${voidingTx.item}` : ''}
+        onConfirm={handleVoidTx}
+        onClose={() => setVoidingTxId(null)}
+      />
+      <RefundModal
+        isOpen={!!refundingTx}
+        tx={refundingTx}
+        sym={sym}
+        onConfirm={handleRefund}
+        onClose={() => setRefundingTxId(null)}
+      />
+    </div>
+  )
+}
+  const exportCSV = () => {
+    const headers = ['Receipt #', 'Date/Time', 'Module', 'Cashier', 'Customer', 'Items', 'Subtotal', 'Discount', 'GCT', 'Total', 'Payment', 'Voided']
+    const rows = filtered.map(tx => [
+      String(tx.id ?? ''),
+      tx.ts ?? '',
+      tx.mod ?? '',
+      tx.cashier ?? '',
+      tx.customer ?? '',
+      tx.item ?? '',
+      (tx.sub ?? 0).toFixed(2),
+      (tx.disc ?? 0).toFixed(2),
+      (tx.gct ?? 0).toFixed(2),
+      (tx.total ?? 0).toFixed(2),
+      tx.pay ?? '',
+      tx.voided ? 'Yes' : 'No',
+    ])
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `transactions-${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   return (
     <div className="adm" style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 15 }}>
@@ -87,6 +217,7 @@ export default function TransactionsPage() {
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>Transactions</div>
           <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>{filtered.length} records · {sym}{totalRev.toFixed(2)} total</div>
         </div>
+        <button onClick={exportCSV} style={{ background: 'var(--bg3)', color: 'var(--blue)', border: '1px solid var(--blue)', borderRadius: 'var(--r2)', padding: '8px 16px', fontWeight: 600, fontSize: 12, cursor: 'pointer', minHeight: 44 }}>⬇️ Export CSV</button>
       </div>
 
       {/* Filters */}

@@ -206,6 +206,18 @@ export default function SettingsPage() {
               <div><label style={lbl}>Currency Symbol</label><input style={inp} value={form.currencySymbol} onChange={e => set({ currencySymbol: e.target.value })} /></div>
             </div>
           </div>
+          {/* GCT/TRN compliance warning */}
+          {((!form.gctRegNo || form.gctRegNo.trim() === "" || form.gctRegNo.includes("000")) || (!form.trn || form.trn.trim() === "" || form.trn.includes("000"))) && (
+            <div style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: 8, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <span style={{ fontSize: 18 }}>⚠️</span>
+              <div>
+                <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: 4, fontSize: 13 }}>Tax Information Incomplete — Receipts Are Non-Compliant</div>
+                <div style={{ fontSize: 12, color: "#7f1d1d" }}>
+                  Your GCT Registration Number and/or TRN appear to contain placeholder values. These print on every customer receipt. Update them before processing real transactions.
+                </div>
+              </div>
+            </div>
+          )}
           <div style={section}>
             <div style={sectionTitle}>Tax Registration</div>
             <div style={grid2}>

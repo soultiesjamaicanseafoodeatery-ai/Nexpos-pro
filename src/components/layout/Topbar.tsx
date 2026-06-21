@@ -123,7 +123,7 @@ export default function Topbar() {
           <div
             title={printerOk ? 'QZ Tray connected — printer ready' : 'Printer offline — open QZ Tray to connect'}
             style={{
-              fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 'var(--r2)',
+              fontSize: 11, fontWeight: 700, padding: '8px 12px', borderRadius: 'var(--r2)',
               background: printerOk ? 'rgba(34,197,94,0.12)' : 'var(--surf)',
               color: printerOk ? 'var(--grn)' : 'var(--txt3)',
               border: printerOk ? '1px solid rgba(34,197,94,0.3)' : '1px solid var(--bdr)',
@@ -135,19 +135,19 @@ export default function Topbar() {
         )}
         {/* Offline badge */}
         {!isOnline && (
-          <div style={{ fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 'var(--r2)', background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid rgba(245,101,101,.3)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, padding: '8px 12px', borderRadius: 'var(--r2)', background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid rgba(245,101,101,.3)' }}>
             Offline
           </div>
         )}
 
         {/* Clock */}
-        <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--txt3)', background: 'var(--surf)', padding: '4px 9px', borderRadius: 'var(--r2)', border: '1px solid var(--bdr)' }}>
+        <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--txt3)', background: 'var(--surf)', padding: '8px 12px', borderRadius: 'var(--r2)', border: '1px solid var(--bdr)' }}>
           {clock}
         </div>
 
         {/* User badge */}
         {currentUser && (
-          <div style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 'var(--r2)', border: '1px solid var(--bdr)', background: 'var(--surf)', color: currentUser.color }}>
+          <div style={{ fontSize: 11, fontWeight: 700, padding: '8px 12px', borderRadius: 'var(--r2)', border: '1px solid var(--bdr)', background: 'var(--surf)', color: currentUser.color }}>
             {currentUser.ini} · {currentUser.name.split(' ')[0]}
           </div>
         )}
@@ -155,7 +155,7 @@ export default function Topbar() {
         {/* Close Shift — managers only, requires active shift */}
         {currentShift && (currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
           <button onClick={() => dispatch({ type: 'SHOW_EOD' })} style={{
-            padding: '4px 11px', borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 800, cursor: 'pointer',
+            padding: '8px 14px', borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 800, cursor: 'pointer',
             border: '1px solid rgba(245,101,101,.5)', background: '#7f1d1d33', color: 'var(--red)',
           }}>
             🔒 Close Shift

@@ -418,6 +418,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const sideName = modalSideIds.map(id => liveSides.find(s => s.id === id)?.name).filter(Boolean) as string[]
     const sizeName  = liveSizesDefs.find(s => s.id === modalSizeId)?.name
 
+    if (activeModule === 'bar' || modalItem?.module === 'bar') {
+      const hasBarItems = cart.some(ci => ci.module === 'bar')
+      if (!hasBarItems) {
+        const ok = window.confirm('Age Verification Required\n\nBy proceeding you confirm the customer has presented valid ID and is 18 years of age or older.\n\nServing alcohol to a minor is a criminal offence under the Jamaica Licences Act.\n\nCustomer is 18+?')
+        if (!ok) return
+      }
+    }
     const cartItem: CartItem = {
       id: crypto.randomUUID(),
       itemId: modalItem.id,
@@ -439,6 +446,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
   // Add to cart directly (item with no active add-ons)
   const addToCartDirect = (item: MenuItem) => {
+    if (activeModule === 'bar' || item.module === 'bar') {
+      const hasBarItems = cart.some(ci => ci.module === 'bar')
+      if (!hasBarItems) {
+        const ok = window.confirm('Age Verification Required\n\nBy proceeding you confirm the customer has presented valid ID and is 18 years of age or older.\n\nServing alcohol to a minor is a criminal offence under the Jamaica Licences Act.\n\nCustomer is 18+?')
+        if (!ok) return
+      }
+    }
     const cartItem: CartItem = {
       id: crypto.randomUUID(),
       itemId: item.id,
@@ -1529,7 +1543,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Split</button>
                   <button onClick={holdOrder}
                     style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Hold</button>
-                  <button onClick={() => dispatch({ type: 'CLEAR_CART' })}
+                  <button onClick={() => { if (cart.length > 0 && window.confirm(Clear all ${cart.length} item(s) from cart? This cannot be undone.)) dispatch({ type: 'CLEAR_CART' }) }}
                     style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Clear</button>
                 </div>
 

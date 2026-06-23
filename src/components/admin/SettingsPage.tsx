@@ -45,7 +45,7 @@ export default function SettingsPage() {
     setDirty(true)
   }
   const setPrinters = (patch: Partial<NonNullable<BusinessConfig['printers']>>) => {
-    setForm(f => ({ ...f, printers: { receipt: '', kitchen: '', bar: '', width: 80, autoPrint: false, drawerEnabled: false, ...f.printers, ...patch } }))
+    setForm(f => ({ ...f, printers: { receipt: '', kitchen: '', bar: '', width: 80, autoPrint: false, receiptPreview: false, drawerEnabled: false, ...f.printers, ...patch } }))
     setDirty(true)
   }
 
@@ -452,8 +452,8 @@ export default function SettingsPage() {
             </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--txt2)' }}>
-              <input type="checkbox" checked={form.printers?.autoPrint ?? false} onChange={e => setPrinters({ autoPrint: e.target.checked })} />
-              Auto-print receipt after payment (skips preview modal)
+              <input type="checkbox" checked={form.printers?.receiptPreview ?? false} onChange={e => setPrinters({ receiptPreview: e.target.checked })} />
+              Receipt preview before printing (default: off — receipt prints silently after payment)
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--txt2)', marginTop: 10 }}>
               <input type="checkbox" checked={form.printers?.drawerEnabled ?? false} onChange={e => setPrinters({ drawerEnabled: e.target.checked })} />

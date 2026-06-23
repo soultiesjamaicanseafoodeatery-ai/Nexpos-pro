@@ -3,8 +3,6 @@ import { useState, useCallback } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { OrderCalc, PaymentEntry, Surcharge, SurchargeType } from '@/types'
 
-const CARD_TERMINAL_ENABLED = false
-
 const SURCHARGE_LABELS: Record<SurchargeType, string> = {
   credit_card_fee: 'Credit Card Fee',
   service_charge:  'Service Charge',
@@ -129,7 +127,7 @@ export default function PaymentModal({
   }
 
   const completeCard = () => {
-    if (!cardDone || submitting) return
+    if (submitting) return
     setSubmitting(true)
     const data = { method: 'card' }
     setSuccessData(data)
@@ -434,12 +432,13 @@ export default function PaymentModal({
                 </div>
               )}
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Select Payment Method</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                 {([
-                  ['cash', 'Cash',          '💵', 'var(--grn)'],
-                  ['gift', 'Gift Card',     '🎁', 'var(--pur)'],
-                  ['tab',  'House Account', '📋', 'var(--ora)'],
-                ] as const).map(([key, lbl, icon, color]) => (
+                  ['cash', 'Cash',          '💵', 'var(--grn)',  null],
+                  ['card', 'Card',          '💳', 'var(--blue)', null],
+                  ['gift', 'Gift Card',     '🎁', 'var(--pur)',  'No balance check'],
+                  ['tab',  'House Account', '📋', 'var(--ora)',  null],
+                ] as const).map(([key, lbl, icon, color, note]) => (
                   <button key={key}
                     onClick={() => setStep(key as Step)}
                     style={{
@@ -452,8 +451,8 @@ export default function PaymentModal({
                     }}>
                     <span style={{ fontSize: 24 }}>{icon}</span>
                     <span style={{ color }}>{lbl}</span>
-                    {key === 'gift' && (
-                      <span style={{ fontSize: 9, color: 'var(--txt3)', fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>No balance check</span>
+                    {note && (
+                      <span style={{ fontSize: 9, color: 'var(--txt3)', fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>{note}</span>
                     )}
                   </button>
                 ))}
@@ -561,36 +560,23 @@ export default function PaymentModal({
       <div style={over} onClick={handleClose}>
         <div style={box} onClick={e => e.stopPropagation()}>
           <div style={hdr}>
-            {backBtn(() => { setCardProcessing(false); setCardDone(false); setStep('choose') })}
+            {backBtn(() => setStep('choose'))}
             <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>Card Payment</span>
             {closeBtn}
           </div>
           <OrderSummary />
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '24px 18px', textAlign: 'center' }}>
             <div style={{ fontSize: 48 }}>💳</div>
-            {!cardProcessing && !cardDone && <div style={{ fontSize: 14, color: 'var(--txt3)' }}>Present or swipe card to terminal</div>}
-            {cardProcessing && <div style={{ fontSize: 14, color: 'var(--ora)', fontWeight: 700, animation: 'pulse 1s infinite' }}>Processing...</div>}
-            {cardDone && <div style={{ fontSize: 15, color: 'var(--grn)', fontWeight: 800 }}>Approved ✓</div>}
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>Run card on terminal</div>
+            <div style={{ fontSize: 13, color: 'var(--txt3)' }}>Charge {fmtN(total)} on your card terminal, then confirm below</div>
           </div>
-          <div style={{ padding: '0 18px 16px', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-            {!cardDone && (
-              <button onClick={processCard} disabled={cardProcessing} style={{
-                width: '100%', padding: 15, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
-                background: cardProcessing ? 'var(--surf3)' : 'var(--blue)',
-                color: cardProcessing ? 'var(--txt3)' : '#fff',
-                border: 'none', cursor: cardProcessing ? 'not-allowed' : 'pointer',
-              }}>
-                {cardProcessing ? 'Processing...' : 'Process Card'}
-              </button>
-            )}
-            {cardDone && (
-              <button onClick={completeCard} style={{
-                width: '100%', padding: 15, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
-                background: 'var(--grn)', color: '#fff', border: 'none', cursor: 'pointer',
-              }}>
-                Complete Sale
-              </button>
-            )}
+          <div style={{ padding: '0 18px 16px', flexShrink: 0 }}>
+            <button onClick={completeCard} disabled={submitting} style={{
+              width: '100%', padding: 15, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
+              background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer',
+            }}>
+              Confirm Card Payment — {fmtN(total)}
+            </button>
           </div>
         </div>
       </div>
@@ -685,10 +671,11 @@ export default function PaymentModal({
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <select value={sp.method}
                   onChange={e => setSplits(prev => prev.map((p, j) => j === i ? { ...p, method: e.target.value } : p))}
-                  style={{ background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', padding: '9px 8px', fontSize: 12, color: 'var(--txt)', flex: '0 0 110px' }}>
+                  style={{ background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', padding: '9px 8px', fontSize: 12, color: 'var(--txt)', flex: '0 0 130px' }}>
                   <option value="cash">Cash</option>
-                  {CARD_TERMINAL_ENABLED && <option value="card">Card</option>}
+                  <option value="card">Card</option>
                   <option value="gift_card">Gift Card</option>
+                  <option value="tab">House Account</option>
                 </select>
                 <input type="number" min={0} step="0.01" value={sp.amount}
                   onChange={e => setSplits(prev => prev.map((p, j) => j === i ? { ...p, amount: e.target.value } : p))}

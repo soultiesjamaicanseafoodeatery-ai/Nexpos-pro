@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -52,7 +52,6 @@ export default function TransactionsPage() {
     }
     dispatch({ type: 'ADD_REFUND_LOG', entry: logEntry })
     audit('REFUND', `Tx #${refundingTx.id} refunded ${refundType} ${sym}${amount.toFixed(2)} — ${reason}`, 'warn')
-    toast(`Refund of ${sym}${amount.toFixed(2)} processed`, 'success')
     setRefundingTxId(null)
   }
 

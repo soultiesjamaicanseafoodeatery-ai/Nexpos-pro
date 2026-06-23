@@ -103,15 +103,11 @@ function TransferModal({ tableIds, tableCfgMap, currentOwners, users, onConfirm,
 // ── Main Component ────────────────────────────────────────────────
 export default function TablesPage() {
   const { state, toast, audit } = useApp()
-  const { currentUser, users, heldOrders, posState: appPosState } = state
+  const { currentUser, users, heldOrders } = state
   const canManage = currentUser?.role === 'admin' || currentUser?.role === 'manager'
 
   const posOccupied = new Set(
-    [
-      ...heldOrders.map(o => o.selTable ?? ''),
-      appPosState['restaurant']?.selTable ?? '',
-      appPosState['bar']?.selTable ?? '',
-    ].filter(Boolean)
+    heldOrders.map(o => o.selTable ?? '').filter(Boolean)
   )
   const getStatus = (tableId: string): 'free' | 'occupied' | 'reserved' =>
     posOccupied.has(tableId) ? 'occupied' : (cfg.status[tableId] ?? 'free')
@@ -133,6 +129,20 @@ export default function TablesPage() {
   const [transferTableIds, setTransferTableIds] = useState<string[] | null>(null)
 
   const saveCfg = (next: TablesConfig) => { setCfg(next); storage.set('tables_config', next) }
+
+  // Clear stale 'occupied' statuses that have no table owner (e.g. from old default config or unreliable posState)
+  useEffect(() => {
+    const currentCfg = loadConfig()
+    const currentOwners = loadOwners()
+    const stale = Object.keys(currentCfg.status).filter(
+      id => currentCfg.status[id] === 'occupied' && !currentOwners[id]
+    )
+    if (stale.length > 0) {
+      const newStatus = { ...currentCfg.status }
+      stale.forEach(id => { newStatus[id] = 'free' })
+      saveCfg({ ...currentCfg, status: newStatus })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const syncToSupabase = async (next: TablesConfig, module: 'restaurant' | 'bar') => {
     if (!supabase) return

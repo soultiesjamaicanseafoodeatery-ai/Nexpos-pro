@@ -5,6 +5,7 @@ import type {
   User, UserRole, ModuleKey, Transaction, Shift, AuditEntry,
   BusinessConfig, FleetAccount, POSState, LoyaltyMember, PromoCode,
   CartItem, OrderType, HeldOrder, OrderTicket, VoidLog, VoidReason, RefundLog,
+  MenuItem, Addon,
 } from '@/types'
 
 const STAFF_API = '/api/staff'
@@ -83,6 +84,8 @@ interface AppState {
   promos: PromoCode[]
   voidLogs: VoidLog[]
   refundLogs: RefundLog[]
+  // Menu — mutable, localStorage-backed, same data the POS reads
+  menuData: Record<ModuleKey, { items: MenuItem[]; categories: string[]; addons: Addon[] }>
   // UI
   toasts: { id: number; msg: string; type: string }[]
   syncQueue: unknown[]
@@ -128,6 +131,14 @@ type Action =
   | { type: 'SHOW_EOD' }
   | { type: 'HIDE_EOD' }
   | { type: 'CLOSE_SHIFT_FORMAL'; closedBy: string; closedAt: string; openingFloat: number; countedCash: number; variance: number; varianceNote: string; wasOverridden?: boolean }
+  | { type: 'ADD_MENU_ITEM';       mod: ModuleKey; item: MenuItem }
+  | { type: 'UPDATE_MENU_ITEM';    mod: ModuleKey; item: MenuItem }
+  | { type: 'DELETE_MENU_ITEM';    mod: ModuleKey; id: string }
+  | { type: 'SET_MENU_CATEGORIES'; mod: ModuleKey; categories: string[] }
+  | { type: 'RENAME_CATEGORY';     mod: ModuleKey; oldName: string; newName: string }
+  | { type: 'ADD_MENU_ADDON';      mod: ModuleKey; addon: Addon }
+  | { type: 'UPDATE_MENU_ADDON';   mod: ModuleKey; addon: Addon }
+  | { type: 'DELETE_MENU_ADDON';   mod: ModuleKey; id: string }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -153,6 +164,11 @@ function initState(): AppState {
     cart: [],
     cartPayMethod: 'cash',
     cartOrderType: 'dine-in',
+    menuData: storage.get<Record<ModuleKey, { items: MenuItem[]; categories: string[]; addons: Addon[] }>>('menu_data') ?? {
+      restaurant: { items: MODULE_DATA.restaurant.items, categories: MODULE_DATA.restaurant.categories, addons: MODULE_DATA.restaurant.addons },
+      bar:        { items: MODULE_DATA.bar.items,        categories: MODULE_DATA.bar.categories,        addons: MODULE_DATA.bar.addons        },
+      carwash:    { items: MODULE_DATA.carwash.items,    categories: MODULE_DATA.carwash.categories,    addons: MODULE_DATA.carwash.addons    },
+    },
     heldOrders:   (() => { const v = storage.get('held_orders');   return Array.isArray(v) ? (v as HeldOrder[]).filter(h => h?.id && Array.isArray(h?.cart)) : [] })(),
     orderTickets: (() => { const v = storage.get('order_tickets'); return Array.isArray(v) ? (v as OrderTicket[]).filter(t => t?.id && t?.timeline && Array.isArray(t?.items)) : [] })(),
     transactions: storage.get<Transaction[]>('tx') ?? SEED_TRANSACTIONS,
@@ -391,6 +407,50 @@ function reducer(state: AppState, action: Action): AppState {
       // Held orders survive shift boundaries - next shift inherits open tables
       return { ...state, currentShift: null, shifts }
     }
+    case 'ADD_MENU_ITEM': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], items: [...state.menuData[action.mod].items, action.item] } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
+    }
+    case 'UPDATE_MENU_ITEM': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], items: state.menuData[action.mod].items.map(i => i.id === action.item.id ? action.item : i) } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
+    }
+    case 'DELETE_MENU_ITEM': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], items: state.menuData[action.mod].items.filter(i => i.id !== action.id) } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
+    }
+    case 'SET_MENU_CATEGORIES': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], categories: action.categories } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
+    }
+    case 'RENAME_CATEGORY': {
+      const cur = state.menuData[action.mod]
+      const menuData = { ...state.menuData, [action.mod]: { ...cur,
+        categories: cur.categories.map(c => c === action.oldName ? action.newName : c),
+        items: cur.items.map(i => i.cat === action.oldName ? { ...i, cat: action.newName } : i),
+      }}
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
+    }
+    case 'ADD_MENU_ADDON': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], addons: [...state.menuData[action.mod].addons, action.addon] } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
+    }
+    case 'UPDATE_MENU_ADDON': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], addons: state.menuData[action.mod].addons.map(a => a.id === action.addon.id ? action.addon : a) } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
+    }
+    case 'DELETE_MENU_ADDON': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], addons: state.menuData[action.mod].addons.filter(a => a.id !== action.id) } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
+    }
     default:
       return state
   }
@@ -460,7 +520,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [state.currentUser, state.activeModule])
 
   return (
-    <AppContext.Provider value={{ state, dispatch, toast, audit: auditFn, moduleData: MODULE_DATA }}>
+    <AppContext.Provider value={{ state, dispatch, toast, audit: auditFn, moduleData: {
+      restaurant: { ...MODULE_DATA.restaurant, ...state.menuData.restaurant },
+      bar:        { ...MODULE_DATA.bar,        ...state.menuData.bar        },
+      carwash:    { ...MODULE_DATA.carwash,    ...state.menuData.carwash    },
+    } as typeof MODULE_DATA }}>
       {children}
     </AppContext.Provider>
   )

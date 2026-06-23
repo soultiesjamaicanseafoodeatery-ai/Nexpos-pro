@@ -14,46 +14,46 @@ interface NavItem {
 
 const NAV_ITEMS: Record<ModuleKey, NavItem[]> = {
   restaurant: [
-    { id:'pos',          ic:'🧾', lbl:'Point of Sale',  roles:['admin','manager','supervisor','cashier'] },
-    { id:'kitchen',      ic:'🍳', lbl:'Kitchen Display', roles:['admin','manager','supervisor','cashier'] },
-    { id:'tables',       ic:'🪑', lbl:'Tables',          roles:['admin','manager','supervisor','cashier'] },
-    { id:'transactions', ic:'📋', lbl:'Transactions',    roles:['admin','manager','supervisor','cashier'] },
+    { id:'pos',          ic:'🧾', lbl:'Point of Sale',  roles:['admin','manager','staff'] },
+    { id:'kitchen',      ic:'🍳', lbl:'My Orders',       roles:['admin','manager','staff'] },
+    { id:'tables',       ic:'🪑', lbl:'Tables',          roles:['admin','manager','staff'] },
+    { id:'shifts',       ic:'🕐', lbl:'My Shift',        roles:['admin','manager','staff'] },
+    { id:'transactions', ic:'📋', lbl:'Transactions',    roles:['admin','manager'] },
     { id:'reports',      ic:'📊', lbl:'Reports',         roles:['admin','manager'] },
     { id:'voids',        ic:'🚫', lbl:'Void Report',     roles:['admin','manager'] },
     { id:'staff',        ic:'👥', lbl:'Staff',           roles:['admin','manager'] },
     { id:'menu',         ic:'🍽', lbl:'Menu Manager',    roles:['admin','manager'] },
-    { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin','manager'] },
     { id:'audit',        ic:'🔍', lbl:'Audit Log',       roles:['admin'] },
-    { id:'shifts',       ic:'🕐', lbl:'Shifts',          roles:['admin','manager'] },
+    { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin'] },
   ],
   bar: [
-    { id:'pos',          ic:'🧾', lbl:'Point of Sale',  roles:['admin','manager','supervisor','cashier','bartender'] },
-    { id:'kitchen',      ic:'🍳', lbl:'Kitchen Display', roles:['admin','manager','supervisor','cashier','bartender'] },
-    { id:'transactions', ic:'📋', lbl:'Transactions',    roles:['admin','manager','supervisor','cashier','bartender'] },
+    { id:'pos',          ic:'🧾', lbl:'Point of Sale',  roles:['admin','manager','staff'] },
+    { id:'kitchen',      ic:'🍳', lbl:'My Orders',       roles:['admin','manager','staff'] },
+    { id:'shifts',       ic:'🕐', lbl:'My Shift',        roles:['admin','manager','staff'] },
+    { id:'transactions', ic:'📋', lbl:'Transactions',    roles:['admin','manager'] },
     { id:'reports',      ic:'📊', lbl:'Reports',         roles:['admin','manager'] },
     { id:'voids',        ic:'🚫', lbl:'Void Report',     roles:['admin','manager'] },
     { id:'menu',         ic:'🍽', lbl:'Menu Manager',    roles:['admin','manager'] },
-    { id:'shifts',       ic:'🕐', lbl:'Shifts',          roles:['admin','manager'] },
-    { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin','manager'] },
+    { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin'] },
   ],
   carwash: [
-    { id:'pos',                ic:'🚗', lbl:'Dashboard',         roles:['admin','manager','supervisor','cashier','attendant'] },
-    { id:'carwash-queue',      ic:'🚦', lbl:'Wash Queue',        roles:['admin','manager','supervisor','cashier','attendant'] },
-    { id:'transactions',       ic:'📋', lbl:'Transactions',      roles:['admin','manager','supervisor','cashier','attendant'] },
+    { id:'pos',                ic:'🚗', lbl:'Dashboard',         roles:['admin','manager','staff'] },
+    { id:'carwash-queue',      ic:'🚦', lbl:'Wash Queue',        roles:['admin','manager','staff'] },
+    { id:'shifts',             ic:'🕐', lbl:'My Shift',          roles:['admin','manager','staff'] },
+    { id:'transactions',       ic:'📋', lbl:'Transactions',      roles:['admin','manager'] },
     { id:'members',            ic:'💳', lbl:'Members',           roles:['admin','manager'] },
     { id:'fleet',              ic:'🚛', lbl:'Fleet Accounts',    roles:['admin','manager'] },
     { id:'reports',            ic:'📊', lbl:'Reports',           roles:['admin','manager'] },
     { id:'voids',              ic:'🚫', lbl:'Void Report',       roles:['admin','manager'] },
     { id:'carwash-services',   ic:'🔧', lbl:'Services & Prices', roles:['admin','manager'] },
-    { id:'shifts',             ic:'🕐', lbl:'Shifts',            roles:['admin','manager'] },
-    { id:'settings',           ic:'⚙️', lbl:'Settings',          roles:['admin','manager'] },
+    { id:'settings',           ic:'⚙️', lbl:'Settings',          roles:['admin'] },
   ],
 }
 
 const EXTRA_NAV: NavItem[] = [
   { id:'loyalty',     ic:'⭐', lbl:'Loyalty Points',      roles:['admin','manager'] },
   { id:'promos',      ic:'🎟', lbl:'Promo Codes',          roles:['admin','manager'] },
-  { id:'bookings',    ic:'📅', lbl:'Bookings',             roles:['admin','manager','supervisor'] },
+  { id:'bookings',    ic:'📅', lbl:'Bookings',             roles:['admin','manager'] },
   { id:'inventory',   ic:'📦', lbl:'Inventory',            roles:['admin','manager'] },
   { id:'satisfaction',ic:'😊', lbl:'Customer Satisfaction',roles:['admin','manager'] },
   { id:'targets',     ic:'🎯', lbl:'Performance Targets',  roles:['admin','manager'] },
@@ -155,23 +155,21 @@ export default function Sidebar() {
         {!collapsed && (
           <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.8px', padding: '5px 10px 3px' }}>Navigation</div>
         )}
-        {navItems.map(item => {
-          const accessible = canAccess(item)
+        {navItems.filter(canAccess).map(item => {
           const isOn = activePage === item.id
           return (
             <div key={item.id}
-              onClick={() => accessible && dispatch({ type: 'SET_PAGE', page: item.id })}
+              onClick={() => dispatch({ type: 'SET_PAGE', page: item.id })}
               title={collapsed ? item.lbl : undefined}
               style={{
                 display: 'flex', alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 gap: collapsed ? 0 : 8,
                 padding: collapsed ? '12px 0' : '10px 12px',
-                borderRadius: 'var(--r2)', cursor: accessible ? 'pointer' : 'not-allowed',
+                borderRadius: 'var(--r2)', cursor: 'pointer',
                 color: isOn ? active : 'var(--txt2)', fontSize: collapsed ? 16 : 12,
                 fontWeight: isOn ? 700 : 500, marginBottom: 2, transition: 'all .12s',
                 background: isOn ? (collapsed ? bg : 'var(--surf2)') : 'transparent',
-                opacity: accessible ? 1 : .28,
               }}>
               {collapsed ? (
                 <span>{item.ic}</span>

@@ -54,7 +54,7 @@ function dbStaffToUser(row: DbStaffRow): User {
 import { storage } from '@/lib/utils/storage'
 import {
   SEED_USERS, MODULE_DATA, DEFAULT_BIZ_CONFIG,
-  SEED_TRANSACTIONS, SEED_FLEET, SEED_PROMOS,
+  SEED_TRANSACTIONS, SEED_FLEET, SEED_PROMOS, SEED_VERSION,
 } from '@/lib/data/seed'
 
 // â”€â”€ State shape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -164,11 +164,18 @@ function initState(): AppState {
     cart: [],
     cartPayMethod: 'cash',
     cartOrderType: 'dine-in',
-    menuData: storage.get<Record<ModuleKey, { items: MenuItem[]; categories: string[]; addons: Addon[] }>>('menu_data') ?? {
-      restaurant: { items: MODULE_DATA.restaurant.items, categories: MODULE_DATA.restaurant.categories, addons: MODULE_DATA.restaurant.addons },
-      bar:        { items: MODULE_DATA.bar.items,        categories: MODULE_DATA.bar.categories,        addons: MODULE_DATA.bar.addons        },
-      carwash:    { items: MODULE_DATA.carwash.items,    categories: MODULE_DATA.carwash.categories,    addons: MODULE_DATA.carwash.addons    },
-    },
+    menuData: (() => {
+      const stored = storage.get<Record<ModuleKey, { items: MenuItem[]; categories: string[]; addons: Addon[] }>>('menu_data')
+      if (stored && storage.get<string>('seed_version') === SEED_VERSION) return stored
+      const fresh = {
+        restaurant: { items: MODULE_DATA.restaurant.items as MenuItem[], categories: MODULE_DATA.restaurant.categories, addons: MODULE_DATA.restaurant.addons as Addon[] },
+        bar:        { items: MODULE_DATA.bar.items as MenuItem[],        categories: MODULE_DATA.bar.categories,        addons: MODULE_DATA.bar.addons as Addon[]        },
+        carwash:    { items: MODULE_DATA.carwash.items as MenuItem[],    categories: MODULE_DATA.carwash.categories,    addons: MODULE_DATA.carwash.addons as Addon[]    },
+      }
+      storage.set('menu_data', fresh)
+      storage.set('seed_version', SEED_VERSION)
+      return fresh
+    })(),
     heldOrders:   (() => { const v = storage.get('held_orders');   return Array.isArray(v) ? (v as HeldOrder[]).filter(h => h?.id && Array.isArray(h?.cart)) : [] })(),
     orderTickets: (() => { const v = storage.get('order_tickets'); return Array.isArray(v) ? (v as OrderTicket[]).filter(t => t?.id && t?.timeline && Array.isArray(t?.items)) : [] })(),
     transactions: storage.get<Transaction[]>('tx') ?? SEED_TRANSACTIONS,
@@ -535,3 +542,4 @@ export function useApp() {
   if (!ctx) throw new Error('useApp must be used inside AppProvider')
   return ctx
 }
+

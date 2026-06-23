@@ -13,6 +13,7 @@ export default function PromosPage() {
   const { state, dispatch, toast } = useApp()
   const sym = state.biz.currencySymbol ?? 'J$'
   const [modal, setModal] = useState<PromoCode | null>(null)
+  const [pendingDel, setPendingDel] = useState<string | null>(null)
   const [isNew, setIsNew] = useState(false)
 
   const promos = state.promos
@@ -32,7 +33,6 @@ export default function PromosPage() {
     dispatch({ type: 'SET_PROMOS', promos: updated })
     storage.set('promos', updated)
     setModal(null)
-    toast(isNew ? 'Promo added' : 'Promo updated', 'success')
   }
 
   const del = (code: string) => {
@@ -40,7 +40,6 @@ export default function PromosPage() {
     const updated = promos.filter(p => p.code !== code)
     dispatch({ type: 'SET_PROMOS', promos: updated })
     storage.set('promos', updated)
-    toast('Promo deleted', 'warn')
   }
 
   const toggle = (code: string) => {
@@ -99,7 +98,7 @@ export default function PromosPage() {
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => openEdit(p)} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--bdr)', color: 'var(--txt3)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
                         <button onClick={() => toggle(p.code)} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--bdr)', color: 'var(--txt3)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{p.active ? 'Disable' : 'Enable'}</button>
-                        <button onClick={() => del(p.code)} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--bdr)', color: 'var(--red,#ef4444)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Del</button>
+                        <button onClick={() => del(p.code)} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: pendingDel === p.code ? '1px solid #fbbf24' : '1px solid var(--bdr)', color: pendingDel === p.code ? '#fbbf24' : 'var(--red,#ef4444)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{pendingDel === p.code ? 'Sure?' : 'Del'}</button>
                       </div>
                     </td>
                   </tr>

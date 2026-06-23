@@ -103,8 +103,18 @@ function TransferModal({ tableIds, tableCfgMap, currentOwners, users, onConfirm,
 // ── Main Component ────────────────────────────────────────────────
 export default function TablesPage() {
   const { state, toast, audit } = useApp()
-  const { currentUser, users } = state
+  const { currentUser, users, heldOrders, posState: appPosState } = state
   const canManage = currentUser?.role === 'admin' || currentUser?.role === 'manager'
+
+  const posOccupied = new Set(
+    [
+      ...heldOrders.map(o => o.selTable ?? ''),
+      appPosState['restaurant']?.selTable ?? '',
+      appPosState['bar']?.selTable ?? '',
+    ].filter(Boolean)
+  )
+  const getStatus = (tableId: string): 'free' | 'occupied' | 'reserved' =>
+    posOccupied.has(tableId) ? 'occupied' : (cfg.status[tableId] ?? 'free')
 
   const [cfg,       setCfg]       = useState<TablesConfig>(loadConfig)
   const [owners,    setOwners]    = useState<Record<string, TableOwner>>(loadOwners)
@@ -180,6 +190,7 @@ export default function TablesPage() {
 
   // ── Status cycling ─────────────────────────────────────────────
   const cycleStatus = (tableId: string) => {
+    if (posOccupied.has(tableId)) { toast('Table has an active order — close the order in POS to change status', 'warn'); return }
     const curr    = cfg.status[tableId] ?? 'free'
     const next    = NEXT_STATUS[curr]
     const updated = { ...cfg, status: { ...cfg.status, [tableId]: next } }
@@ -245,11 +256,11 @@ export default function TablesPage() {
 
   // ── Derived data ───────────────────────────────────────────────
   const tables        = cfg[mod]
-  const free          = tables.filter(t => (cfg.status[t.id] ?? 'free') === 'free').length
-  const occupied      = tables.filter(t => (cfg.status[t.id] ?? 'free') === 'occupied').length
-  const reserved      = tables.filter(t => (cfg.status[t.id] ?? 'free') === 'reserved').length
-  const occupiedAll   = tables.filter(t => cfg.status[t.id] === 'occupied')
-  const myOpenTables  = currentUser ? occupiedAll.filter(t => owners[t.id]?.userId === currentUser.id) : []
+  const free          = tables.filter(t => getStatus(t.id) === 'free').length
+  const occupied      = tables.filter(t => getStatus(t.id) === 'occupied').length
+  const reserved      = tables.filter(t => getStatus(t.id) === 'reserved').length
+  const occupiedAll   = [...cfg.restaurant, ...cfg.bar].filter(t => getStatus(t.id) === 'occupied')
+  const myOpenTables  = currentUser ? tables.filter(t => getStatus(t.id) === 'occupied' && owners[t.id]?.userId === currentUser.id) : []
   const tableCfgMap   = Object.fromEntries([...cfg.restaurant, ...cfg.bar].map(t => [t.id, t.name]))
 
   const staffGroups = (() => {
@@ -342,7 +353,7 @@ export default function TablesPage() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
                 {tables.map(t => {
-                  const status = cfg.status[t.id] ?? 'free'
+                  const status = getStatus(t.id)
                   const owner  = owners[t.id]
                   const isMe   = owner?.userId === currentUser?.id
                   const isEdit = editId === t.id

@@ -14,6 +14,7 @@ export default function OutsideOrders({ onCountChange }: Props) {
   const { state, toast } = useApp()
   const sym = state.biz.currencySymbol ?? 'J$'
   const [orders, setOrders] = useState<OutsideOrder[]>([])
+  const [pendingCancel, setPendingCancel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const fetchOrders = async () => {
@@ -60,13 +61,9 @@ export default function OutsideOrders({ onCountChange }: Props) {
 
   const cancel = async (order: OutsideOrder) => {
     if (!supabase) return
-    const orderId = String(order.id).slice(-6).toUpperCase()
-    const confirmed = window.confirm(
-      `Cancel order #\?\n\nThis cannot be undone. The customer's order will be cancelled.`
-    )
-    if (!confirmed) return
+    if (pendingCancel !== String(order.id)) { setPendingCancel(String(order.id)); return }
+    setPendingCancel(null)
     await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order.id)
-    toast('Order cancelled', 'warn')
   }
 
   if (!supabase) return (

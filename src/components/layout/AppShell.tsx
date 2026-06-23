@@ -27,6 +27,7 @@ import KitchenDisplay from '@/components/admin/KitchenDisplay'
 import VoidReport from '@/components/admin/VoidReport'
 import CarwashServicesPage from '@/components/admin/CarwashServicesPage'
 import CloseShiftWizard from '@/components/admin/CloseShiftWizard'
+import PayrollPage from '@/components/admin/PayrollPage'
 
 const PAGE_ROLES: Record<string, string[]> = {
   pos:          ['admin','manager','supervisor','cashier','server','bartender','attendant'],
@@ -46,6 +47,7 @@ const PAGE_ROLES: Record<string, string[]> = {
   inventory:    ['admin','manager'],
   satisfaction: ['admin','manager'],
   targets:      ['admin','manager'],
+  payroll:      ['admin','manager'],
   kitchen:      ['admin','manager','supervisor','cashier','bartender','attendant'],
   voids:              ['admin','manager'],
   'carwash-services': ['admin','manager'],
@@ -165,6 +167,7 @@ export default function AppShell() {
       case 'inventory':    return <InventoryPage />
       case 'satisfaction': return <SatisfactionPage />
       case 'targets':      return <TargetsPage />
+      case 'payroll':      return <PayrollPage />
       case 'kitchen':      return <KitchenDisplay />
       case 'voids':              return <VoidReport />
       case 'carwash-services':   return <CarwashServicesPage />

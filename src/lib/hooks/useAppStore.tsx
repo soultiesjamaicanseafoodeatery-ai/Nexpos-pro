@@ -44,7 +44,7 @@ function dbStaffToUser(row: DbStaffRow): User {
     name: row.name,
     ini: row.ini,
     pin_hash: row.pin_hash,
-    role: row.role as UserRole,
+    role: (['admin', 'manager', 'staff'] as string[]).includes(row.role) ? row.role as UserRole : 'staff',
     color: row.color,
     allowedModules,
     active: row.active,

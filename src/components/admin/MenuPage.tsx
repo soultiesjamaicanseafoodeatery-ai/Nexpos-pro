@@ -58,6 +58,7 @@ function ItemModal({ item, mod, categories, onSave, onClose }: {
   const handleSave = () => {
     if (!valid) return
     const saved: MenuItem = {
+      ...(item ?? {}),              // preserve gradient/accent/duration from existing item
       id:     item?.id ?? `${mod[0]}${Date.now()}`,
       name:   form.name.trim(),
       desc:   form.desc.trim(),
@@ -66,7 +67,7 @@ function ItemModal({ item, mod, categories, onSave, onClose }: {
       emoji:  form.emoji.trim() || '🍽️',
       active: form.active,
       module: mod,
-      ...(mod === 'carwash' && form.duration ? { duration: form.duration } : {}),
+      ...(form.duration ? { duration: form.duration } : {}),
     }
     onSave(saved)
   }

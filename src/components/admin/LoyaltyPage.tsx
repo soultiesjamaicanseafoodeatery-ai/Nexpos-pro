@@ -41,7 +41,6 @@ export default function LoyaltyPage() {
     )
     persist(updated)
     setModal(null)
-    toast('Points updated', 'success')
   }
 
   const addMember = () => {
@@ -51,7 +50,6 @@ export default function LoyaltyPage() {
     persist([m, ...members])
     setAddModal(false)
     setNewForm({ email: '', name: '', points: 0 })
-    toast('Member added', 'success')
   }
 
   const filtered = members.filter(m => {

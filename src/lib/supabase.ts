@@ -1,9 +1,11 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 const url  = process.env.NEXT_PUBLIC_SUPABASE_URL  ?? ''
 const akey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 
-export const supabase = (url && akey) ? createClient(url, akey) : null
+export const supabase: SupabaseClient = (url && akey)
+  ? createClient(url, akey)
+  : createClient('https://placeholder.supabase.co', 'placeholder')
 
 export interface OrderItem {
   id: string

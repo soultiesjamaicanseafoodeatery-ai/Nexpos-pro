@@ -533,16 +533,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const dispatch = useCallback((action: Action): void => {
     rawDispatch(action)
     if (action.type === 'HOLD_ORDER') {
-      pendingWrites.current.add(action.order.id)
-      supabase.from('held_orders').upsert(heldToRow(action.order))
-        .then(() => setTimeout(() => pendingWrites.current.delete(action.order.id), 3000))
-        .catch(() => {})
+      const oid = action.order.id
+      pendingWrites.current.add(oid)
+      ;(async () => {
+        try { await supabase.from('held_orders').upsert(heldToRow(action.order)) } catch {}
+        setTimeout(() => pendingWrites.current.delete(oid), 3000)
+      })()
     }
     if (action.type === 'REMOVE_HELD_ORDER') {
-      pendingDeletes.current.add(action.id)
-      supabase.from('held_orders').delete().eq('id', action.id)
-        .then(() => setTimeout(() => pendingDeletes.current.delete(action.id), 3000))
-        .catch(() => {})
+      const oid = action.id
+      pendingDeletes.current.add(oid)
+      ;(async () => {
+        try { await supabase.from('held_orders').delete().eq('id', oid) } catch {}
+        setTimeout(() => pendingDeletes.current.delete(oid), 3000)
+      })()
     }
   }, [])
 
@@ -581,18 +585,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (heldFetched.current) return
     heldFetched.current = true
 
-    supabase.from('held_orders').select('*').then(({ data }) => {
-      if (!data) return
-      const supaOrders = data.map(row => rowToHeld(row as Record<string, unknown>))
-      const supaIds = new Set(supaOrders.map(h => h.id))
-      const local = storage.get<HeldOrder[]>('held_orders') ?? []
-      const localOnly = local.filter(h => !supaIds.has(h.id))
-      // Upload any orders created offline
-      if (localOnly.length > 0) {
-        supabase.from('held_orders').upsert(localOnly.map(heldToRow)).catch(() => {})
-      }
-      rawDispatch({ type: 'SYNC_HELD_ORDERS', orders: [...supaOrders, ...localOnly] })
-    }).catch(() => {})
+    ;(async () => {
+      try {
+        const { data } = await supabase.from('held_orders').select('*')
+        if (!data) return
+        const supaOrders = data.map(row => rowToHeld(row as Record<string, unknown>))
+        const supaIds = new Set(supaOrders.map(h => h.id))
+        const local = storage.get<HeldOrder[]>('held_orders') ?? []
+        const localOnly = local.filter(h => !supaIds.has(h.id))
+        // Upload any orders created offline
+        if (localOnly.length > 0) {
+          try { await supabase.from('held_orders').upsert(localOnly.map(heldToRow)) } catch {}
+        }
+        rawDispatch({ type: 'SYNC_HELD_ORDERS', orders: [...supaOrders, ...localOnly] })
+      } catch {}
+    })()
 
     const ch = supabase
       .channel('held-orders')

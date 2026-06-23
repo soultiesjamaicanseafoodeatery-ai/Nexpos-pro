@@ -550,25 +550,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Load staff from Supabase â€” overwrites seed/cache on success
+  // Refresh staff from Supabase (initial load + realtime trigger)
+  const refreshStaff = useCallback(() => {
+    fetch(STAFF_API)
+      .then(r => r.ok ? r.json() : null)
+      .then((rows: unknown) => {
+        if (!Array.isArray(rows) || rows.length === 0) return
+        const fromSupabase = (rows as DbStaffRow[]).map(dbStaffToUser)
+        rawDispatch({ type: 'SET_USERS', users: fromSupabase })
+        storage.set('users', fromSupabase)
+      })
+      .catch(() => {})
+  }, [])
+
   const staffFetched = useRef(false)
   useEffect(() => {
     if (staffFetched.current) return
     staffFetched.current = true
-    fetch(STAFF_API)
-      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
-      .then((rows: unknown) => {
-        if (!Array.isArray(rows) || rows.length === 0) return
-        const fromSupabase = (rows as DbStaffRow[]).map(dbStaffToUser)
-        const supabaseIds = new Set(fromSupabase.map(u => u.id))
-        // Preserve locally-created users not yet in Supabase
-        const localOnly = (storage.get<User[]>('users') ?? []).filter(u => !supabaseIds.has(u.id))
-        const merged = [...fromSupabase, ...localOnly]
-        rawDispatch({ type: 'SET_USERS', users: merged })
-        storage.set('users', merged)
-      })
-      .catch(() => { /* keep localStorage cache / seed users */ })
-  }, [])
+    refreshStaff()
+  }, [refreshStaff])
+
+  // Realtime staff sync — re-fetch whenever any staff row changes on any device
+  useEffect(() => {
+    const ch = supabase
+      .channel('staff-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'staff' }, refreshStaff)
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [refreshStaff])
 
   // Online/offline detection
   useEffect(() => {

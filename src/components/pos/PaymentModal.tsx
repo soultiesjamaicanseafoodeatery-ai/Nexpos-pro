@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { OrderCalc, PaymentEntry, Surcharge, SurchargeType } from '@/types'
 
@@ -36,7 +36,7 @@ const PAYMENT_METHODS = [
   { key: 'credit', label: 'Credit Card',   icon: '💳', color: 'var(--pur)'  },
   { key: 'gift',   label: 'Gift Card',     icon: '🎁', color: 'var(--ora)'  },
   { key: 'tab',    label: 'House Account', icon: '📋', color: '#94a3b8'     },
-] as const
+]
 
 const SPLIT_METHODS = [
   { value: 'cash',     label: 'Cash' },
@@ -321,7 +321,7 @@ export default function PaymentModal({
                 border: '2px dashed var(--bdr)', background: 'transparent', color: 'var(--txt2)',
                 cursor: 'pointer', fontWeight: 700, fontSize: 13,
               }}>
-                ⊕ Split / Multi-Tender Payment
+                + Split / Multi-Tender Payment
               </button>
             </div>
           </div>

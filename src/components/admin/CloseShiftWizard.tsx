@@ -139,9 +139,13 @@ export default function CloseShiftWizard() {
     setVL(true)
     const openTix  = orderTickets.filter(t => t.status == null || !['paid','voided'].includes(t.status)).length
     const cwFetch  = fetch('/api/carwash-orders').then(r => r.ok ? r.json() : []).catch(() => [])
-    const tblFetch = supabase
-      ? supabase.from('table_owners').select('table_id', { count: 'exact', head: true }).then(({ count }) => count ?? 0).catch(() => 0)
-      : Promise.resolve(0)
+    const tblFetch = (async (): Promise<number> => {
+      if (!supabase) return 0
+      try {
+        const { count } = await supabase.from('table_owners').select('*', { count: 'exact', head: true })
+        return count ?? 0
+      } catch { return 0 }
+    })()
     Promise.all([cwFetch, tblFetch])
       .then(([orders, openTables]: [(CwOrder & { status: string })[], number]) => {
         const aw = orders.filter(o => ['waiting','in_progress','ready'].includes(o.status)).length

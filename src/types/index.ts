@@ -338,7 +338,8 @@ export interface BusinessConfig {
     kitchen: string    // Windows printer name for kitchen tickets
     bar: string        // Windows printer name for bar tickets (falls back to kitchen if blank)
     width: 58 | 80     // thermal paper width in mm
-    autoPrint: boolean  // auto-print after payment without showing preview
+    autoPrint: boolean  // legacy
+    receiptPreview: boolean // show receipt modal before printing (default false = always print silently)
     drawerEnabled: boolean // open cash drawer after cash payment
   }
   autoLogoutMinutes?: number

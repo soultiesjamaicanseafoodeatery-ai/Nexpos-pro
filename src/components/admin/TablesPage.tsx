@@ -210,12 +210,12 @@ export default function TablesPage() {
   ) => {
     const allTables = [...cfg.restaurant, ...cfg.bar]
     const tableName = allTables.find(t => t.id === tableId)?.name ?? tableId
-    const module    = moduleOverride ?? (cfg.restaurant.find(t => t.id === tableId) ? 'restaurant' : 'bar')
+    const tblModule = moduleOverride ?? (cfg.restaurant.find(t => t.id === tableId) ? 'restaurant' : 'bar')
     const now       = new Date().toISOString()
     setOwners(prev => ({ ...prev, [tableId]: { userId, userName, userColor, assignedAt: now } }))
     if (!supabase) return
     await supabase.from('table_owners').upsert({
-      table_id: tableId, table_name: tableName, module,
+      table_id: tableId, table_name: tableName, module: tblModule,
       user_id: userId, user_name: userName, user_color: userColor,
       assigned_at: now,
       assigned_by_id: currentUser?.id ?? null, assigned_by_name: currentUser?.name ?? null,
@@ -244,10 +244,10 @@ export default function TablesPage() {
       for (const tableId of tableIds) {
         const prev    = owners[tableId]
         const tblName = allTables.find(t => t.id === tableId)?.name ?? tableId
-        const module  = cfg.restaurant.find(t => t.id === tableId) ? 'restaurant' : 'bar'
+        const tblModule = cfg.restaurant.find(t => t.id === tableId) ? 'restaurant' : 'bar'
 
         await supabase.from('table_owners').upsert({
-          table_id: tableId, table_name: tblName, module,
+          table_id: tableId, table_name: tblName, module: tblModule,
           user_id: toUserId, user_name: toUserName, user_color: toUserColor,
           assigned_at: now, assigned_by_id: currentUser.id, assigned_by_name: currentUser.name,
         } as OwnerRow, { onConflict: 'table_id' })

@@ -321,22 +321,33 @@ export default function StaffPage() {
   const deleteStaff = async (user: User) => {
     setSaving(true)
     const hasTx = state.transactions.some(t => t.userId === user.id)
-    if (hasTx) {
-      // Soft delete — preserve history, just deactivate
-      try {
-        await fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id, active: false }) })
-      } catch { /* ignore Supabase errors — update local state regardless */ }
-      const updated = state.users.map(u => u.id === user.id ? { ...u, active: false } : u)
-      dispatch({ type: 'SET_USERS', users: updated })
-      toast(`${user.name} deactivated — sales history preserved`, 'success')
-    } else {
-      // Hard delete — no transaction history to preserve
-      try {
-        await fetch(`${API}?id=${encodeURIComponent(user.id)}`, { method: 'DELETE' })
-      } catch { /* ignore */ }
-      const updated = state.users.filter(u => u.id !== user.id)
-      dispatch({ type: 'SET_USERS', users: updated })
-      toast(`${user.name} deleted`, 'success')
+    try {
+      if (hasTx) {
+        // Soft delete — deactivate and preserve history
+        const res = await fetch(API, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: user.id, active: false }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error((err as { error?: string }).error ?? `Server error ${res.status}`)
+        }
+        await refetchStaff()
+        toast(`${user.name} deactivated — sales history preserved`, 'success')
+      } else {
+        // Hard delete — no transaction history
+        const res = await fetch(`${API}?id=${encodeURIComponent(user.id)}`, { method: 'DELETE' })
+        if (!res.ok && res.status !== 204) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error((err as { error?: string }).error ?? `Server error ${res.status}`)
+        }
+        await refetchStaff()
+        toast(`${user.name} deleted`, 'success')
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error'
+      toast(`Delete failed: ${msg}`, 'error')
     }
     setConfirmDel(null)
     setSaving(false)

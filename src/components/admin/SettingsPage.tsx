@@ -239,7 +239,28 @@ export default function SettingsPage() {
         </>
       )}
 
-      {/* ── Tax & Fees ── */}
+
+
+          <div style={section}>
+            <div style={sectionTitle}>Security</div>
+            <div>
+              <label style={lbl}>Auto Logout</label>
+              <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 10 }}>
+                Automatically log out staff after inactivity. A 60-second warning appears before logout.
+              </div>
+              <select
+                style={{ ...inp, width: 240 }}
+                value={String((form as Record<string, unknown>).autoLogoutMinutes ?? 30)}
+                onChange={e => set({ autoLogoutMinutes: Number(e.target.value) } as Partial<BusinessConfig>)}
+              >
+                <option value="0">Disabled</option>
+                <option value="15">15 Minutes</option>
+                <option value="30">30 Minutes (Recommended)</option>
+                <option value="60">60 Minutes</option>
+              </select>
+            </div>
+          </div>
+      {/* ` Tax & Fees ── */}
       {tab === 'tax' && (
         <>
           {(['restaurant','bar','carwash'] as const).map(m => {

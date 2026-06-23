@@ -94,12 +94,23 @@ export default function AuthScreen() {
 
     if (newPin.length === 4) {
       setTimeout(async () => {
+        // Always fetch fresh user data from Supabase so PIN changes take effect immediately on all devices
+        let freshPinHash: string | undefined = selectedUser.pin_hash
+        let freshPin: string | undefined = selectedUser.pin
+        try {
+          const rows: unknown = await fetch('/api/staff').then(r => r.ok ? r.json() : null)
+          if (Array.isArray(rows)) {
+            const fresh = rows.find((r: Record<string, unknown>) => r.id === selectedUser.id)
+            if (fresh) { freshPinHash = fresh.pin_hash as string | undefined; freshPin = fresh.pin as string | undefined }
+          }
+        } catch { /* use cached if network fails */ }
+
         let correct = false
-        if (selectedUser.pin_hash) {
+        if (freshPinHash) {
           const h = await hashPin(newPin)
-          correct = h === selectedUser.pin_hash
+          correct = h === freshPinHash
         } else {
-          correct = newPin === (selectedUser.pin ?? '')
+          correct = newPin === (freshPin ?? '')
         }
 
         if (correct) {

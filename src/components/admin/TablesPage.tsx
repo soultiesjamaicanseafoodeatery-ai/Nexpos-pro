@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useCallback, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { storage } from '@/lib/utils/storage'
@@ -177,17 +177,47 @@ export default function TablesPage() {
     finally   { setLoading(false) }
   }, [])
 
-  // ── Realtime subscription — syncs ownership across all devices ─
+  // ── Realtime subscription — syncs ownership + table config across all devices ─
   useEffect(() => {
     fetchData()
+    loadFromModuleData()
     if (!supabase) return
     const channel = supabase
-      .channel('table-ownership')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'table_owners' },       fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'table_transfer_log' }, fetchData)
+      .channel('table-data')
+      .on('postgres_changes', { event: '*',    schema: 'public', table: 'table_owners' },       fetchData)
+      .on('postgres_changes', { event: '*',    schema: 'public', table: 'table_transfer_log' }, fetchData)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'module_data' },      loadFromModuleData)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [fetchData])
+  }, [fetchData, loadFromModuleData])
+
+  // ── Load table layout from Supabase module_data (source of truth) ──
+  const loadFromModuleData = useCallback(async () => {
+    if (!supabase) return
+    try {
+      const [{ data: rRow }, { data: bRow }] = await Promise.all([
+        supabase.from('module_data').select('data').eq('id', 'restaurant').single(),
+        supabase.from('module_data').select('data').eq('id', 'bar').single(),
+      ])
+      const local         = loadConfig()
+      const localRestSeats: Record<string, number> = Object.fromEntries(local.restaurant.map(t => [t.name, t.seats]))
+      const localBarSeats:  Record<string, number> = Object.fromEntries(local.bar.map(t => [t.name, t.seats]))
+      const restNames: string[] = rRow?.data?.tables ?? local.restaurant.map((t: TableEntry) => t.name)
+      const barNames:  string[] = bRow?.data?.tables ?? local.bar.map((t: TableEntry) => t.name)
+      const restStatus: Record<string, string> = rRow?.data?.tableStatus ?? {}
+      const barStatus:  Record<string, string> = bRow?.data?.tableStatus ?? {}
+      const mergedStatus = { ...restStatus, ...barStatus }
+      // Strip 'occupied' — occupancy is always derived live from held_orders
+      Object.keys(mergedStatus).forEach(k => { if (mergedStatus[k] === 'occupied') mergedStatus[k] = 'free' })
+      const merged: TablesConfig = {
+        restaurant: restNames.map((name: string) => ({ id: name, name, seats: localRestSeats[name] ?? 4 })),
+        bar:        barNames.map((name: string)  => ({ id: name, name, seats: localBarSeats[name]  ?? 2 })),
+        status:     mergedStatus as TablesConfig['status'],
+      }
+      setCfg(merged)
+      storage.set('tables_config', merged)
+    } catch { /* fall back to localStorage */ }
+  }, [])
 
   // ── Supabase config sync (table layout) ───────────────────────
   const syncToSupabase = async (next: TablesConfig, module: 'restaurant' | 'bar') => {
@@ -197,8 +227,11 @@ export default function TablesPage() {
       if (!data) return
       const tables = next[module].map(t => t.name)
       const tableStatus = { ...data.data.tableStatus }
+      // Sync the non-occupied status entries
       tables.forEach(t => { if (!tableStatus[t]) tableStatus[t] = 'free' })
       Object.keys(tableStatus).forEach(t => { if (!tables.includes(t)) delete tableStatus[t] })
+      // Save the current status overrides from cfg
+      Object.entries(next.status).forEach(([k, v]) => { if (v !== 'occupied') tableStatus[k] = v })
       await supabase.from('module_data').update({ data: { ...data.data, tables, tableStatus } }).eq('id', module)
     } catch { /* non-critical */ }
   }
@@ -272,10 +305,12 @@ export default function TablesPage() {
   // ── Status cycling ─────────────────────────────────────────────
   const cycleStatus = async (tableId: string) => {
     if (posOccupied.has(tableId)) { toast('Table has an active order — close the order in POS to change status', 'warn'); return }
-    const curr    = cfg.status[tableId] ?? 'free'
-    const next    = NEXT_STATUS[curr]
-    const updated = { ...cfg, status: { ...cfg.status, [tableId]: next } }
+    const curr       = cfg.status[tableId] ?? 'free'
+    const next       = NEXT_STATUS[curr]
+    const updated    = { ...cfg, status: { ...cfg.status, [tableId]: next } }
+    const tblModule  = cfg.restaurant.find(t => t.id === tableId) ? 'restaurant' : 'bar'
     saveCfg(updated)
+    await syncToSupabase(updated, tblModule)
     if (next === 'occupied' && currentUser && !owners[tableId]) {
       await assignOwner(tableId, currentUser.id, currentUser.name, currentUser.color)
       audit('TABLE ASSIGNED', `Table ${tableId} assigned to ${currentUser.name}`, 'info')

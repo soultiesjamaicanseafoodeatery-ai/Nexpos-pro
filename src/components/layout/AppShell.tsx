@@ -68,18 +68,7 @@ export default function AppShell() {
   const stateRef = useRef(state)
   useEffect(() => { stateRef.current = state })
 
-  const lastPrintErrRef = useRef(0)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const now = Date.now()
-      if (now - lastPrintErrRef.current < 3000) return
-      lastPrintErrRef.current = now
-      const detail = (e as CustomEvent<{ message?: string }>).detail
-      toast('⚠️ ' + (detail?.message || 'Printer offline — check QZ Tray is running'), 'error')
-    }
-    window.addEventListener('print-failed', handler)
-    return () => window.removeEventListener('print-failed', handler)
-  }, [toast])
+
 
   // ── Inactivity auto-logout ──────────────────────────────────
   const [showInactivityWarning, setShowInactivityWarning] = useState(false)

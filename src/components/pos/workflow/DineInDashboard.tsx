@@ -34,6 +34,7 @@ export default function DineInDashboard({ onTableSelect, onNewTable, onBack }: P
   const sym = biz.currencySymbol ?? 'J$'
 
   const [search, setSearch] = useState('')
+  const [pendingRelease, setPendingRelease] = useState<string | null>(null)
 
   // Load tables from storage or seed
   const tables: string[] = useMemo(() => {
@@ -165,18 +166,19 @@ export default function DineInDashboard({ onTableSelect, onNewTable, onBack }: P
                   title="Release table (void stale ticket)"
                   onClick={e => {
                     e.stopPropagation()
-                    if (confirm(`Release ${t.name}? This will void the open ticket.`)) {
-                      dispatch({ type: 'UPDATE_ORDER_TICKET', id: t.ticket!.id, patch: { status: 'voided' } })
-                    }
+                    if (pendingRelease !== t.name) { setPendingRelease(t.name); return }
+                    setPendingRelease(null)
+                    dispatch({ type: 'UPDATE_ORDER_TICKET', id: t.ticket!.id, patch: { status: 'voided' } })
                   }}
                   style={{
                     position: 'absolute', top: 8, right: 8,
-                    background: '#7f1d1d88', border: 'none', color: '#fca5a5',
+                    background: pendingRelease === t.name ? '#78350f88' : '#7f1d1d88', border: 'none',
+                    color: pendingRelease === t.name ? '#fbbf24' : '#fca5a5',
                     borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700,
                     padding: '3px 8px', cursor: 'pointer', lineHeight: 1.4,
                   }}
                 >
-                  Release
+                  {pendingRelease === t.name ? 'Sure?' : 'Release'}
                 </button>
               )}
             </div>

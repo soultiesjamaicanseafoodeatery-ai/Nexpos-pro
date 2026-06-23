@@ -7,6 +7,8 @@ interface RawApiItem {
   id: string; name: string; description?: string; price?: number
   category?: string; emoji?: string; is_available?: boolean; active?: boolean; module?: string
 }
+interface Flavour { id: string; name: string; description: string; active: boolean }
+interface Side    { id: string; name: string; description: string; price: number; active: boolean }
 
 const inp: React.CSSProperties = {
   width: '100%', background: 'var(--surf2)', border: '1px solid var(--bdr2)',
@@ -189,9 +191,84 @@ function AddonModal({ addon, onSave, onClose }: {
   )
 }
 
+function FlavourModal({ flavour, onSave, onClose }: {
+  flavour: Flavour | null; onSave: (f: Flavour) => void; onClose: () => void
+}) {
+  const [name, setName] = useState(flavour?.name ?? '')
+  const [desc, setDesc] = useState(flavour?.description ?? '')
+  const valid = name.trim().length > 0
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 400, boxShadow: '0 24px 60px rgba(0,0,0,.5)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{flavour ? 'Edit Flavour' : 'Add Flavour'}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--txt3)', fontSize: 20 }}>×</button>
+        </div>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={lbl}>Flavour Name *</label>
+            <input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Jerk, Steamed, Curry" autoFocus />
+          </div>
+          <div>
+            <label style={lbl}>Description</label>
+            <input style={inp} value={desc} onChange={e => setDesc(e.target.value)} placeholder="Optional description..." />
+          </div>
+        </div>
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--bdr)', display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px 8px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => { if (!valid) return; onSave({ id: flavour?.id ?? `FLV-${Date.now()}`, name: name.trim(), description: desc.trim(), active: flavour?.active ?? true }) }} disabled={!valid} style={{ flex: 2, padding: '10px 8px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: valid ? 'var(--blue)' : 'var(--surf3)', color: valid ? '#fff' : 'var(--txt3)', border: 'none', cursor: valid ? 'pointer' : 'not-allowed' }}>
+            {flavour ? 'Save Changes' : 'Add Flavour'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SideModal({ side, onSave, onClose }: {
+  side: Side | null; onSave: (s: Side) => void; onClose: () => void
+}) {
+  const [name, setName]   = useState(side?.name ?? '')
+  const [desc, setDesc]   = useState(side?.description ?? '')
+  const [price, setPrice] = useState(side?.price ?? 0)
+  const valid = name.trim().length > 0
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 400, boxShadow: '0 24px 60px rgba(0,0,0,.5)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{side ? 'Edit Side' : 'Add Side'}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--txt3)', fontSize: 20 }}>×</button>
+        </div>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={lbl}>Side Name *</label>
+            <input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rice & Peas, Festival, Bammy" autoFocus />
+          </div>
+          <div>
+            <label style={lbl}>Description</label>
+            <input style={inp} value={desc} onChange={e => setDesc(e.target.value)} placeholder="Optional description..." />
+          </div>
+          <div>
+            <label style={lbl}>Price (J$) — 0 = included</label>
+            <input style={inp} type="number" min={0} step={50} value={price} onChange={e => setPrice(Number(e.target.value))} />
+          </div>
+        </div>
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--bdr)', display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px 8px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => { if (!valid) return; onSave({ id: side?.id ?? `SID-${Date.now()}`, name: name.trim(), description: desc.trim(), price: Number(price), active: side?.active ?? true }) }} disabled={!valid} style={{ flex: 2, padding: '10px 8px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: valid ? 'var(--blue)' : 'var(--surf3)', color: valid ? '#fff' : 'var(--txt3)', border: 'none', cursor: valid ? 'pointer' : 'not-allowed' }}>
+            {side ? 'Save Changes' : 'Add Side'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function MenuPage() {
   const { state, dispatch, toast } = useApp()
-  const [tab,  setTab]  = useState<'items' | 'categories' | 'addons'>('items')
+  const [tab,  setTab]  = useState<'items' | 'categories' | 'addons' | 'flavours' | 'sides'>('items')
   const [mod,  setMod]  = useState<ModuleKey>('restaurant')
   const [search, setSearch] = useState('')
 
@@ -229,6 +306,38 @@ export default function MenuPage() {
     loadItems()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mod])
+
+  // Flavours
+  const [flavours,        setFlavours]        = useState<Flavour[] | null>(null)
+  const [loadingFlavours, setLoadingFlavours] = useState(true)
+  const [editFlavour,     setEditFlavour]     = useState<Flavour | null>(null)
+  const [showFlavourModal,setShowFlavourModal]= useState(false)
+  const [delFlavourId,    setDelFlavourId]    = useState<string | null>(null)
+
+  const loadFlavours = () => {
+    setLoadingFlavours(true)
+    fetch('/api/flavours')
+      .then(r => r.json())
+      .then((data: Flavour[]) => { setFlavours(data); setLoadingFlavours(false) })
+      .catch(() => setLoadingFlavours(false))
+  }
+
+  // Sides
+  const [sides,        setSides]        = useState<Side[] | null>(null)
+  const [loadingSides, setLoadingSides] = useState(true)
+  const [editSide,     setEditSide]     = useState<Side | null>(null)
+  const [showSideModal,setShowSideModal]= useState(false)
+  const [delSideId,    setDelSideId]    = useState<string | null>(null)
+
+  const loadSides = () => {
+    setLoadingSides(true)
+    fetch('/api/sides')
+      .then(r => r.json())
+      .then((data: Side[]) => { setSides(data); setLoadingSides(false) })
+      .catch(() => setLoadingSides(false))
+  }
+
+  useEffect(() => { loadFlavours(); loadSides() }, [])
 
   const [editItem, setEditItem]           = useState<MenuItem | null>(null)
   const [showItemModal, setShowItemModal] = useState(false)
@@ -353,10 +462,92 @@ export default function MenuPage() {
     dispatch({ type: 'UPDATE_MENU_ADDON', mod, addon: { ...addon, active: !addon.active } })
   }
 
+  // ── Flavour CRUD ───────────────────────────────────────────
+  const saveFlavour = async (data: Flavour) => {
+    const isNew = !flavours?.some(f => f.id === data.id)
+    const res = await fetch('/api/flavours', {
+      method: isNew ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (res.ok) {
+      setFlavours(prev => prev ? (isNew ? [...prev, data] : prev.map(f => f.id === data.id ? data : f)) : [data])
+      toast(isNew ? 'Flavour added' : 'Flavour updated', 'success')
+    } else {
+      toast('Save failed', 'error')
+    }
+    setShowFlavourModal(false); setEditFlavour(null)
+  }
+
+  const toggleFlavour = async (f: Flavour) => {
+    const next = !f.active
+    const res = await fetch('/api/flavours', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: f.id, active: next }),
+    })
+    if (res.ok) setFlavours(prev => prev?.map(x => x.id === f.id ? { ...x, active: next } : x) ?? prev)
+    else toast('Update failed', 'error')
+  }
+
+  const handleDeleteFlavour = async () => {
+    if (!delFlavourId) return
+    const res = await fetch(`/api/flavours?id=${encodeURIComponent(delFlavourId)}`, { method: 'DELETE' })
+    if (res.ok || res.status === 204) {
+      setFlavours(prev => prev?.filter(f => f.id !== delFlavourId) ?? prev)
+      toast('Flavour deleted', 'success')
+    } else {
+      toast('Delete failed', 'error')
+    }
+    setDelFlavourId(null)
+  }
+
+  // ── Side CRUD ──────────────────────────────────────────────
+  const saveSide = async (data: Side) => {
+    const isNew = !sides?.some(s => s.id === data.id)
+    const res = await fetch('/api/sides', {
+      method: isNew ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (res.ok) {
+      setSides(prev => prev ? (isNew ? [...prev, data] : prev.map(s => s.id === data.id ? data : s)) : [data])
+      toast(isNew ? 'Side added' : 'Side updated', 'success')
+    } else {
+      toast('Save failed', 'error')
+    }
+    setShowSideModal(false); setEditSide(null)
+  }
+
+  const toggleSide = async (s: Side) => {
+    const next = !s.active
+    const res = await fetch('/api/sides', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: s.id, active: next }),
+    })
+    if (res.ok) setSides(prev => prev?.map(x => x.id === s.id ? { ...x, active: next } : x) ?? prev)
+    else toast('Update failed', 'error')
+  }
+
+  const handleDeleteSide = async () => {
+    if (!delSideId) return
+    const res = await fetch(`/api/sides?id=${encodeURIComponent(delSideId)}`, { method: 'DELETE' })
+    if (res.ok || res.status === 204) {
+      setSides(prev => prev?.filter(s => s.id !== delSideId) ?? prev)
+      toast('Side deleted', 'success')
+    } else {
+      toast('Delete failed', 'error')
+    }
+    setDelSideId(null)
+  }
+
   const TABS = [
-    { id: 'items' as const,      label: 'Menu Items',  count: items.length },
+    { id: 'items'      as const, label: 'Menu Items',  count: items.length },
     { id: 'categories' as const, label: 'Categories',  count: categories.filter(c => c !== 'All').length },
-    { id: 'addons' as const,     label: 'Add-ons',     count: addons.length },
+    { id: 'addons'     as const, label: 'Add-ons',     count: addons.length },
+    { id: 'flavours'   as const, label: 'Flavours',    count: flavours?.length ?? 0 },
+    { id: 'sides'      as const, label: 'Sides',       count: sides?.length ?? 0 },
   ]
 
   return (
@@ -555,6 +746,106 @@ export default function MenuPage() {
             </div>
           </div>
         )}
+
+        {tab === 'flavours' && (
+          <div style={{ padding: '18px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>🌶️ Flavours</div>
+                <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2 }}>Global flavour options offered at checkout (e.g. Jerk, Steamed, Curry)</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={loadFlavours} style={{ padding: '8px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', color: 'var(--txt3)', border: '1px solid var(--bdr)', cursor: 'pointer' }}>↻ Refresh</button>
+                <button onClick={() => { setEditFlavour(null); setShowFlavourModal(true) }} style={{ padding: '8px 18px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer' }}>+ Add Flavour</button>
+              </div>
+            </div>
+            {loadingFlavours ? (
+              <div style={{ padding: 48, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>Loading flavours…</div>
+            ) : (
+              <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--bdr)', background: 'var(--bg2)' }}>
+                      {['Name', 'Description', 'Status', 'Actions'].map((h, i) => (
+                        <th key={i} style={{ padding: '9px 12px', textAlign: i >= 2 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!flavours || flavours.length === 0 ? (
+                      <tr><td colSpan={4} style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)' }}>No flavours yet — click &quot;+ Add Flavour&quot; to get started.</td></tr>
+                    ) : flavours.map(f => (
+                      <tr key={f.id} style={{ borderBottom: '1px solid var(--bdr)', opacity: f.active ? 1 : 0.55 }}>
+                        <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--txt)' }}>{f.name}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--txt2)', fontSize: 12 }}>{f.description || '—'}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          <button onClick={() => toggleFlavour(f)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none', background: f.active ? 'var(--grn-bg)' : 'var(--red-bg)', color: f.active ? 'var(--grn)' : 'var(--red)' }}>
+                            {f.active ? 'Active' : 'Inactive'}
+                          </button>
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => { setEditFlavour(f); setShowFlavourModal(true) }} style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', marginRight: 6 }}>Edit</button>
+                          <button onClick={() => setDelFlavourId(f.id)} style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--red-bg)', border: 'none', color: 'var(--red)', cursor: 'pointer' }}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'sides' && (
+          <div style={{ padding: '18px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>🍚 Sides</div>
+                <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2 }}>Side dishes offered at checkout (e.g. Rice & Peas, Festival, Bammy)</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={loadSides} style={{ padding: '8px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', color: 'var(--txt3)', border: '1px solid var(--bdr)', cursor: 'pointer' }}>↻ Refresh</button>
+                <button onClick={() => { setEditSide(null); setShowSideModal(true) }} style={{ padding: '8px 18px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer' }}>+ Add Side</button>
+              </div>
+            </div>
+            {loadingSides ? (
+              <div style={{ padding: 48, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>Loading sides…</div>
+            ) : (
+              <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--bdr)', background: 'var(--bg2)' }}>
+                      {['Name', 'Description', 'Price', 'Status', 'Actions'].map((h, i) => (
+                        <th key={i} style={{ padding: '9px 12px', textAlign: i >= 3 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!sides || sides.length === 0 ? (
+                      <tr><td colSpan={5} style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)' }}>No sides yet — click &quot;+ Add Side&quot; to get started.</td></tr>
+                    ) : sides.map(s => (
+                      <tr key={s.id} style={{ borderBottom: '1px solid var(--bdr)', opacity: s.active ? 1 : 0.55 }}>
+                        <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--txt)' }}>{s.name}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--txt2)', fontSize: 12 }}>{s.description || '—'}</td>
+                        <td style={{ padding: '10px 12px', fontFamily: 'var(--mono)', fontWeight: 700 }}>{s.price > 0 ? fmtJMD(s.price) : 'Included'}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          <button onClick={() => toggleSide(s)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none', background: s.active ? 'var(--grn-bg)' : 'var(--red-bg)', color: s.active ? 'var(--grn)' : 'var(--red)' }}>
+                            {s.active ? 'Active' : 'Inactive'}
+                          </button>
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => { setEditSide(s); setShowSideModal(true) }} style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', marginRight: 6 }}>Edit</button>
+                          <button onClick={() => setDelSideId(s.id)} style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--red-bg)', border: 'none', color: 'var(--red)', cursor: 'pointer' }}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
       {showItemModal && (
@@ -568,6 +859,18 @@ export default function MenuPage() {
       )}
       {delAddonId && (
         <DelConfirm name={addons.find(a => a.id === delAddonId)?.name ?? ''} onConfirm={() => { dispatch({ type: 'DELETE_MENU_ADDON', mod, id: delAddonId }); toast('Add-on deleted', 'success'); setDelAddonId(null) }} onCancel={() => setDelAddonId(null)} />
+      )}
+      {showFlavourModal && (
+        <FlavourModal flavour={editFlavour} onSave={saveFlavour} onClose={() => { setShowFlavourModal(false); setEditFlavour(null) }} />
+      )}
+      {delFlavourId && (
+        <DelConfirm name={flavours?.find(f => f.id === delFlavourId)?.name ?? ''} onConfirm={handleDeleteFlavour} onCancel={() => setDelFlavourId(null)} />
+      )}
+      {showSideModal && (
+        <SideModal side={editSide} onSave={saveSide} onClose={() => { setShowSideModal(false); setEditSide(null) }} />
+      )}
+      {delSideId && (
+        <DelConfirm name={sides?.find(s => s.id === delSideId)?.name ?? ''} onConfirm={handleDeleteSide} onCancel={() => setDelSideId(null)} />
       )}
     </div>
   )

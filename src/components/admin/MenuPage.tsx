@@ -269,7 +269,7 @@ function SideModal({ side, onSave, onClose }: {
 export default function MenuPage() {
   const { state, dispatch, toast } = useApp()
   const [tab,  setTab]  = useState<'items' | 'categories' | 'addons' | 'flavours' | 'sides'>('items')
-  const [mod,  setMod]  = useState<ModuleKey>('restaurant')
+  const mod = state.activeModule
   const [search, setSearch] = useState('')
 
   // Live items from the same API source as the POS ordering screen
@@ -303,6 +303,7 @@ export default function MenuPage() {
 
   useEffect(() => {
     setLiveItems(null)
+    setSearch('')
     loadItems()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mod])
@@ -552,17 +553,6 @@ export default function MenuPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-
-      <div style={{ display: 'flex', gap: 8, padding: '10px 20px', background: 'var(--bg3)', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
-        {MODULES.map(m => (
-          <button key={m.key} onClick={() => { setMod(m.key); setSearch('') }} style={{
-            padding: '7px 18px', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 'var(--r)',
-            background: mod === m.key ? 'var(--blue)' : 'transparent',
-            color:      mod === m.key ? '#fff' : 'var(--txt3)',
-            border:    `1.5px solid ${mod === m.key ? 'var(--blue)' : 'var(--bdr)'}`,
-          }}>{m.icon} {m.label}</button>
-        ))}
-      </div>
 
       <div style={{ display: 'flex', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)', padding: '0 20px', flexShrink: 0 }}>
         {TABS.map(t => (

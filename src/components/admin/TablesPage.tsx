@@ -109,8 +109,10 @@ export default function TablesPage() {
   const posOccupied = new Set(
     heldOrders.map(o => o.selTable ?? '').filter(Boolean)
   )
-  const getStatus = (tableId: string): 'free' | 'occupied' | 'reserved' =>
-    posOccupied.has(tableId) ? 'occupied' : (cfg.status[tableId] ?? 'free')
+  const getStatus = (tableId: string): 'free' | 'occupied' | 'reserved' => {
+    if (posOccupied.has(tableId)) return 'occupied'
+    return cfg.status[tableId] === 'reserved' ? 'reserved' : 'free'
+  }
 
   const [cfg,       setCfg]       = useState<TablesConfig>(loadConfig)
   const [owners,    setOwners]    = useState<Record<string, TableOwner>>(loadOwners)
@@ -130,16 +132,13 @@ export default function TablesPage() {
 
   const saveCfg = (next: TablesConfig) => { setCfg(next); storage.set('tables_config', next) }
 
-  // Clear stale 'occupied' statuses that have no table owner (e.g. from old default config or unreliable posState)
+  // Strip any stored 'occupied' flags — occupancy is derived live from held orders, never stored
   useEffect(() => {
     const currentCfg = loadConfig()
-    const currentOwners = loadOwners()
-    const stale = Object.keys(currentCfg.status).filter(
-      id => currentCfg.status[id] === 'occupied' && !currentOwners[id]
-    )
-    if (stale.length > 0) {
+    const hasStale = Object.values(currentCfg.status).some(s => s === 'occupied')
+    if (hasStale) {
       const newStatus = { ...currentCfg.status }
-      stale.forEach(id => { newStatus[id] = 'free' })
+      Object.keys(newStatus).forEach(id => { if (newStatus[id] === 'occupied') newStatus[id] = 'free' })
       saveCfg({ ...currentCfg, status: newStatus })
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

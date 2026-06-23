@@ -29,7 +29,7 @@ const STATUS_LABEL: Record<TableStatus, string> = {
 }
 
 export default function DineInDashboard({ onTableSelect, onNewTable, onBack }: Props) {
-  const { state } = useApp()
+  const { state, dispatch } = useApp()
   const { orderTickets, biz, activeModule } = state
   const sym = biz.currencySymbol ?? 'J$'
 
@@ -126,39 +126,60 @@ export default function DineInDashboard({ onTableSelect, onNewTable, onBack }: P
       <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
           {tableData.map(t => (
-            <button key={t.name} onClick={() => onTableSelect(t.name)} style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              padding: '24px 16px', borderRadius: 'var(--r3)',
-              background: STATUS_BG[t.status],
-              border: `2px solid ${STATUS_COLOR[t.status]}66`,
-              cursor: 'pointer', transition: 'all .14s', textAlign: 'center',
-              minHeight: 160,
-            }}
-              onMouseEnter={e => { e.currentTarget.style.border = `2px solid ${STATUS_COLOR[t.status]}` }}
-              onMouseLeave={e => { e.currentTarget.style.border = `2px solid ${STATUS_COLOR[t.status]}66` }}
-            >
-              <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--txt)', marginBottom: 8 }}>{t.name}</div>
-              <div style={{
-                fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20,
-                background: STATUS_COLOR[t.status] + '22', color: STATUS_COLOR[t.status],
-                marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.5px',
-              }}>{STATUS_LABEL[t.status]}</div>
-              {t.ticket && (
-                <>
-                  {t.guestCount && t.guestCount > 1 && (
-                    <div style={{ fontSize: 11, color: 'var(--txt3)', marginBottom: 4 }}>
-                      👥 {t.guestCount} guests
+            <div key={t.name} style={{ position: 'relative' }}>
+              <button onClick={() => onTableSelect(t.name)} style={{
+                width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center',
+                padding: '24px 16px', borderRadius: 'var(--r3)',
+                background: STATUS_BG[t.status],
+                border: `2px solid ${STATUS_COLOR[t.status]}66`,
+                cursor: 'pointer', transition: 'all .14s', textAlign: 'center',
+                minHeight: 160,
+              }}
+                onMouseEnter={e => { e.currentTarget.style.border = `2px solid ${STATUS_COLOR[t.status]}` }}
+                onMouseLeave={e => { e.currentTarget.style.border = `2px solid ${STATUS_COLOR[t.status]}66` }}
+              >
+                <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--txt)', marginBottom: 8 }}>{t.name}</div>
+                <div style={{
+                  fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20,
+                  background: STATUS_COLOR[t.status] + '22', color: STATUS_COLOR[t.status],
+                  marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.5px',
+                }}>{STATUS_LABEL[t.status]}</div>
+                {t.ticket && (
+                  <>
+                    {t.guestCount && t.guestCount > 1 && (
+                      <div style={{ fontSize: 11, color: 'var(--txt3)', marginBottom: 4 }}>
+                        👥 {t.guestCount} guests
+                      </div>
+                    )}
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', fontFamily: 'var(--mono)' }}>
+                      {fmt(t.total, sym)}
                     </div>
-                  )}
-                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', fontFamily: 'var(--mono)' }}>
-                    {fmt(t.total, sym)}
-                  </div>
-                  {t.elapsed && (
-                    <div style={{ fontSize: 10, color: 'var(--txt3)', marginTop: 4 }}>since {t.elapsed}</div>
-                  )}
-                </>
+                    {t.elapsed && (
+                      <div style={{ fontSize: 10, color: 'var(--txt3)', marginTop: 4 }}>since {t.elapsed}</div>
+                    )}
+                  </>
+                )}
+              </button>
+              {t.ticket && (
+                <button
+                  title="Release table (void stale ticket)"
+                  onClick={e => {
+                    e.stopPropagation()
+                    if (confirm(`Release ${t.name}? This will void the open ticket.`)) {
+                      dispatch({ type: 'UPDATE_ORDER_TICKET', id: t.ticket!.id, patch: { status: 'voided' } })
+                    }
+                  }}
+                  style={{
+                    position: 'absolute', top: 8, right: 8,
+                    background: '#7f1d1d88', border: 'none', color: '#fca5a5',
+                    borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700,
+                    padding: '3px 8px', cursor: 'pointer', lineHeight: 1.4,
+                  }}
+                >
+                  Release
+                </button>
               )}
-            </button>
+            </div>
           ))}
         </div>
       </div>

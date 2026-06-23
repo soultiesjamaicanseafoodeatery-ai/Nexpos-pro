@@ -22,6 +22,7 @@ export default function InventoryPage() {
   const [modFilter, setModFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [adjModal, setAdjModal] = useState<{ item: InventoryItem; qty: number } | null>(null)
+  const [pendingDel, setPendingDel] = useState<string | null>(null)
 
   const persist = (list: InventoryItem[]) => { setItems(list); storage.set('inventory', list) }
 
@@ -35,8 +36,9 @@ export default function InventoryPage() {
   }
 
   const del = (id: string) => {
-    if (!confirm('Delete item?')) return
+    if (pendingDel !== id) { setPendingDel(id); return }
     persist(items.filter(i => i.id !== id))
+    setPendingDel(null)
   }
 
   const adjust = () => {
@@ -121,7 +123,7 @@ export default function InventoryPage() {
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => setAdjModal({ item: i, qty: 0 })} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--bdr)', color: 'var(--txt3)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Adjust</button>
                         <button onClick={() => { setModal({ ...i }); setIsNew(false) }} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--bdr)', color: 'var(--txt3)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
-                        <button onClick={() => del(i.id)} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--bdr)', color: 'var(--red,#ef4444)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Del</button>
+                        <button onClick={() => del(i.id)} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: pendingDel === i.id ? '1px solid #fbbf24' : '1px solid var(--bdr)', color: pendingDel === i.id ? '#fbbf24' : 'var(--red,#ef4444)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{pendingDel === i.id ? 'Sure?' : 'Del'}</button>
                       </div>
                     </td>
                   </tr>

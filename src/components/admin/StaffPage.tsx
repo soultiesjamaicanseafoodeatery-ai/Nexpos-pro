@@ -9,12 +9,9 @@ import { hashPin } from '@/lib/utils/hash'
 const API = '/api/staff'
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
-  { value: 'admin',      label: 'Administrator' },
-  { value: 'manager',    label: 'Manager' },
-  { value: 'supervisor', label: 'Supervisor' },
-  { value: 'cashier',    label: 'Cashier' },
-  { value: 'bartender',  label: 'Bartender' },
-  { value: 'attendant',  label: 'Attendant' },
+  { value: 'admin',   label: 'Administrator' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'staff',   label: 'Staff' },
 ]
 
 const MODULE_OPTIONS: { value: ModuleKey; label: string; emoji: string }[] = [
@@ -46,7 +43,7 @@ interface StaffForm {
 }
 
 function emptyForm(): StaffForm {
-  return { name: '', ini: '', role: 'cashier', allowedModules: ['restaurant'], color: '#4f8ef7', staffId: '', pin: '', confirmPin: '' }
+  return { name: '', ini: '', role: 'staff', allowedModules: ['restaurant','bar','carwash'], color: '#3ecf8e', staffId: '', pin: '', confirmPin: '' }
 }
 
 function StaffModal({

@@ -250,8 +250,8 @@ export default function SettingsPage() {
               </div>
               <select
                 style={{ ...inp, width: 240 }}
-                value={String((form as Record<string, unknown>).autoLogoutMinutes ?? 30)}
-                onChange={e => set({ autoLogoutMinutes: Number(e.target.value) } as Partial<BusinessConfig>)}
+                value={String(form.autoLogoutMinutes ?? 30)}
+                onChange={e => set({ autoLogoutMinutes: Number(e.target.value) })}
               >
                 <option value="0">Disabled</option>
                 <option value="15">15 Minutes</option>

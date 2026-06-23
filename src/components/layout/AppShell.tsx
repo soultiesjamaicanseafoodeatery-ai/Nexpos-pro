@@ -71,12 +71,9 @@ export default function AppShell() {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ message?: string }>).detail
-      dispatch({
-        type: 'ADD_TOAST',
-        msg: '⚠️ ' + (detail?.message || 'Printer offline — check QZ Tray is running'),
-        toastType: 'error',
-        id: Date.now(),
-      })
+      const id = Date.now()
+      dispatch({ type: 'ADD_TOAST', msg: '⚠️ ' + (detail?.message || 'Printer offline — check QZ Tray is running'), toastType: 'error', id })
+      setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 6000)
     }
     window.addEventListener('print-failed', handler)
     return () => window.removeEventListener('print-failed', handler)

@@ -3,8 +3,8 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 
-const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^﻿/, '')
+const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').replace(/^﻿/, '')
 
 const headers = {
   'apikey': SUPA_KEY,

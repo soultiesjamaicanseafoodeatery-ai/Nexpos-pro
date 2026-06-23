@@ -50,7 +50,7 @@ function ItemModal({ item, mod, categories, onSave, onClose }: {
     cat:      item?.cat ?? (cats[0] ?? ''),
     emoji:    item?.emoji ?? (mod === 'restaurant' ? '🍽️' : mod === 'bar' ? '🍺' : '🚗'),
     active:   item?.active ?? true,
-    duration: (item as Record<string, unknown>)?.duration as string ?? '',
+    duration: item?.duration ?? '',
   })
   const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) => setForm(f => ({ ...f, [k]: v }))
   const valid = form.name.trim().length > 0 && form.price > 0

@@ -434,31 +434,24 @@ export default function PaymentModal({
                 </div>
               )}
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Select Payment Method</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
                 {([
                   ['cash', 'Cash',          '💵', 'var(--grn)'],
-                  ['card', 'Card',          '💳', 'var(--blue)'],
                   ['gift', 'Gift Card',     '🎁', 'var(--pur)'],
                   ['tab',  'House Account', '📋', 'var(--ora)'],
                 ] as const).map(([key, lbl, icon, color]) => (
                   <button key={key}
-                    onClick={() => { if (key === 'card' && !CARD_TERMINAL_ENABLED) return; setStep(key as Step) }}
-                    disabled={key === 'card' && !CARD_TERMINAL_ENABLED}
-                    title={key === 'card' && !CARD_TERMINAL_ENABLED ? 'Card terminal not yet configured — cash payments only' : undefined}
+                    onClick={() => setStep(key as Step)}
                     style={{
                       padding: '18px 12px', borderRadius: 'var(--r3)',
-                      border: key === 'card' && !CARD_TERMINAL_ENABLED ? '2px solid var(--bdr)' : `2px solid ${color}44`,
-                      background: key === 'card' && !CARD_TERMINAL_ENABLED ? 'var(--surf2)' : `${color}11`,
-                      color: 'var(--txt)', cursor: key === 'card' && !CARD_TERMINAL_ENABLED ? 'not-allowed' : 'pointer',
+                      border: `2px solid ${color}44`,
+                      background: `${color}11`,
+                      color: 'var(--txt)', cursor: 'pointer',
                       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                       fontWeight: 700, fontSize: 13, transition: 'all .12s',
-                      opacity: key === 'card' && !CARD_TERMINAL_ENABLED ? 0.45 : 1,
                     }}>
                     <span style={{ fontSize: 24 }}>{icon}</span>
-                    <span style={{ color: key === 'card' && !CARD_TERMINAL_ENABLED ? 'var(--txt3)' : color }}>{lbl}</span>
-                    {key === 'card' && !CARD_TERMINAL_ENABLED && (
-                      <span style={{ fontSize: 9, color: 'var(--txt3)', fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>Not configured</span>
-                    )}
+                    <span style={{ color }}>{lbl}</span>
                     {key === 'gift' && (
                       <span style={{ fontSize: 9, color: 'var(--txt3)', fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>No balance check</span>
                     )}
@@ -491,7 +484,7 @@ export default function PaymentModal({
             {closeBtn}
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {/* Live totals */}
             <div style={{ padding: '12px 18px', background: 'var(--bg3)', borderBottom: '1px solid var(--bdr)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>

@@ -341,6 +341,7 @@ export interface BusinessConfig {
     autoPrint: boolean  // auto-print after payment without showing preview
     drawerEnabled: boolean // open cash drawer after cash payment
   }
+  autoLogoutMinutes?: number
 }
 
 // ── POS State ─────────────────────────────────────────────────

@@ -89,7 +89,7 @@ function StaffModal({
     const isDemo = editUser && !editUser.pin_hash
     if (!editUser || isDemo) {
       if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) {
-        setErr(isDemo ? 'A new PIN is required to save this account to Supabase' : 'PIN must be exactly 4 digits')
+        setErr(isDemo ? 'A new PIN is required to save this account' : 'PIN must be exactly 4 digits')
         return
       }
       if (form.pin !== form.confirmPin) { setErr('PINs do not match'); return }
@@ -166,7 +166,7 @@ function StaffModal({
 
           {/* PIN */}
           <div>
-            <label style={label}>{!editUser ? 'PIN *' : editUser.pin_hash ? 'New PIN (leave blank to keep current)' : 'PIN * (required to activate Supabase account)'}</label>
+            <label style={label}>{!editUser ? 'PIN *' : editUser.pin_hash ? 'New PIN (leave blank to keep current)' : 'PIN * (required to activate this account)'}</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <input
                 style={inputStyle}
@@ -362,9 +362,9 @@ export default function StaffPage() {
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>Staff</div>
           <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>
             {users.filter(u => u.active).length} active · {users.length} total
-            {supabaseStatus === 'empty'   && <span style={{ color: 'var(--ora)', marginLeft: 8 }}>⚠ No Supabase staff yet — click + Add Staff</span>}
-            {supabaseStatus === 'error'   && <span style={{ color: 'var(--red)', marginLeft: 8 }}>⚠ Supabase unavailable — showing demo staff</span>}
-            {supabaseStatus === 'checking'&& <span style={{ color: 'var(--txt3)', marginLeft: 8 }}>Connecting…</span>}
+            {supabaseStatus === 'empty'   && <span style={{ color: 'var(--ora)', marginLeft: 8 }}>⚠ No staff yet — click + Add Staff</span>}
+            {supabaseStatus === 'error'   && <span style={{ color: 'var(--red)', marginLeft: 8 }}>⚠ Connection error — showing cached staff</span>}
+            {supabaseStatus === 'checking'&& <span style={{ color: 'var(--txt3)', marginLeft: 8 }}>Loading…</span>}
           </div>
         </div>
         {isAdmin && (
@@ -375,13 +375,13 @@ export default function StaffPage() {
       {/* Status banners */}
       {supabaseStatus === 'empty' && isAdmin && (
         <div style={{ background: 'var(--blue-bg)', border: '1px solid rgba(79,142,247,.3)', borderRadius: 'var(--r2)', padding: '12px 16px', marginBottom: 16, fontSize: 12, color: 'var(--txt2)' }}>
-          <strong style={{ color: 'var(--blue)' }}>Supabase is connected</strong> — your staff table is ready. Click <strong>+ Add Staff</strong> to create your first real staff account. Demo staff below are local only and won&apos;t be able to log in on other devices.
+          <strong style={{ color: 'var(--blue)' }}>Database connected</strong> — your staff table is empty. Click <strong>+ Add Staff</strong> to add your first staff account.
         </div>
       )}
       {supabaseStatus === 'error' && isAdmin && (
         <div style={{ background: 'var(--ora-bg)', border: '1px solid rgba(255,124,76,.3)', borderRadius: 'var(--r2)', padding: '12px 16px', marginBottom: 16, fontSize: 12, color: 'var(--txt2)' }}>
-          <strong style={{ color: 'var(--ora)' }}>Could not reach Supabase</strong> — if you haven&apos;t created the staff table yet, run this SQL in your{' '}
-          <a href="https://supabase.com/dashboard/project/zkdemtdmscanbiygtwsh/sql/new" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>Supabase SQL editor</a>:
+          <strong style={{ color: 'var(--ora)' }}>Could not reach the database</strong> — if you haven&apos;t created the staff table yet, run this SQL in your{' '}
+          <a href="https://supabase.com/dashboard/project/zkdemtdmscanbiygtwsh/sql/new" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>SQL editor</a>:
           <pre style={{ marginTop: 8, background: 'var(--bg)', borderRadius: 'var(--r)', padding: '10px 12px', fontSize: 11, overflowX: 'auto', color: 'var(--grn)', lineHeight: 1.6 }}>{`CREATE TABLE IF NOT EXISTS public.staff (
   id              TEXT PRIMARY KEY,
   name            TEXT NOT NULL,
@@ -426,7 +426,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                       <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: `${u.color}22`, color: u.color, flexShrink: 0 }}>{u.ini}</div>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{u.name}{isSelf && <span style={{ fontSize: 10, marginLeft: 6, color: 'var(--blue)' }}>(you)</span>}</div>
-                        <div style={{ fontSize: 10, color: 'var(--txt3)', marginTop: 1 }}>{u.pin_hash ? '🔒 Supabase' : '⚠ Demo'}</div>
+                        {!u.pin_hash && <div style={{ fontSize: 10, color: 'var(--ora)', marginTop: 1 }}>⚠ Local only</div>}
                       </div>
                     </div>
                   </td>

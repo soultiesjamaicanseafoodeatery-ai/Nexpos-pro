@@ -166,7 +166,6 @@ export default function CloseShiftWizard() {
       openingFloat: floatNum, countedCash: countedNum, variance: variance ?? 0,
       varianceNote: data.varianceNote, wasOverridden: data.override })
     audit('SHIFT_CLOSED', `Closed by ${by} — Net Sales ${fmtJ(netSales)}, Cash variance: ${variance != null ? fmtJ(variance) : 'N/A'}`, 'success')
-    toast('Shift closed successfully', 'success')
     setClosing(false)
     setStep('done')
   }
@@ -673,21 +672,8 @@ export default function CloseShiftWizard() {
       <CardHead title="Print Reports" sub="Print or export shift reports before closing" />
       <CardBody>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {[
-            { label:'🖨  Print Shift Summary',         primary:true  },
-            { label:'💰  Print Cash Reconciliation',   primary:false },
-            { label:'📊  Print Sales Report',          primary:false },
-          ].map(b => (
-            <button key={b.label} onClick={() => window.print()}
-              style={{ padding:'14px 18px', borderRadius:'var(--r2)', fontSize:13, fontWeight:700, cursor:'pointer', textAlign:'left',
-                border:`1px solid ${b.primary ? 'var(--blue)' : 'var(--bdr)'}`,
-                background: b.primary ? 'var(--blue-bg)' : 'var(--surf)',
-                color: b.primary ? 'var(--blue)' : 'var(--txt)' }}>
-              {b.label}
-            </button>
-          ))}
-          <div style={{ textAlign:'center', fontSize:12, color:'var(--txt3)', marginTop:8, padding:'8px 0' }}>
-            Reports are also saved to Shifts history after closing.
+          <div style={{ padding:'16px', background:'var(--surf)', borderRadius:'var(--r2)', border:'1px solid var(--bdr)', fontSize:13, color:'var(--txt3)', textAlign:'center', lineHeight:1.6 }}>
+            Shift reports are automatically saved to Shifts history.<br/>Use your receipt printer via the Topbar printer icon to print summaries.
           </div>
         </div>
       </CardBody>

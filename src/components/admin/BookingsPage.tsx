@@ -51,7 +51,8 @@ export default function BookingsPage() {
   }
 
   const deleteBooking = async (id: string) => {
-    if (!confirm('Delete this booking?')) return
+    if (pendingDel !== id) { setPendingDel(id); return }
+    setPendingDel(null)
     await supabase.from('bookings').delete().eq('id', id)
     setBookings(prev => prev.filter(b => b.id !== id))
   }
@@ -134,7 +135,7 @@ export default function BookingsPage() {
                 <option value="cancelled">Cancelled</option>
               </select>
               <button onClick={() => { setModal({ ...b }); setIsNew(false) }} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--bdr)', color: 'var(--txt3)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
-              <button onClick={() => deleteBooking(b.id)} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: '1px solid var(--bdr)', color: 'var(--red,#ef4444)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Del</button>
+              <button onClick={() => deleteBooking(b.id)} style={{ padding: '5px 10px', borderRadius: 6, background: 'transparent', border: pendingDel === b.id ? '1px solid #fbbf24' : '1px solid var(--bdr)', color: pendingDel === b.id ? '#fbbf24' : 'var(--red,#ef4444)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{pendingDel === b.id ? 'Sure?' : 'Del'}</button>
             </div>
           </div>
         ))}

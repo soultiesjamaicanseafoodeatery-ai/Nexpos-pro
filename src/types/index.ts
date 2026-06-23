@@ -372,7 +372,7 @@ export interface POSState {
 
 // ── Audit ─────────────────────────────────────────────────────
 export interface AuditEntry {
-  id: number
+  id: string
   ts: string
   user: string
   userId: string | null

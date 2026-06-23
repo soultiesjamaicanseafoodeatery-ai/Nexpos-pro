@@ -380,7 +380,6 @@ export default function MenuPage() {
       setLiveItems(prev =>
         prev ? (isNew ? [...prev, data] : prev.map(i => i.id === data.id ? data : i)) : prev
       )
-      toast(isNew ? 'Item added' : 'Item updated', 'success')
     } else {
       toast('Save failed — check connection', 'error')
     }
@@ -396,7 +395,6 @@ export default function MenuPage() {
     })
     if (res.ok) {
       setLiveItems(prev => prev?.map(i => i.id === item.id ? { ...i, active: next } : i) ?? prev)
-      toast(next ? 'Item activated' : 'Item deactivated', 'success')
     } else {
       toast('Update failed', 'error')
     }
@@ -407,7 +405,6 @@ export default function MenuPage() {
     const res = await fetch(`/api/menu?id=${encodeURIComponent(delItemId)}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setLiveItems(prev => prev?.filter(i => i.id !== delItemId) ?? prev)
-      toast('Item deleted', 'success')
     } else {
       toast('Delete failed', 'error')
     }
@@ -420,7 +417,6 @@ export default function MenuPage() {
     if (!name || md.categories.includes(name)) return
     dispatch({ type: 'SET_MENU_CATEGORIES', mod, categories: [...md.categories, name] })
     setNewCatName('')
-    toast('Category added', 'success')
   }
 
   const renameCategory = (idx: number) => {
@@ -428,7 +424,6 @@ export default function MenuPage() {
     if (!val || val === md.categories[idx]) { setEditCatIdx(null); return }
     dispatch({ type: 'RENAME_CATEGORY', mod, oldName: md.categories[idx], newName: val })
     setEditCatIdx(null); setEditCatVal('')
-    toast('Category renamed', 'success')
   }
 
   const deleteCategory = (idx: number) => {
@@ -436,7 +431,6 @@ export default function MenuPage() {
     if (name === 'All') return
     if (items.some(i => i.cat === name)) { toast(`"${name}" is in use — reassign items first`, 'error'); return }
     dispatch({ type: 'SET_MENU_CATEGORIES', mod, categories: md.categories.filter((_, i) => i !== idx) })
-    toast('Category deleted', 'success')
   }
 
   const moveCategory = (idx: number, dir: -1 | 1) => {
@@ -451,10 +445,8 @@ export default function MenuPage() {
   const saveAddon = (data: Addon) => {
     if (addons.some(a => a.id === data.id)) {
       dispatch({ type: 'UPDATE_MENU_ADDON', mod, addon: data })
-      toast('Add-on updated', 'success')
     } else {
       dispatch({ type: 'ADD_MENU_ADDON', mod, addon: data })
-      toast('Add-on added', 'success')
     }
     setShowAddonModal(false); setEditAddon(null)
   }
@@ -473,7 +465,6 @@ export default function MenuPage() {
     })
     if (res.ok) {
       setFlavours(prev => prev ? (isNew ? [...prev, data] : prev.map(f => f.id === data.id ? data : f)) : [data])
-      toast(isNew ? 'Flavour added' : 'Flavour updated', 'success')
     } else {
       toast('Save failed', 'error')
     }
@@ -496,7 +487,6 @@ export default function MenuPage() {
     const res = await fetch(`/api/flavours?id=${encodeURIComponent(delFlavourId)}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setFlavours(prev => prev?.filter(f => f.id !== delFlavourId) ?? prev)
-      toast('Flavour deleted', 'success')
     } else {
       toast('Delete failed', 'error')
     }
@@ -513,7 +503,6 @@ export default function MenuPage() {
     })
     if (res.ok) {
       setSides(prev => prev ? (isNew ? [...prev, data] : prev.map(s => s.id === data.id ? data : s)) : [data])
-      toast(isNew ? 'Side added' : 'Side updated', 'success')
     } else {
       toast('Save failed', 'error')
     }
@@ -536,7 +525,6 @@ export default function MenuPage() {
     const res = await fetch(`/api/sides?id=${encodeURIComponent(delSideId)}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       setSides(prev => prev?.filter(s => s.id !== delSideId) ?? prev)
-      toast('Side deleted', 'success')
     } else {
       toast('Delete failed', 'error')
     }
@@ -848,7 +836,7 @@ export default function MenuPage() {
         <AddonModal addon={editAddon} onSave={saveAddon} onClose={() => { setShowAddonModal(false); setEditAddon(null) }} />
       )}
       {delAddonId && (
-        <DelConfirm name={addons.find(a => a.id === delAddonId)?.name ?? ''} onConfirm={() => { dispatch({ type: 'DELETE_MENU_ADDON', mod, id: delAddonId }); toast('Add-on deleted', 'success'); setDelAddonId(null) }} onCancel={() => setDelAddonId(null)} />
+        <DelConfirm name={addons.find(a => a.id === delAddonId)?.name ?? ''} onConfirm={() => { dispatch({ type: 'DELETE_MENU_ADDON', mod, id: delAddonId }); setDelAddonId(null) }} onCancel={() => setDelAddonId(null)} />
       )}
       {showFlavourModal && (
         <FlavourModal flavour={editFlavour} onSave={saveFlavour} onClose={() => { setShowFlavourModal(false); setEditFlavour(null) }} />

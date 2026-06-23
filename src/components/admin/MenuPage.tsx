@@ -244,7 +244,7 @@ export default function MenuPage() {
 
   const md         = state.menuData[mod]
   const items      = liveItems ?? md.items
-  const categories = [...new Set([...md.categories, ...(liveItems ?? []).map(i => i.cat).filter(Boolean)])]
+  const categories = Array.from(new Set([...md.categories, ...(liveItems ?? []).map(i => i.cat).filter(Boolean)]))
   const addons     = md.addons
 
   const filtered = items.filter(i => {

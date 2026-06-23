@@ -62,22 +62,24 @@ const ACCESS_DENIED = (
 )
 
 export default function AppShell() {
-  const { state, dispatch } = useApp()
+  const { state, dispatch, toast } = useApp()
   const { activePage, activeModule, currentUser, showEOD } = state
 
   const stateRef = useRef(state)
   useEffect(() => { stateRef.current = state })
 
+  const lastPrintErrRef = useRef(0)
   useEffect(() => {
     const handler = (e: Event) => {
+      const now = Date.now()
+      if (now - lastPrintErrRef.current < 3000) return
+      lastPrintErrRef.current = now
       const detail = (e as CustomEvent<{ message?: string }>).detail
-      const id = Date.now()
-      dispatch({ type: 'ADD_TOAST', msg: '⚠️ ' + (detail?.message || 'Printer offline — check QZ Tray is running'), toastType: 'error', id })
-      setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 6000)
+      toast('⚠️ ' + (detail?.message || 'Printer offline — check QZ Tray is running'), 'error')
     }
     window.addEventListener('print-failed', handler)
     return () => window.removeEventListener('print-failed', handler)
-  }, [dispatch])
+  }, [toast])
 
   // ── Inactivity auto-logout ──────────────────────────────────
   const [showInactivityWarning, setShowInactivityWarning] = useState(false)

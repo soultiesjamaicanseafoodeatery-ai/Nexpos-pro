@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useCallback, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -119,7 +119,6 @@ export default function AuthScreen() {
             clearFailedAttempts(selectedUser.id)
             dispatch({ type: 'LOGIN', user: selectedUser, shift })
             if (WEAK_PINS.includes(newPin)) setShowWeakPinWarning(true)
-            toast(`Welcome ${selectedUser.name.split(' ')[0]}!`, 'success')
           }, 280)
         } else {
           const attempts = recordFailedAttempt(selectedUser.id)

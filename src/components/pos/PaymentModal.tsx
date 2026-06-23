@@ -105,7 +105,7 @@ export default function PaymentModal({
     if (submitting) return
     setSubmitting(true)
     onComplete(data)
-    if (data.method === 'cash' && (data.changeDue ?? 0) > 0.005) {
+    if ((data.method === 'cash' || data.method === 'split') && (data.changeDue ?? 0) > 0.005) {
       appToast(`Change due: ${fmtN(data.changeDue!)}`, 'info')
     }
     handleClose()
@@ -510,6 +510,7 @@ export default function PaymentModal({
 
   // ── Split / Multi-Tender ──────────────────────────────────────
   if (step === 'split') {
+    const splitChangeDue = Math.max(0, splitTotal - total)
     const paid = splitRemaining <= 0.01
     return (
       <div style={over} onClick={handleClose}>
@@ -523,15 +524,22 @@ export default function PaymentModal({
           {/* Running totals */}
           <div style={{ padding: '12px 18px', background: 'var(--bg3)', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
             {summaryRow('Total Due', fmtN(total), { bold: true, color: 'var(--blue)' })}
-            {splitTotal > 0 && summaryRow('Payments Applied', fmtN(splitTotal), { color: 'var(--grn)' })}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--bdr)' }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: paid ? 'var(--grn)' : 'var(--ora)' }}>
-                {paid ? 'Balance' : 'Remaining'}
-              </span>
-              <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 24, color: paid ? 'var(--grn)' : 'var(--ora)' }}>
-                {fmtN(paid ? 0 : splitRemaining)}
-              </span>
-            </div>
+            {splitTotal > 0 && summaryRow('Payments Applied', fmtN(Math.min(splitTotal, total)), { color: 'var(--grn)' })}
+            {splitChangeDue > 0.005 ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 6, borderTop: '2px solid #16a34a44' }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--grn)' }}>Change Due</span>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 24, color: 'var(--grn)' }}>{fmtN(splitChangeDue)}</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--bdr)' }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: paid ? 'var(--grn)' : 'var(--ora)' }}>
+                  {paid ? '✓ Paid in Full' : 'Remaining'}
+                </span>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 24, color: paid ? 'var(--grn)' : 'var(--ora)' }}>
+                  {paid ? '' : fmtN(splitRemaining)}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Payment rows */}
@@ -571,7 +579,7 @@ export default function PaymentModal({
                   .filter(p => parseFloat(p.amount) > 0)
                   .map(p => ({ method: p.method, amount: parseFloat(p.amount) }))
                 const method = payments.length === 1 ? payments[0].method : 'split'
-                finish({ method, payments })
+                finish({ method, payments, changeDue: splitChangeDue > 0.005 ? splitChangeDue : undefined })
               }}
               disabled={!paid}
               style={{

@@ -143,7 +143,6 @@ export default function SettingsPage() {
         await supabase.from('business_config').upsert({ id: 'main', data: form, updated_at: new Date().toISOString() })
       }
       setDirty(false)
-      toast('Settings saved', 'success')
     } catch {
       toast('Failed to sync to cloud — saved locally', 'warn')
     } finally {

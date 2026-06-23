@@ -1,7 +1,12 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { MenuItem, Addon, ModuleKey } from '@/types'
+
+interface RawApiItem {
+  id: string; name: string; description?: string; price?: number
+  category?: string; emoji?: string; is_available?: boolean; active?: boolean; module?: string
+}
 
 const inp: React.CSSProperties = {
   width: '100%', background: 'var(--surf2)', border: '1px solid var(--bdr2)',
@@ -21,7 +26,6 @@ const MODULES: { key: ModuleKey; label: string; icon: string }[] = [
   { key: 'carwash',   label: 'Car Wash',   icon: '🚗' },
 ]
 
-// ── Shared delete confirm ──────────────────────────────────────
 function DelConfirm({ name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -37,7 +41,6 @@ function DelConfirm({ name, onConfirm, onCancel }: { name: string; onConfirm: ()
   )
 }
 
-// ── Item Modal ─────────────────────────────────────────────────
 function ItemModal({ item, mod, categories, onSave, onClose }: {
   item: MenuItem | null; mod: ModuleKey; categories: string[]
   onSave: (data: MenuItem) => void; onClose: () => void
@@ -58,7 +61,7 @@ function ItemModal({ item, mod, categories, onSave, onClose }: {
   const handleSave = () => {
     if (!valid) return
     const saved: MenuItem = {
-      ...(item ?? {}),              // preserve gradient/accent/duration from existing item
+      ...(item ?? {}),
       id:     item?.id ?? `${mod[0]}${Date.now()}`,
       name:   form.name.trim(),
       desc:   form.desc.trim(),
@@ -133,7 +136,6 @@ function ItemModal({ item, mod, categories, onSave, onClose }: {
   )
 }
 
-// ── Addon Modal ────────────────────────────────────────────────
 function AddonModal({ addon, onSave, onClose }: {
   addon: Addon | null; onSave: (a: Addon) => void; onClose: () => void
 }) {
@@ -187,31 +189,62 @@ function AddonModal({ addon, onSave, onClose }: {
   )
 }
 
-// ── Main ───────────────────────────────────────────────────────
 export default function MenuPage() {
   const { state, dispatch, toast } = useApp()
   const [tab,  setTab]  = useState<'items' | 'categories' | 'addons'>('items')
   const [mod,  setMod]  = useState<ModuleKey>('restaurant')
   const [search, setSearch] = useState('')
 
-  // Item modal state
-  const [editItem, setEditItem]         = useState<MenuItem | null>(null)
-  const [showItemModal, setShowItemModal] = useState(false)
-  const [delItemId, setDelItemId]       = useState<string | null>(null)
+  // Live items from the same API source as the POS ordering screen
+  const [liveItems,    setLiveItems]    = useState<MenuItem[] | null>(null)
+  const [loadingItems, setLoadingItems] = useState(true)
+  const [loadError,    setLoadError]    = useState(false)
 
-  // Addon modal state
+  const loadItems = () => {
+    setLoadingItems(true)
+    setLoadError(false)
+    fetch('/api/menu')
+      .then(r => r.json())
+      .then((data: RawApiItem[]) => {
+        const mapped = data
+          .filter(r => (r.module ?? 'restaurant') === mod)
+          .map(r => ({
+            id:     r.id,
+            name:   r.name,
+            desc:   r.description ?? '',
+            price:  Number(r.price ?? 0),
+            cat:    r.category ?? '',
+            emoji:  r.emoji ?? (mod === 'restaurant' ? '🍽️' : mod === 'bar' ? '🍺' : '🚗'),
+            active: r.is_available ?? r.active ?? true,
+            module: mod,
+          } as MenuItem))
+        setLiveItems(mapped)
+        setLoadingItems(false)
+      })
+      .catch(() => { setLoadError(true); setLoadingItems(false) })
+  }
+
+  useEffect(() => {
+    setLiveItems(null)
+    loadItems()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mod])
+
+  const [editItem, setEditItem]           = useState<MenuItem | null>(null)
+  const [showItemModal, setShowItemModal] = useState(false)
+  const [delItemId, setDelItemId]         = useState<string | null>(null)
+
   const [editAddon, setEditAddon]           = useState<Addon | null>(null)
   const [showAddonModal, setShowAddonModal] = useState(false)
   const [delAddonId, setDelAddonId]         = useState<string | null>(null)
 
-  // Category editing state
-  const [newCatName,  setNewCatName]  = useState('')
-  const [editCatIdx,  setEditCatIdx]  = useState<number | null>(null)
-  const [editCatVal,  setEditCatVal]  = useState('')
+  const [newCatName, setNewCatName] = useState('')
+  const [editCatIdx, setEditCatIdx] = useState<number | null>(null)
+  const [editCatVal, setEditCatVal] = useState('')
 
   const md         = state.menuData[mod]
-  const items      = md.items
-  const categories = md.categories
+  const items      = liveItems ?? md.items
+  const categories = [...new Set([...md.categories, ...(liveItems ?? []).map(i => i.cat).filter(Boolean)])]
   const addons     = md.addons
 
   const filtered = items.filter(i => {
@@ -220,57 +253,91 @@ export default function MenuPage() {
     return i.name.toLowerCase().includes(q) || i.cat.toLowerCase().includes(q) || (i.desc ?? '').toLowerCase().includes(q)
   })
 
-  // ── Item CRUD ──────────────────────────────────────────────────
-  const saveItem = (data: MenuItem) => {
-    if (items.some(i => i.id === data.id)) {
-      dispatch({ type: 'UPDATE_MENU_ITEM', mod, item: data })
-      toast('Item updated', 'success')
+  // ── Item CRUD — API-driven ─────────────────────────────────
+  const saveItem = async (data: MenuItem) => {
+    const isNew = !items.some(i => i.id === data.id)
+    const body = {
+      id: data.id, name: data.name, description: data.desc,
+      price: data.price, category: data.cat, emoji: data.emoji,
+      active: data.active, module: mod,
+    }
+    const res = await fetch('/api/menu', {
+      method: isNew ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      setLiveItems(prev =>
+        prev ? (isNew ? [...prev, data] : prev.map(i => i.id === data.id ? data : i)) : prev
+      )
+      toast(isNew ? 'Item added' : 'Item updated', 'success')
     } else {
-      dispatch({ type: 'ADD_MENU_ITEM', mod, item: data })
-      toast('Item added', 'success')
+      toast('Save failed — check connection', 'error')
     }
     setShowItemModal(false); setEditItem(null)
   }
 
-  const toggleItem = (item: MenuItem) => {
-    dispatch({ type: 'UPDATE_MENU_ITEM', mod, item: { ...item, active: !item.active } })
-    toast(item.active ? 'Item deactivated' : 'Item activated', 'success')
+  const toggleItem = async (item: MenuItem) => {
+    const next = !item.active
+    const res = await fetch('/api/menu', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, active: next }),
+    })
+    if (res.ok) {
+      setLiveItems(prev => prev?.map(i => i.id === item.id ? { ...i, active: next } : i) ?? prev)
+      toast(next ? 'Item activated' : 'Item deactivated', 'success')
+    } else {
+      toast('Update failed', 'error')
+    }
   }
 
-  // ── Category CRUD ──────────────────────────────────────────────
+  const handleDeleteItem = async () => {
+    if (!delItemId) return
+    const res = await fetch(`/api/menu?id=${encodeURIComponent(delItemId)}`, { method: 'DELETE' })
+    if (res.ok || res.status === 204) {
+      setLiveItems(prev => prev?.filter(i => i.id !== delItemId) ?? prev)
+      toast('Item deleted', 'success')
+    } else {
+      toast('Delete failed', 'error')
+    }
+    setDelItemId(null)
+  }
+
+  // ── Category CRUD — local store ────────────────────────────
   const addCategory = () => {
     const name = newCatName.trim()
-    if (!name || categories.includes(name)) return
-    dispatch({ type: 'SET_MENU_CATEGORIES', mod, categories: [...categories, name] })
+    if (!name || md.categories.includes(name)) return
+    dispatch({ type: 'SET_MENU_CATEGORIES', mod, categories: [...md.categories, name] })
     setNewCatName('')
     toast('Category added', 'success')
   }
 
   const renameCategory = (idx: number) => {
     const val = editCatVal.trim()
-    if (!val || val === categories[idx]) { setEditCatIdx(null); return }
-    dispatch({ type: 'RENAME_CATEGORY', mod, oldName: categories[idx], newName: val })
+    if (!val || val === md.categories[idx]) { setEditCatIdx(null); return }
+    dispatch({ type: 'RENAME_CATEGORY', mod, oldName: md.categories[idx], newName: val })
     setEditCatIdx(null); setEditCatVal('')
     toast('Category renamed', 'success')
   }
 
   const deleteCategory = (idx: number) => {
-    const name = categories[idx]
+    const name = md.categories[idx]
     if (name === 'All') return
     if (items.some(i => i.cat === name)) { toast(`"${name}" is in use — reassign items first`, 'error'); return }
-    dispatch({ type: 'SET_MENU_CATEGORIES', mod, categories: categories.filter((_, i) => i !== idx) })
+    dispatch({ type: 'SET_MENU_CATEGORIES', mod, categories: md.categories.filter((_, i) => i !== idx) })
     toast('Category deleted', 'success')
   }
 
   const moveCategory = (idx: number, dir: -1 | 1) => {
-    const cats = [...categories]
+    const cats = [...md.categories]
     const next = idx + dir
     if (next < 0 || next >= cats.length) return
     ;[cats[idx], cats[next]] = [cats[next], cats[idx]]
     dispatch({ type: 'SET_MENU_CATEGORIES', mod, categories: cats })
   }
 
-  // ── Addon CRUD ─────────────────────────────────────────────────
+  // ── Addon CRUD ─────────────────────────────────────────────
   const saveAddon = (data: Addon) => {
     if (addons.some(a => a.id === data.id)) {
       dispatch({ type: 'UPDATE_MENU_ADDON', mod, addon: data })
@@ -295,7 +362,6 @@ export default function MenuPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      {/* Module selector */}
       <div style={{ display: 'flex', gap: 8, padding: '10px 20px', background: 'var(--bg3)', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
         {MODULES.map(m => (
           <button key={m.key} onClick={() => { setMod(m.key); setSearch('') }} style={{
@@ -307,7 +373,6 @@ export default function MenuPage() {
         ))}
       </div>
 
-      {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)', padding: '0 20px', flexShrink: 0 }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -325,7 +390,6 @@ export default function MenuPage() {
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
 
-        {/* ── Items ── */}
         {tab === 'items' && (
           <div style={{ padding: '18px 20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
@@ -334,56 +398,66 @@ export default function MenuPage() {
                   {MODULES.find(m => m.key === mod)?.icon} {MODULES.find(m => m.key === mod)?.label} Menu
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--txt3)', marginLeft: 10 }}>
-                  {items.filter(i => i.active).length} active · {items.length} total
+                  {loadingItems ? 'Loading…' : loadError ? '⚠ Load failed' : `${items.filter(i => i.active).length} active · ${items.length} total · live`}
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={loadItems} title="Reload from database" style={{ padding: '8px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', color: 'var(--txt3)', border: '1px solid var(--bdr)', cursor: 'pointer' }}>
+                  ↻ Refresh
+                </button>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ ...inp, width: 160, padding: '7px 10px' }} />
                 <button onClick={() => { setEditItem(null); setShowItemModal(true) }} style={{ padding: '8px 18px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Add Item</button>
               </div>
             </div>
 
-            <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--bdr)', background: 'var(--bg2)' }}>
-                    {['', 'Name & Description', 'Category', 'Price', 'Status', 'Actions'].map((h, i) => (
-                      <th key={i} style={{ padding: '9px 12px', textAlign: i >= 4 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 ? (
-                    <tr><td colSpan={6} style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>
-                      {search ? 'No items match your search.' : 'No items yet — click "+ Add Item" to get started.'}
-                    </td></tr>
-                  ) : filtered.map(item => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid var(--bdr)', opacity: item.active ? 1 : 0.55 }}>
-                      <td style={{ padding: '10px 12px', fontSize: 20, width: 44, textAlign: 'center' }}>{item.emoji}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontWeight: 700, color: 'var(--txt)' }}>{item.name}</div>
-                        {item.desc && <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>{item.desc}</div>}
-                      </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--txt2)', fontSize: 12 }}>{item.cat}</td>
-                      <td style={{ padding: '10px 12px', fontFamily: 'var(--mono)', fontWeight: 800, color: 'var(--txt)', whiteSpace: 'nowrap' }}>{fmtJMD(item.price)}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                        <button onClick={() => toggleItem(item)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none', background: item.active ? 'var(--grn-bg)' : 'var(--red-bg)', color: item.active ? 'var(--grn)' : 'var(--red)' }}>
-                          {item.active ? 'Active' : 'Inactive'}
-                        </button>
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <button onClick={() => { setEditItem(item); setShowItemModal(true) }} style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', marginRight: 6 }}>Edit</button>
-                        <button onClick={() => setDelItemId(item.id)} style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--red-bg)', border: 'none', color: 'var(--red)', cursor: 'pointer' }}>Delete</button>
-                      </td>
+            {loadingItems ? (
+              <div style={{ padding: 48, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>Loading menu from database…</div>
+            ) : loadError ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--red)', fontSize: 13 }}>
+                Failed to load menu. <button onClick={loadItems} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 700 }}>Try again</button>
+              </div>
+            ) : (
+              <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--bdr)', background: 'var(--bg2)' }}>
+                      {['', 'Name & Description', 'Category', 'Price', 'Status', 'Actions'].map((h, i) => (
+                        <th key={i} style={{ padding: '9px 12px', textAlign: i >= 4 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filtered.length === 0 ? (
+                      <tr><td colSpan={6} style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>
+                        {search ? 'No items match your search.' : 'No items yet — click "+ Add Item" to get started.'}
+                      </td></tr>
+                    ) : filtered.map(item => (
+                      <tr key={item.id} style={{ borderBottom: '1px solid var(--bdr)', opacity: item.active ? 1 : 0.55 }}>
+                        <td style={{ padding: '10px 12px', fontSize: 20, width: 44, textAlign: 'center' }}>{item.emoji}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <div style={{ fontWeight: 700, color: 'var(--txt)' }}>{item.name}</div>
+                          {item.desc && <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>{item.desc}</div>}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: 'var(--txt2)', fontSize: 12 }}>{item.cat}</td>
+                        <td style={{ padding: '10px 12px', fontFamily: 'var(--mono)', fontWeight: 800, color: 'var(--txt)', whiteSpace: 'nowrap' }}>{fmtJMD(item.price)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          <button onClick={() => toggleItem(item)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none', background: item.active ? 'var(--grn-bg)' : 'var(--red-bg)', color: item.active ? 'var(--grn)' : 'var(--red)' }}>
+                            {item.active ? 'Active' : 'Inactive'}
+                          </button>
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => { setEditItem(item); setShowItemModal(true) }} style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer', marginRight: 6 }}>Edit</button>
+                          <button onClick={() => setDelItemId(item.id)} style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--red-bg)', border: 'none', color: 'var(--red)', cursor: 'pointer' }}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── Categories ── */}
         {tab === 'categories' && (
           <div style={{ padding: '18px 20px' }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)', marginBottom: 4 }}>
@@ -392,14 +466,12 @@ export default function MenuPage() {
             <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 18 }}>
               Categories appear in the POS filter bar and the item editor. &quot;All&quot; is built-in.
             </div>
-
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <input value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCategory()} placeholder="New category name..." style={{ ...inp, flex: 1 }} />
               <button onClick={addCategory} disabled={!newCatName.trim()} style={{ padding: '8px 18px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: newCatName.trim() ? 'var(--blue)' : 'var(--surf2)', color: newCatName.trim() ? '#fff' : 'var(--txt3)', border: 'none', cursor: newCatName.trim() ? 'pointer' : 'not-allowed' }}>+ Add</button>
             </div>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {categories.map((cat, idx) => {
+              {md.categories.map((cat, idx) => {
                 const isAll = cat === 'All'
                 const inUse = items.filter(i => i.cat === cat).length
                 return (
@@ -407,10 +479,9 @@ export default function MenuPage() {
                     {!isAll ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                         <button onClick={() => moveCategory(idx, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? 'var(--bdr)' : 'var(--txt3)', fontSize: 9, lineHeight: 1, padding: '2px 4px' }}>▲</button>
-                        <button onClick={() => moveCategory(idx, 1)} disabled={idx === categories.length - 1} style={{ background: 'none', border: 'none', cursor: idx === categories.length - 1 ? 'default' : 'pointer', color: idx === categories.length - 1 ? 'var(--bdr)' : 'var(--txt3)', fontSize: 9, lineHeight: 1, padding: '2px 4px' }}>▼</button>
+                        <button onClick={() => moveCategory(idx, 1)} disabled={idx === md.categories.length - 1} style={{ background: 'none', border: 'none', cursor: idx === md.categories.length - 1 ? 'default' : 'pointer', color: idx === md.categories.length - 1 ? 'var(--bdr)' : 'var(--txt3)', fontSize: 9, lineHeight: 1, padding: '2px 4px' }}>▼</button>
                       </div>
                     ) : <div style={{ width: 20 }} />}
-
                     {editCatIdx === idx ? (
                       <input autoFocus value={editCatVal} onChange={e => setEditCatVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') renameCategory(idx); if (e.key === 'Escape') setEditCatIdx(null) }} style={{ ...inp, flex: 1, padding: '5px 8px' }} />
                     ) : (
@@ -418,9 +489,7 @@ export default function MenuPage() {
                         {cat}{isAll && <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 6 }}>(built-in filter)</span>}
                       </span>
                     )}
-
                     <span style={{ fontSize: 11, color: 'var(--txt3)', marginRight: 6 }}>{inUse} item{inUse !== 1 ? 's' : ''}</span>
-
                     {!isAll && (
                       <div style={{ display: 'flex', gap: 5 }}>
                         {editCatIdx === idx ? (
@@ -439,12 +508,11 @@ export default function MenuPage() {
                   </div>
                 )
               })}
-              {categories.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>No categories yet.</div>}
+              {md.categories.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>No categories yet.</div>}
             </div>
           </div>
         )}
 
-        {/* ── Add-ons ── */}
         {tab === 'addons' && (
           <div style={{ padding: '18px 20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -453,7 +521,6 @@ export default function MenuPage() {
               </div>
               <button onClick={() => { setEditAddon(null); setShowAddonModal(true) }} style={{ padding: '8px 18px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer' }}>+ Add Add-on</button>
             </div>
-
             <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
@@ -490,12 +557,11 @@ export default function MenuPage() {
         )}
       </div>
 
-      {/* Modals */}
       {showItemModal && (
         <ItemModal item={editItem} mod={mod} categories={categories} onSave={saveItem} onClose={() => { setShowItemModal(false); setEditItem(null) }} />
       )}
       {delItemId && (
-        <DelConfirm name={items.find(i => i.id === delItemId)?.name ?? ''} onConfirm={() => { dispatch({ type: 'DELETE_MENU_ITEM', mod, id: delItemId }); toast('Item deleted', 'success'); setDelItemId(null) }} onCancel={() => setDelItemId(null)} />
+        <DelConfirm name={items.find(i => i.id === delItemId)?.name ?? ''} onConfirm={handleDeleteItem} onCancel={() => setDelItemId(null)} />
       )}
       {showAddonModal && (
         <AddonModal addon={editAddon} onSave={saveAddon} onClose={() => { setShowAddonModal(false); setEditAddon(null) }} />

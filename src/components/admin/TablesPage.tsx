@@ -177,20 +177,6 @@ export default function TablesPage() {
     finally   { setLoading(false) }
   }, [])
 
-  // ── Realtime subscription — syncs ownership + table config across all devices ─
-  useEffect(() => {
-    fetchData()
-    loadFromModuleData()
-    if (!supabase) return
-    const channel = supabase
-      .channel('table-data')
-      .on('postgres_changes', { event: '*',    schema: 'public', table: 'table_owners' },       fetchData)
-      .on('postgres_changes', { event: '*',    schema: 'public', table: 'table_transfer_log' }, fetchData)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'module_data' },      loadFromModuleData)
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetchData, loadFromModuleData])
-
   // ── Load table layout from Supabase module_data (source of truth) ──
   const loadFromModuleData = useCallback(async () => {
     if (!supabase) return
@@ -218,6 +204,20 @@ export default function TablesPage() {
       storage.set('tables_config', merged)
     } catch { /* fall back to localStorage */ }
   }, [])
+
+  // ── Realtime subscription — syncs ownership + table config across all devices ─
+  useEffect(() => {
+    fetchData()
+    loadFromModuleData()
+    if (!supabase) return
+    const channel = supabase
+      .channel('table-data')
+      .on('postgres_changes', { event: '*',    schema: 'public', table: 'table_owners' },       fetchData)
+      .on('postgres_changes', { event: '*',    schema: 'public', table: 'table_transfer_log' }, fetchData)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'module_data' },      loadFromModuleData)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchData, loadFromModuleData])
 
   // ── Supabase config sync (table layout) ───────────────────────
   const syncToSupabase = async (next: TablesConfig, module: 'restaurant' | 'bar') => {

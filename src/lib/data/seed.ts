@@ -4,24 +4,19 @@ export const SEED_VERSION = 'v2-soulties-real'
 
 // ── Roles ────────────────────────────────────────────────────
 export const ROLES: Record<string, RoleConfig> = {
-  admin:      { label: 'Administrator', color: '#f56565', pages: ['pos','tables','kitchen','transactions','reports','staff','menu','settings','audit','shifts','fleet','members','loyalty','promos','voids','bookings','inventory','satisfaction','targets'] },
-  manager:    { label: 'Manager',       color: '#f5a623', pages: ['pos','tables','kitchen','transactions','reports','staff','menu','shifts','fleet','members','loyalty','promos','voids','bookings','targets'] },
-  supervisor: { label: 'Supervisor',    color: '#9b8afb', pages: ['pos','tables','kitchen','transactions','shifts'] },
-  cashier:    { label: 'Cashier',       color: '#4f8ef7', pages: ['pos','tables','kitchen','transactions','shifts','loyalty'] },
-  server:     { label: 'Server',        color: '#22c55e', pages: ['pos','tables','kitchen','shifts','loyalty'] },
-  bartender:  { label: 'Bartender',     color: '#3ecf8e', pages: ['pos','kitchen','transactions','shifts'] },
-  attendant:  { label: 'Attendant',     color: '#38bdf8', pages: ['pos','transactions','shifts'] },
-  kitchen:    { label: 'Kitchen',       color: '#f97316', pages: ['kitchen'] },
+  admin:   { label: 'Administrator', color: '#f56565', pages: ['pos','tables','kitchen','transactions','reports','staff','menu','settings','audit','shifts','fleet','members','loyalty','promos','voids','bookings','inventory','satisfaction','targets','payroll'] },
+  manager: { label: 'Manager',       color: '#f5a623', pages: ['pos','tables','kitchen','transactions','reports','staff','menu','shifts','fleet','members','loyalty','promos','voids','bookings','inventory','satisfaction','targets','payroll'] },
+  staff:   { label: 'Staff',         color: '#3ecf8e', pages: ['pos','tables','kitchen','shifts'] },
 }
 
 // ── Users ────────────────────────────────────────────────────
 export const SEED_USERS: User[] = [
-  { id:'U1', name:'Alex Rivera',   ini:'AR', pin:'1234', role:'admin',      color:'#f56565', allowedModules:['restaurant','bar','carwash'], active:true, staffId:'01' },
-  { id:'U2', name:'Jordan Kim',    ini:'JK', pin:'2222', role:'cashier',    color:'#4f8ef7', allowedModules:['restaurant'],                active:true, staffId:'02' },
-  { id:'U3', name:'Taylor Moss',   ini:'TM', pin:'3333', role:'bartender',  color:'#3ecf8e', allowedModules:['bar'],                       active:true, staffId:'03' },
-  { id:'U4', name:'Casey Park',    ini:'CP', pin:'4444', role:'attendant',  color:'#38bdf8', allowedModules:['carwash'],                   active:true, staffId:'04' },
-  { id:'U5', name:'Morgan Lee',    ini:'ML', pin:'5555', role:'manager',    color:'#f5a623', allowedModules:['restaurant','bar','carwash'], active:true, staffId:'05' },
-  { id:'U6', name:'Sam Torres',    ini:'ST', pin:'6666', role:'supervisor', color:'#9b8afb', allowedModules:['restaurant','bar'],           active:true, staffId:'06' },
+  { id:'U1', name:'Alex Rivera',   ini:'AR', pin:'1234', role:'admin',   color:'#f56565', allowedModules:['restaurant','bar','carwash'], active:true, staffId:'01' },
+  { id:'U2', name:'Jordan Kim',    ini:'JK', pin:'2222', role:'staff',   color:'#4f8ef7', allowedModules:['restaurant','bar','carwash'], active:true, staffId:'02' },
+  { id:'U3', name:'Taylor Moss',   ini:'TM', pin:'3333', role:'staff',   color:'#3ecf8e', allowedModules:['restaurant','bar','carwash'], active:true, staffId:'03' },
+  { id:'U4', name:'Casey Park',    ini:'CP', pin:'4444', role:'staff',   color:'#38bdf8', allowedModules:['restaurant','bar','carwash'], active:true, staffId:'04' },
+  { id:'U5', name:'Morgan Lee',    ini:'ML', pin:'5555', role:'manager', color:'#f5a623', allowedModules:['restaurant','bar','carwash'], active:true, staffId:'05' },
+  { id:'U6', name:'Sam Torres',    ini:'ST', pin:'6666', role:'staff',   color:'#9b8afb', allowedModules:['restaurant','bar','carwash'], active:true, staffId:'06' },
 ]
 
 // ── Module Data ───────────────────────────────────────────────

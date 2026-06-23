@@ -57,6 +57,7 @@ const EXTRA_NAV: NavItem[] = [
   { id:'inventory',   ic:'📦', lbl:'Inventory',            roles:['admin','manager'] },
   { id:'satisfaction',ic:'😊', lbl:'Customer Satisfaction',roles:['admin','manager'] },
   { id:'targets',     ic:'🎯', lbl:'Performance Targets',  roles:['admin','manager'] },
+  { id:'payroll',     ic:'💰', lbl:'Payroll',              roles:['admin','manager'] },
 ]
 
 const MOD_COLORS: Record<ModuleKey, { active: string; bg: string; border: string; letter: string }> = {

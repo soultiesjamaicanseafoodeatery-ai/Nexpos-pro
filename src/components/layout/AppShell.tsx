@@ -92,7 +92,7 @@ export default function AppShell() {
     if (!currentUser) return
 
     // Read from ref so we always use the latest setting without extra deps
-    const autoLogoutMin = (stateRef.current.biz as Record<string, unknown>).autoLogoutMinutes as number ?? 30
+    const autoLogoutMin = stateRef.current.biz.autoLogoutMinutes ?? 30
     if (autoLogoutMin === 0) return
 
     const autoLogoutMs = autoLogoutMin * 60_000

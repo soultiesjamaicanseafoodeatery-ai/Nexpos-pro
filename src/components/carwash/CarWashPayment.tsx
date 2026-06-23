@@ -126,7 +126,9 @@ ${rows ? '<div class="d"></div>' : ''}
 <div class="row"><span>${service.name}</span><span>${fmtJ(service.price)}</span></div>
 ${addons.map(a => `<div class="row"><span>+ ${a.name}</span><span>${fmtJ(a.price)}</span></div>`).join('')}
 <div class="d"></div>
-<div class="row"><span>Subtotal</span><span>${fmtJ(subtotal)}</span></div>`n<div class="row"><span>GCT (15%)</span><span>${fmtJ(taxAmount)}</span></div>`n<div class="row total"><span>TOTAL</span><span>${fmtJ(total)}</span></div>
+<div class="row"><span>Subtotal</span><span>${fmtJ(subtotal)}</span></div>
+<div class="row"><span>GCT (15%)</span><span>${fmtJ(taxAmount)}</span></div>
+<div class="row total"><span>TOTAL</span><span>${fmtJ(total)}</span></div>
 <div class="row"><span>Payment</span><span class="cap">${payMethod}</span></div>
 ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.name}</span></div>` : ''}
 <div class="d"></div>

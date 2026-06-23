@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react'
 import type {
@@ -56,6 +56,7 @@ import {
   SEED_USERS, MODULE_DATA, DEFAULT_BIZ_CONFIG,
   SEED_TRANSACTIONS, SEED_FLEET, SEED_PROMOS, SEED_VERSION,
 } from '@/lib/data/seed'
+import { supabase } from '@/lib/supabase'
 
 // â”€â”€ State shape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface AppState {
@@ -139,6 +140,8 @@ type Action =
   | { type: 'ADD_MENU_ADDON';      mod: ModuleKey; addon: Addon }
   | { type: 'UPDATE_MENU_ADDON';   mod: ModuleKey; addon: Addon }
   | { type: 'DELETE_MENU_ADDON';   mod: ModuleKey; id: string }
+  | { type: 'SYNC_HELD_ORDERS';    orders: HeldOrder[] }
+  | { type: 'UPSERT_HELD_ORDER';   order:  HeldOrder  }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -337,6 +340,18 @@ function reducer(state: AppState, action: Action): AppState {
       storage.set('held_orders', heldOrders)
       return { ...state, heldOrders }
     }
+    case 'SYNC_HELD_ORDERS': {
+      storage.set('held_orders', action.orders)
+      return { ...state, heldOrders: action.orders }
+    }
+    case 'UPSERT_HELD_ORDER': {
+      const idx = state.heldOrders.findIndex(h => h.id === action.order.id)
+      const heldOrders = idx >= 0
+        ? state.heldOrders.map((h, i) => i === idx ? action.order : h)
+        : [action.order, ...state.heldOrders]
+      storage.set('held_orders', heldOrders)
+      return { ...state, heldOrders }
+    }
     case 'UPDATE_TRANSACTION': {
       const transactions = state.transactions.map(t => t.id === action.tx.id ? action.tx : t)
       storage.set('tx', transactions)
@@ -463,7 +478,39 @@ function reducer(state: AppState, action: Action): AppState {
   }
 }
 
-// â”€â”€ Context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Supabase held-order row helpers ───────────────────────────────────────────────────────
+function heldToRow(h: HeldOrder) {
+  return {
+    id: h.id, label: h.label, cart: h.cart,
+    order_type: h.orderType, module: h.module,
+    sel_table: h.selTable ?? null,
+    guest_count: h.guestCount, customer_name: h.customerName,
+    disc_pct: h.discPct, disc_flat: h.discFlat,
+    gratuity_pct: h.gratuityPct, gratuity_override: h.gratuityOverride,
+    opened_at: h.openedAt ?? null, saved_at: h.savedAt, saved_by: h.savedBy,
+  }
+}
+function rowToHeld(r: Record<string, unknown>): HeldOrder {
+  return {
+    id: r.id as string,
+    label: r.label as string,
+    cart: (r.cart as CartItem[]) ?? [],
+    orderType: (r.order_type ?? 'dine-in') as OrderType,
+    module: (r.module ?? 'restaurant') as ModuleKey,
+    selTable: (r.sel_table as string | null) ?? null,
+    guestCount: Number(r.guest_count ?? 0),
+    customerName: String(r.customer_name ?? ''),
+    discPct: Number(r.disc_pct ?? 0),
+    discFlat: Number(r.disc_flat ?? 0),
+    gratuityPct: Number(r.gratuity_pct ?? 0),
+    gratuityOverride: Boolean(r.gratuity_override),
+    openedAt: r.opened_at as string | undefined,
+    savedAt: String(r.saved_at ?? ''),
+    savedBy: String(r.saved_by ?? ''),
+  }
+}
+
+// ── Context ───────────────────────────────────────────────────────────────────────────────
 interface AppContextValue {
   state: AppState
   dispatch: React.Dispatch<Action>
@@ -476,7 +523,28 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null)
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, initState)
+  const [state, rawDispatch] = useReducer(reducer, undefined, initState)
+
+  // Refs for deduplicating realtime echoes
+  const pendingWrites  = useRef<Set<string>>(new Set())
+  const pendingDeletes = useRef<Set<string>>(new Set())
+
+  // Supabase-aware dispatch: syncs HOLD_ORDER / REMOVE_HELD_ORDER to Supabase
+  const dispatch = useCallback((action: Action): void => {
+    rawDispatch(action)
+    if (action.type === 'HOLD_ORDER') {
+      pendingWrites.current.add(action.order.id)
+      supabase.from('held_orders').upsert(heldToRow(action.order))
+        .then(() => setTimeout(() => pendingWrites.current.delete(action.order.id), 3000))
+        .catch(() => {})
+    }
+    if (action.type === 'REMOVE_HELD_ORDER') {
+      pendingDeletes.current.add(action.id)
+      supabase.from('held_orders').delete().eq('id', action.id)
+        .then(() => setTimeout(() => pendingDeletes.current.delete(action.id), 3000))
+        .catch(() => {})
+    }
+  }, [])
 
   // Load staff from Supabase â€” overwrites seed/cache on success
   const staffFetched = useRef(false)
@@ -492,7 +560,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Preserve locally-created users not yet in Supabase
         const localOnly = (storage.get<User[]>('users') ?? []).filter(u => !supabaseIds.has(u.id))
         const merged = [...fromSupabase, ...localOnly]
-        dispatch({ type: 'SET_USERS', users: merged })
+        rawDispatch({ type: 'SET_USERS', users: merged })
         storage.set('users', merged)
       })
       .catch(() => { /* keep localStorage cache / seed users */ })
@@ -500,21 +568,59 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Online/offline detection
   useEffect(() => {
-    const on  = () => dispatch({ type: 'SET_ONLINE', online: true })
-    const off = () => dispatch({ type: 'SET_ONLINE', online: false })
+    const on  = () => rawDispatch({ type: 'SET_ONLINE', online: true })
+    const off = () => rawDispatch({ type: 'SET_ONLINE', online: false })
     window.addEventListener('online',  on)
     window.addEventListener('offline', off)
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
 
+  // Sync held orders with Supabase – initial load + realtime subscription
+  const heldFetched = useRef(false)
+  useEffect(() => {
+    if (heldFetched.current) return
+    heldFetched.current = true
+
+    supabase.from('held_orders').select('*').then(({ data }) => {
+      if (!data) return
+      const supaOrders = data.map(row => rowToHeld(row as Record<string, unknown>))
+      const supaIds = new Set(supaOrders.map(h => h.id))
+      const local = storage.get<HeldOrder[]>('held_orders') ?? []
+      const localOnly = local.filter(h => !supaIds.has(h.id))
+      // Upload any orders created offline
+      if (localOnly.length > 0) {
+        supabase.from('held_orders').upsert(localOnly.map(heldToRow)).catch(() => {})
+      }
+      rawDispatch({ type: 'SYNC_HELD_ORDERS', orders: [...supaOrders, ...localOnly] })
+    }).catch(() => {})
+
+    const ch = supabase
+      .channel('held-orders')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'held_orders' }, ({ new: row }) => {
+        if (pendingWrites.current.has((row as { id: string }).id)) return
+        rawDispatch({ type: 'UPSERT_HELD_ORDER', order: rowToHeld(row as Record<string, unknown>) })
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'held_orders' }, ({ new: row }) => {
+        if (pendingWrites.current.has((row as { id: string }).id)) return
+        rawDispatch({ type: 'UPSERT_HELD_ORDER', order: rowToHeld(row as Record<string, unknown>) })
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'held_orders' }, ({ old: row }) => {
+        if (pendingDeletes.current.has((row as { id: string }).id)) return
+        rawDispatch({ type: 'REMOVE_HELD_ORDER', id: (row as { id: string }).id })
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
   const toast = useCallback((msg: string, type = 'info') => {
     const id = Date.now()
-    dispatch({ type: 'ADD_TOAST', msg, toastType: type, id })
-    setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 3000)
+    rawDispatch({ type: 'ADD_TOAST', msg, toastType: type, id })
+    setTimeout(() => rawDispatch({ type: 'REMOVE_TOAST', id }), 3000)
   }, [])
 
   const auditFn = useCallback((action: string, detail: string, type: AuditEntry['type'] = 'info') => {
-    dispatch({
+    rawDispatch({
       type: 'ADD_AUDIT',
       entry: {
         id: crypto.randomUUID(), ts: new Date().toLocaleString(),

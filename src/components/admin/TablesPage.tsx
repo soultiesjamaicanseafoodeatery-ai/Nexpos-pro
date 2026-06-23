@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 import { useState, useCallback, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { storage } from '@/lib/utils/storage'
@@ -298,7 +298,6 @@ export default function TablesPage() {
       }
     }
 
-    toast(`${tableIds.length === 1 ? 'Table' : `${tableIds.length} tables`} transferred to ${toUserName}`, 'success')
     setTransferTableIds(null)
   }, [owners, currentUser, cfg, audit, toast])
 
@@ -337,7 +336,6 @@ export default function TablesPage() {
     saveCfg(updated)
     await syncToSupabase(updated, mod)
     setSaving(false); setShowAdd(false); setNewName(''); setNewSeats(4)
-    toast(`Table ${name} added`, 'success')
   }
 
   const deleteTable = async (id: string) => {
@@ -348,7 +346,6 @@ export default function TablesPage() {
     saveCfg(updated)
     await releaseOwner(id)
     await syncToSupabase(updated, mod)
-    toast(`Table ${id} deleted`, 'warn')
   }
 
   const saveEdit = async () => {
@@ -373,7 +370,6 @@ export default function TablesPage() {
     saveCfg(updated)
     await syncToSupabase(updated, mod)
     setSaving(false); setEditId(null)
-    toast('Table updated', 'success')
   }
 
   // ── Derived data ───────────────────────────────────────────────
@@ -539,7 +535,6 @@ export default function TablesPage() {
                                   if (!owner && currentUser) {
                                     await assignOwner(t.id, currentUser.id, currentUser.name, currentUser.color)
                                     audit('TABLE ASSIGNED', `Table ${t.name} assigned to ${currentUser.name}`, 'info')
-                                    toast(`Table ${t.name} assigned to you`, 'success')
                                   } else if (canXfer) {
                                     setTransferTableIds([t.id])
                                   }

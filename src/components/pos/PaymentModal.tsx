@@ -105,9 +105,6 @@ export default function PaymentModal({
     if (submitting) return
     setSubmitting(true)
     onComplete(data)
-    if ((data.method === 'cash' || data.method === 'split') && (data.changeDue ?? 0) > 0.005) {
-      appToast(`Change due: ${fmtN(data.changeDue!)}`, 'info')
-    }
     handleClose()
   }
 

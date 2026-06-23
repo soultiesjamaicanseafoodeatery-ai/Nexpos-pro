@@ -491,61 +491,63 @@ export default function PaymentModal({
             {closeBtn}
           </div>
 
-          {/* Live totals */}
-          <div style={{ padding: '12px 18px', background: 'var(--bg3)', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: 'var(--txt3)' }}>Order Total</span>
-              <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, color: 'var(--txt)' }}>{fmtN(total)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: tenderOk ? 6 : 0 }}>
-              <span style={{ fontSize: 13, color: 'var(--txt3)' }}>Tendered</span>
-              <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, color: tenderOk ? 'var(--grn)' : tenderNum > 0 ? 'var(--ora)' : 'var(--txt3)' }}>
-                {tenderNum > 0 ? fmtN(tenderNum) : '—'}
-              </span>
-            </div>
-            {tenderOk && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid var(--bdr)' }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--grn)' }}>Change Due</span>
-                <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 22, color: 'var(--grn)' }}>{fmtN(changeNum)}</span>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {/* Live totals */}
+            <div style={{ padding: '12px 18px', background: 'var(--bg3)', borderBottom: '1px solid var(--bdr)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 13, color: 'var(--txt3)' }}>Order Total</span>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, color: 'var(--txt)' }}>{fmtN(total)}</span>
               </div>
-            )}
-          </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: tenderOk ? 6 : 0 }}>
+                <span style={{ fontSize: 13, color: 'var(--txt3)' }}>Tendered</span>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, color: tenderOk ? 'var(--grn)' : tenderNum > 0 ? 'var(--ora)' : 'var(--txt3)' }}>
+                  {tenderNum > 0 ? fmtN(tenderNum) : '—'}
+                </span>
+              </div>
+              {tenderOk && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid var(--bdr)' }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--grn)' }}>Change Due</span>
+                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 22, color: 'var(--grn)' }}>{fmtN(changeNum)}</span>
+                </div>
+              )}
+            </div>
 
-          {/* Quick amounts */}
-          <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--bdr)', display: 'flex', flexWrap: 'wrap', gap: 6, flexShrink: 0 }}>
-            <button onClick={() => setTender(total.toFixed(2))}
-              style={{ padding: '7px 14px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              Exact
-            </button>
-            {QUICK_AMTS.filter(a => a >= Math.floor(total)).map(a => (
-              <button key={a} onClick={() => setTender(String(a))}
-                style={{ padding: '7px 14px', borderRadius: 'var(--r)', border: `1.5px solid ${tenderNum === a ? 'var(--blue)' : 'var(--bdr)'}`, background: tenderNum === a ? 'var(--blue-bg)' : 'var(--surf)', color: tenderNum === a ? 'var(--blue)' : 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                {a >= 1000 ? `${(a / 1000).toFixed(0)}K` : a}
+            {/* Quick amounts */}
+            <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--bdr)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <button onClick={() => setTender(total.toFixed(2))}
+                style={{ padding: '7px 14px', borderRadius: 'var(--r)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                Exact
               </button>
-            ))}
-          </div>
+              {QUICK_AMTS.filter(a => a >= Math.floor(total)).map(a => (
+                <button key={a} onClick={() => setTender(String(a))}
+                  style={{ padding: '7px 14px', borderRadius: 'var(--r)', border: `1.5px solid ${tenderNum === a ? 'var(--blue)' : 'var(--bdr)'}`, background: tenderNum === a ? 'var(--blue-bg)' : 'var(--surf)', color: tenderNum === a ? 'var(--blue)' : 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  {a >= 1000 ? `${(a / 1000).toFixed(0)}K` : a}
+                </button>
+              ))}
+            </div>
 
-          {/* Tender display */}
-          <div style={{ padding: '10px 18px', background: 'var(--surf2)', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
-            <div style={{ fontFamily: 'var(--mono)', fontSize: 30, fontWeight: 800, color: 'var(--txt)', textAlign: 'right', minHeight: 40 }}>
-              {sym}{tender || '0'}
+            {/* Tender display */}
+            <div style={{ padding: '10px 18px', background: 'var(--surf2)', borderBottom: '1px solid var(--bdr)' }}>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 30, fontWeight: 800, color: 'var(--txt)', textAlign: 'right', minHeight: 40 }}>
+                {sym}{tender || '0'}
+              </div>
+            </div>
+
+            {/* Keypad */}
+            <div style={{ padding: '10px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+              {['7','8','9','4','5','6','1','2','3','0','00','C'].map(k => (
+                <button key={k} onClick={() => pressKey(k)} style={{
+                  padding: '13px 0', borderRadius: 'var(--r)', border: '1px solid var(--bdr)',
+                  background: k === 'C' ? '#7f1d1d22' : 'var(--surf)',
+                  color: k === 'C' ? '#ef4444' : 'var(--txt)',
+                  fontFamily: 'var(--mono)', fontSize: 18, fontWeight: 700, cursor: 'pointer',
+                }}>{k}</button>
+              ))}
             </div>
           </div>
 
-          {/* Keypad */}
-          <div style={{ padding: '10px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, flexShrink: 0 }}>
-            {['7','8','9','4','5','6','1','2','3','0','00','C'].map(k => (
-              <button key={k} onClick={() => pressKey(k)} style={{
-                padding: '15px 0', borderRadius: 'var(--r)', border: '1px solid var(--bdr)',
-                background: k === 'C' ? '#7f1d1d22' : 'var(--surf)',
-                color: k === 'C' ? '#ef4444' : 'var(--txt)',
-                fontFamily: 'var(--mono)', fontSize: 18, fontWeight: 700, cursor: 'pointer',
-              }}>{k}</button>
-            ))}
-          </div>
-
-          {/* Complete */}
-          <div style={{ padding: '0 18px 16px', flexShrink: 0 }}>
+          {/* Complete — pinned to bottom */}
+          <div style={{ padding: '10px 18px 16px', flexShrink: 0, borderTop: '1px solid var(--bdr)' }}>
             <button onClick={completeCash} disabled={!tenderOk} style={{
               width: '100%', padding: 15, borderRadius: 'var(--r)', fontSize: 15, fontWeight: 800,
               background: tenderOk ? 'var(--grn)' : 'var(--surf3)',

@@ -442,7 +442,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       sides: sideName.length > 0 ? sideName : undefined,
     }
     dispatch({ type: 'ADD_TO_CART', item: cartItem })
-    toast(`Added: ${modalItem.name}`, 'success')
     closeModal()
   }
 
@@ -466,7 +465,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       plate: activeModule === 'carwash' ? (ps.plate || undefined) : undefined,
     }
     dispatch({ type: 'ADD_TO_CART', item: cartItem })
-    toast(`Added: ${item.name}`, 'success')
   }
 
   // Handle item click — open modal only if the item has assigned add-ons/flavours/sizes/sides
@@ -556,8 +554,16 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       if (payData.method === 'cash' && biz.printers?.drawerEnabled && biz.printers?.receipt)
         qzOpenDrawer(biz.printers.receipt)
       audit('PAYMENT', `Order #${payingTicket.orderNum} — ${fmt(finalCalc.total, sym)} · ${payMethodLabel}`, 'success')
-      toast(`Order #${payingTicket.orderNum} paid — ${fmt(finalCalc.total, sym)}`, 'success')
-      setTimeout(() => setShowTicket(true), 200)
+      const pw2 = (biz.printers?.width ?? 80) as 58 | 80
+      if (biz.printers?.receipt) {
+        const receiptHTML = buildCustomerReceipt(tx, biz, { width: pw2 })
+        smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw2, true)
+      }
+      if (biz.printers?.receiptPreview) {
+        setTimeout(() => setShowTicket(true), 200)
+      } else {
+        onPaymentComplete?.()
+      }
       return
     }
 
@@ -667,8 +673,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       const html = buildCarwashWorkOrder(ticketData, { width: pw })
       smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw, true)
     }
-    // Auto-print receipt if enabled in Settings → Printers
-    if (biz.printers?.autoPrint && biz.printers?.receipt) {
+    // Auto-print receipt (always, unless receipt preview modal is enabled in Settings)
+    if (biz.printers?.receipt && !biz.printers?.receiptPreview) {
       const receiptHTML = buildCustomerReceipt(tx, biz, { width: pw })
       smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw, true)
     }
@@ -687,11 +693,14 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setSurcharges([])
     setSplitTarget(null)
     audit('PAYMENT', `${itemSummary} — ${fmt(tx.total, sym)} · ${payMethodLabel}`, 'success')
-    toast(`✓ ${fmt(tx.total, sym)} charged`, 'success')
     dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: null } })
     dispatch({ type: 'SET_POS_STATE', mod: 'bar',        patch: { selTable: null } })
     dispatch({ type: 'SET_POS_STATE', mod: 'carwash',    patch: { plate: '' } })
-    setTimeout(() => setShowTicket(true), 200)
+    if (biz.printers?.receiptPreview) {
+      setTimeout(() => setShowTicket(true), 200)
+    } else {
+      onPaymentComplete?.()
+    }
   }
 
   // ── Send Order: print kitchen/bar tickets, keep order open ────
@@ -791,7 +800,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     }
     dispatch({ type: 'ADD_VOID_LOG', entry: logEntry })
     audit('VOID_ITEM', `Voided ${item.name} from cart — ${reasonText}`, 'warn')
-    toast(`Voided: ${item.name}`, 'warn')
     setVoidTarget(null)
   }
 
@@ -816,7 +824,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     )
     printTicket(html, 'VOID Ticket')
     audit('VOID_ITEM', `Voided ${item.name} from Order #${ticket.orderNum} — ${reasonText}`, 'warn')
-    toast(`Voided: ${item.name} — void ticket printed`, 'warn')
     setVoidTarget(null)
   }
 
@@ -867,14 +874,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     dispatch({ type: 'CLEAR_CART' })
     setAddToOrderMode(false); setShowOpen(false)
     audit('ADD_TO_ORDER', `Added ${activeCart.length} item(s) to Order #${ticket.orderNum}`, 'info')
-    toast(`Added to Order #${ticket.orderNum}`, 'success')
   }
 
   // ── Transfer table ──────────────────────────────────────────
   const transferTable = (ticketId: string, newTable: string) => {
     dispatch({ type: 'UPDATE_ORDER_TICKET', id: ticketId, patch: { table: newTable } })
     audit('TRANSFER_TABLE', `Order moved to Table ${newTable}`, 'info')
-    toast(`Moved to Table ${newTable}`, 'success')
     setTransferTarget(null)
   }
 
@@ -907,7 +912,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setGuestCount(1)
     setGratuityOverride(false)
     audit('HOLD_ORDER', `Held: ${label}`, 'info')
-    toast(`Order held: ${label}`, 'info')
   }
 
   const resumeOrder = (held: HeldOrder) => {
@@ -927,7 +931,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     dispatch({ type: 'REMOVE_HELD_ORDER', id: held.id })
     setShowHeld(false)
     audit('RESUME_ORDER', `Resumed: ${held.label}`, 'info')
-    toast(`Resumed: ${held.label}`, 'success')
   }
 
   // Auto-set gratuity: 15% for dine-in restaurant, 0 otherwise

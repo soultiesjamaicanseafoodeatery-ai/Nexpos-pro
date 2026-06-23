@@ -221,7 +221,6 @@ export default function AuthScreen() {
                       }
                     </div>
                   </div>
-                  <span style={{ fontSize: 16, color: isSelected ? 'var(--blue)' : 'var(--txt3)', opacity: isSelected ? 1 : 0, transition: 'opacity .15s' }}>â†’</span>
                 </button>
               )
             })}

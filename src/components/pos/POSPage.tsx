@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -776,7 +776,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
     const sentTo = [hasKitchen && 'Kitchen', hasBar && 'Bar', hasCarwash && 'Car Wash'].filter(Boolean).join(' + ')
     audit('SEND_ORDER', `Order #${orderNum} sent to ${sentTo}`, 'info')
-    toast(`Order #${orderNum} sent to ${sentTo}`, 'success')
     setShowOpen(true)
   }
 

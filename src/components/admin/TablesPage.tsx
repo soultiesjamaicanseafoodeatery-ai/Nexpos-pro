@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { storage } from '@/lib/utils/storage'
 import { supabase } from '@/lib/supabase'

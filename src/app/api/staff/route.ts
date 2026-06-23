@@ -29,7 +29,7 @@ function isAllowedOrigin(req: NextRequest): boolean {
 export async function GET(request: NextRequest) {
   if (!isAllowedOrigin(request)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const res = await fetch(
-    `\/rest/v1/staff?select=id,name,ini,role,color,allowed_modules,active,staff_id,created_at&order=created_at.asc`,
+    `${SUPA_URL}/rest/v1/staff?select=id,name,ini,role,color,allowed_modules,active,staff_id,created_at&order=created_at.asc`,
     { headers }
   )
   const data = await res.json()

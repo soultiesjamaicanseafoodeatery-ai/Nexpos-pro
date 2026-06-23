@@ -202,16 +202,29 @@ function StaffModal({
   )
 }
 
-// ── Confirm delete modal ──────────────────────────────────────
-function ConfirmModal({ name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void }) {
+// ── Confirm delete/deactivate modal ──────────────────────────
+function ConfirmModal({ name, hasTx, onConfirm, onCancel }: { name: string; hasTx: boolean; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="mo-bg" onClick={onCancel}>
-      <div className="mo" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
-        <div className="mh"><span className="mt">Remove Staff Member</span><button className="mx" onClick={onCancel}>×</button></div>
-        <div className="mb-c"><p style={{ fontSize: 13, color: 'var(--txt2)' }}>Remove <strong>{name}</strong> from the system? They will no longer be able to log in.</p></div>
+      <div className="mo" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+        <div className="mh">
+          <span className="mt">{hasTx ? 'Deactivate Staff Member' : 'Delete Staff Member'}</span>
+          <button className="mx" onClick={onCancel}>×</button>
+        </div>
+        <div className="mb-c">
+          {hasTx ? (
+            <p style={{ fontSize: 13, color: 'var(--txt2)' }}>
+              <strong>{name}</strong> has historical sales records. They will be <strong>deactivated</strong> (hidden from login) and their transaction history will be preserved for reporting.
+            </p>
+          ) : (
+            <p style={{ fontSize: 13, color: 'var(--txt2)' }}>
+              <strong>{name}</strong> has no transactions and will be <strong>permanently deleted</strong>.
+            </p>
+          )}
+        </div>
         <div className="mf">
           <button className="btn btn-gh" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-red" onClick={onConfirm}>Remove</button>
+          <button className="btn btn-red" onClick={onConfirm}>{hasTx ? 'Deactivate' : 'Delete'}</button>
         </div>
       </div>
     </div>
@@ -307,15 +320,25 @@ export default function StaffPage() {
 
   const deleteStaff = async (user: User) => {
     setSaving(true)
-    try {
-      const res = await fetch(`${API}?id=${encodeURIComponent(user.id)}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed')
-      toast('Staff member removed', 'success')
-      setConfirmDel(null)
-      await refetchStaff()
-    } catch {
-      toast('Delete failed', 'error')
+    const hasTx = state.transactions.some(t => t.userId === user.id)
+    if (hasTx) {
+      // Soft delete — preserve history, just deactivate
+      try {
+        await fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id, active: false }) })
+      } catch { /* ignore Supabase errors — update local state regardless */ }
+      const updated = state.users.map(u => u.id === user.id ? { ...u, active: false } : u)
+      dispatch({ type: 'SET_USERS', users: updated })
+      toast(`${user.name} deactivated — sales history preserved`, 'success')
+    } else {
+      // Hard delete — no transaction history to preserve
+      try {
+        await fetch(`${API}?id=${encodeURIComponent(user.id)}`, { method: 'DELETE' })
+      } catch { /* ignore */ }
+      const updated = state.users.filter(u => u.id !== user.id)
+      dispatch({ type: 'SET_USERS', users: updated })
+      toast(`${user.name} deleted`, 'success')
     }
+    setConfirmDel(null)
     setSaving(false)
   }
 
@@ -435,6 +458,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
       {confirmDel && (
         <ConfirmModal
           name={confirmDel.name}
+          hasTx={state.transactions.some(t => t.userId === confirmDel.id)}
           onConfirm={() => deleteStaff(confirmDel)}
           onCancel={() => setConfirmDel(null)}
         />

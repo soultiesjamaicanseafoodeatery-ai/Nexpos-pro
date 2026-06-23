@@ -168,6 +168,7 @@ function StaffModal({
               <input
                 style={inputStyle}
                 type="password"
+                autoComplete="new-password"
                 inputMode="numeric"
                 maxLength={4}
                 value={form.pin}
@@ -177,6 +178,7 @@ function StaffModal({
               <input
                 style={inputStyle}
                 type="password"
+                autoComplete="new-password"
                 inputMode="numeric"
                 maxLength={4}
                 value={form.confirmPin}
@@ -284,12 +286,10 @@ export default function StaffPage() {
       if (editUser) {
         const res = await fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editUser.id, ...payload }) })
         if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Save failed') }
-        toast('Staff updated', 'success')
       } else {
         if (!pin_hash) return 'PIN is required'
         const res = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Save failed') }
-        toast('Staff member added', 'success')
       }
 
       setShowModal(false)
@@ -307,7 +307,6 @@ export default function StaffPage() {
     try {
       const res = await fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id, active: !user.active }) })
       if (!res.ok) throw new Error('Failed')
-      toast(user.active ? 'Staff deactivated' : 'Staff activated', 'success')
       await refetchStaff()
     } catch {
       toast('Toggle failed', 'error')
@@ -331,7 +330,6 @@ export default function StaffPage() {
           throw new Error((err as { error?: string }).error ?? `Server error ${res.status}`)
         }
         await refetchStaff()
-        toast(`${user.name} deactivated — sales history preserved`, 'success')
       } else {
         // Hard delete — no transaction history
         const res = await fetch(`${API}?id=${encodeURIComponent(user.id)}`, { method: 'DELETE' })
@@ -340,7 +338,6 @@ export default function StaffPage() {
           throw new Error((err as { error?: string }).error ?? `Server error ${res.status}`)
         }
         await refetchStaff()
-        toast(`${user.name} deleted`, 'success')
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Unknown error'

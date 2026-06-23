@@ -1,9 +1,10 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { hashPin } from '@/lib/utils/hash'
 import type { User } from '@/types'
+import { supabase } from '@/lib/supabase'
 
 type WStep = 'auth' | 'validate' | 'cash' | 'payments' | 'gratuity' | 'sales' | 'employees' | 'print' | 'confirm' | 'done'
 const STEPS: WStep[] = ['auth','validate','cash','payments','gratuity','sales','employees','print','confirm','done']
@@ -21,7 +22,7 @@ interface CWData {
   varianceNote: string
   override: boolean
 }
-interface Validation { heldOrders: number; openTickets: number; activeWashes: number }
+interface Validation { heldOrders: number; openTickets: number; activeWashes: number; openTables: number }
 interface CwOrder { service_price: number; addons_total: number; total: number; payment_method: string }
 
 const SummaryRow = ({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) => (
@@ -136,16 +137,18 @@ export default function CloseShiftWizard() {
   useEffect(() => {
     if (step !== 'validate') return
     setVL(true)
-    const openTix = orderTickets.filter(t => t.status == null || !['paid','voided'].includes(t.status)).length
-    fetch('/api/carwash-orders')
-      .then(r => r.ok ? r.json() : [])
-      .then((orders: (CwOrder & {status:string})[]) => {
+    const openTix  = orderTickets.filter(t => t.status == null || !['paid','voided'].includes(t.status)).length
+    const cwFetch  = fetch('/api/carwash-orders').then(r => r.ok ? r.json() : []).catch(() => [])
+    const tblFetch = supabase
+      ? supabase.from('table_owners').select('table_id', { count: 'exact', head: true }).then(({ count }) => count ?? 0).catch(() => 0)
+      : Promise.resolve(0)
+    Promise.all([cwFetch, tblFetch])
+      .then(([orders, openTables]: [(CwOrder & { status: string })[], number]) => {
         const aw = orders.filter(o => ['waiting','in_progress','ready'].includes(o.status)).length
-        // Store all today's orders for the sales summary
         setCwOrders(orders)
-        setVal({ heldOrders: heldOrders.length, openTickets: openTix, activeWashes: aw })
+        setVal({ heldOrders: heldOrders.length, openTickets: openTix, activeWashes: aw, openTables })
       })
-      .catch(() => setVal({ heldOrders: heldOrders.length, openTickets: openTix, activeWashes: 0 }))
+      .catch(() => setVal({ heldOrders: heldOrders.length, openTickets: openTix, activeWashes: 0, openTables: 0 }))
       .finally(() => setVL(false))
   }, [step, heldOrders.length, orderTickets])
 
@@ -273,6 +276,7 @@ export default function CloseShiftWizard() {
       { label:'Held / Suspended Orders',      val: val?.heldOrders  ?? 0, note:'Recall and complete or void before closing' },
       { label:'Open Unpaid Tables / Tickets', val: val?.openTickets ?? 0, note:'Process payment or void open tickets' },
       { label:'Active Car Wash Tickets',      val: val?.activeWashes ?? 0, note:'Complete or cancel active wash queue' },
+      { label:'Open Assigned Tables',         val: val?.openTables  ?? 0, note:'Transfer all tables to another staff member before closing' },
     ]
     const allClear = val && checks.every(c => c.val === 0)
     return (
@@ -302,6 +306,19 @@ export default function CloseShiftWizard() {
                 <div style={{ padding:'12px 14px', borderRadius:'var(--r2)', fontSize:12, color:'var(--ora)',
                   background:'#78350f18', border:'1px solid rgba(251,146,60,.3)', marginTop:4 }}>
                   ⚠️ Open transactions detected. Resolve them or use manager override to force-close.
+                </div>
+              )}
+              {val && (val.openTables ?? 0) > 0 && (
+                <div style={{ padding:'12px 14px', borderRadius:'var(--r2)', marginTop:4,
+                  background:'#7f1d1d10', border:'1px solid rgba(245,101,101,.25)',
+                  display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                  <div style={{ flex:1, fontSize:12, color:'var(--red)', fontWeight:600 }}>
+                    {val.openTables} table{val.openTables === 1 ? '' : 's'} still assigned to staff. Cancel and go to Admin &rarr; Tables to transfer or release them.
+                  </div>
+                  <button onClick={cancel}
+                    style={{ padding:'7px 16px', borderRadius:'var(--r)', background:'var(--surf)', border:'1px solid var(--bdr)', color:'var(--txt)', fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
+                    Cancel &amp; Manage Tables
+                  </button>
                 </div>
               )}
             </div>
@@ -809,3 +826,4 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
+

@@ -389,7 +389,7 @@ export default function MenuPage() {
               {MODULES.find(m => m.key === mod)?.icon} {MODULES.find(m => m.key === mod)?.label} Categories
             </div>
             <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 18 }}>
-              Categories appear in the POS filter bar and the item editor. "All" is built-in.
+              Categories appear in the POS filter bar and the item editor. &quot;All&quot; is built-in.
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>

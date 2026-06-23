@@ -10,6 +10,18 @@ interface TablesConfig { restaurant: TableEntry[]; bar: TableEntry[]; status: Re
 interface TableOwner   { userId: string; userName: string; userColor: string; assignedAt: string }
 interface TransferLog  { id: string; ts: string; tableId: string; tableName: string; fromUserId: string; fromUserName: string; toUserId: string; toUserName: string; byUserId: string; byUserName: string }
 
+// ── Supabase row shapes ──────────────────────────────────────────
+interface OwnerRow {
+  table_id: string; table_name: string; module: string
+  user_id: string; user_name: string; user_color: string
+  assigned_at: string; assigned_by_id?: string | null; assigned_by_name?: string | null
+}
+interface TransferRow {
+  id: string; transfer_at: string; table_id: string; table_name: string
+  from_user_id?: string | null; from_user_name?: string | null
+  to_user_id: string; to_user_name: string; by_user_id: string; by_user_name: string
+}
+
 // ── Constants ────────────────────────────────────────────────────
 const DEFAULT: TablesConfig = {
   restaurant: ['T1','T2','T3','T4','T5','T6','T7','T8'].map(id => ({ id, name: id, seats: 4 })),
@@ -20,16 +32,21 @@ const STATUS_COLOR = { free: 'var(--grn)', occupied: 'var(--red,#ef4444)', reser
 const STATUS_BG    = { free: '#14532d22', occupied: '#7f1d1d22', reserved: '#78350f22' } as const
 const NEXT_STATUS  = { free: 'occupied', occupied: 'reserved', reserved: 'free' } as const
 
-// ── Storage helpers ──────────────────────────────────────────────
-function loadConfig():    TablesConfig                 { return storage.get<TablesConfig>('tables_config') ?? DEFAULT }
-function loadOwners():    Record<string, TableOwner>  { return storage.get<Record<string,TableOwner>>('table_owners') ?? {} }
-function loadTransfers(): TransferLog[]               { return storage.get<TransferLog[]>('table_transfer_log') ?? [] }
-function saveOwners(o: Record<string, TableOwner>)    { storage.set('table_owners', o) }
-function saveTransfers(t: TransferLog[])              { storage.set('table_transfer_log', t.slice(0, 500)) }
+// ── Table config stays in localStorage (layout/seat counts) ─────
+function loadConfig(): TablesConfig { return storage.get<TablesConfig>('tables_config') ?? DEFAULT }
 
 // ── Styles ───────────────────────────────────────────────────────
 const inp: React.CSSProperties = { background: 'var(--surf2)', border: '1px solid var(--bdr2)', borderRadius: 'var(--r2)', padding: '8px 10px', fontSize: 13, color: 'var(--txt)', width: '100%', boxSizing: 'border-box' as const }
 const h2:  React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px' }
+
+// ── Row converters ───────────────────────────────────────────────
+const rowToOwner = (r: OwnerRow): TableOwner =>
+  ({ userId: r.user_id, userName: r.user_name, userColor: r.user_color, assignedAt: r.assigned_at })
+
+const rowToLog = (r: TransferRow): TransferLog =>
+  ({ id: r.id, ts: r.transfer_at, tableId: r.table_id, tableName: r.table_name,
+     fromUserId: r.from_user_id ?? '', fromUserName: r.from_user_name ?? 'Unassigned',
+     toUserId: r.to_user_id, toUserName: r.to_user_name, byUserId: r.by_user_id, byUserName: r.by_user_name })
 
 // ── Transfer Modal ───────────────────────────────────────────────
 function TransferModal({ tableIds, tableCfgMap, currentOwners, users, onConfirm, onClose }: {
@@ -50,7 +67,7 @@ function TransferModal({ tableIds, tableCfgMap, currentOwners, users, onConfirm,
       <div className="mo" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
         <div className="mh">
           <span className="mt">{isSingle ? `Transfer Table ${tableCfgMap[tableIds[0]] ?? tableIds[0]}` : `Transfer ${tableIds.length} Tables`}</span>
-          <button className="mx" onClick={onClose}>×</button>
+          <button className="mx" onClick={onClose}>&times;</button>
         </div>
         <div className="mb-c" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {isSingle && singleOwner && (
@@ -106,17 +123,16 @@ export default function TablesPage() {
   const { currentUser, users, heldOrders } = state
   const canManage = currentUser?.role === 'admin' || currentUser?.role === 'manager'
 
-  const posOccupied = new Set(
-    heldOrders.map(o => o.selTable ?? '').filter(Boolean)
-  )
+  const posOccupied = new Set(heldOrders.map(o => o.selTable ?? '').filter(Boolean))
   const getStatus = (tableId: string): 'free' | 'occupied' | 'reserved' => {
     if (posOccupied.has(tableId)) return 'occupied'
     return cfg.status[tableId] === 'reserved' ? 'reserved' : 'free'
   }
 
   const [cfg,       setCfg]       = useState<TablesConfig>(loadConfig)
-  const [owners,    setOwners]    = useState<Record<string, TableOwner>>(loadOwners)
-  const [transfers, setTransfers] = useState<TransferLog[]>(loadTransfers)
+  const [owners,    setOwners]    = useState<Record<string, TableOwner>>({})
+  const [transfers, setTransfers] = useState<TransferLog[]>([])
+  const [loading,   setLoading]   = useState(true)
   const [tab,       setTab]       = useState<'tables' | 'overview' | 'history'>('tables')
   const [mod,       setMod]       = useState<'restaurant' | 'bar'>('restaurant')
 
@@ -132,7 +148,7 @@ export default function TablesPage() {
 
   const saveCfg = (next: TablesConfig) => { setCfg(next); storage.set('tables_config', next) }
 
-  // Strip any stored 'occupied' flags — occupancy is derived live from held orders, never stored
+  // Strip stale 'occupied' from stored config — occupancy derived live from POS
   useEffect(() => {
     const currentCfg = loadConfig()
     const hasStale = Object.values(currentCfg.status).some(s => s === 'occupied')
@@ -143,6 +159,37 @@ export default function TablesPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Supabase fetch ─────────────────────────────────────────────
+  const fetchData = useCallback(async () => {
+    if (!supabase) { setLoading(false); return }
+    try {
+      const [{ data: ownersData }, { data: logsData }] = await Promise.all([
+        supabase.from('table_owners').select('*'),
+        supabase.from('table_transfer_log').select('*').order('transfer_at', { ascending: false }).limit(500),
+      ])
+      if (ownersData) {
+        const map: Record<string, TableOwner> = {}
+        ;(ownersData as OwnerRow[]).forEach(r => { map[r.table_id] = rowToOwner(r) })
+        setOwners(map)
+      }
+      if (logsData) setTransfers((logsData as TransferRow[]).map(rowToLog))
+    } catch { /* non-critical */ }
+    finally   { setLoading(false) }
+  }, [])
+
+  // ── Realtime subscription — syncs ownership across all devices ─
+  useEffect(() => {
+    fetchData()
+    if (!supabase) return
+    const channel = supabase
+      .channel('table-ownership')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'table_owners' },       fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'table_transfer_log' }, fetchData)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchData])
+
+  // ── Supabase config sync (table layout) ───────────────────────
   const syncToSupabase = async (next: TablesConfig, module: 'restaurant' | 'bar') => {
     if (!supabase) return
     try {
@@ -156,60 +203,90 @@ export default function TablesPage() {
     } catch { /* non-critical */ }
   }
 
-  // ── Ownership helpers ──────────────────────────────────────────
-  const assignOwner = useCallback((tableId: string, userId: string, userName: string, userColor: string) => {
-    const next = { ...owners, [tableId]: { userId, userName, userColor, assignedAt: new Date().toISOString() } }
-    setOwners(next); saveOwners(next)
-  }, [owners])
-
-  const releaseOwner = useCallback((tableId: string) => {
-    const next = { ...owners }
-    delete next[tableId]
-    setOwners(next); saveOwners(next)
-  }, [owners])
-
-  const doTransfer = useCallback((tableIds: string[], toUserId: string, toUserName: string, toUserColor: string) => {
-    if (!currentUser) return
-    const newOwners = { ...owners }
-    const newTransfers: TransferLog[] = [...transfers]
+  // ── Ownership helpers (Supabase-backed, optimistic UI) ────────
+  const assignOwner = useCallback(async (
+    tableId: string, userId: string, userName: string, userColor: string,
+    moduleOverride?: 'restaurant' | 'bar'
+  ) => {
     const allTables = [...cfg.restaurant, ...cfg.bar]
+    const tableName = allTables.find(t => t.id === tableId)?.name ?? tableId
+    const module    = moduleOverride ?? (cfg.restaurant.find(t => t.id === tableId) ? 'restaurant' : 'bar')
+    const now       = new Date().toISOString()
+    setOwners(prev => ({ ...prev, [tableId]: { userId, userName, userColor, assignedAt: now } }))
+    if (!supabase) return
+    await supabase.from('table_owners').upsert({
+      table_id: tableId, table_name: tableName, module,
+      user_id: userId, user_name: userName, user_color: userColor,
+      assigned_at: now,
+      assigned_by_id: currentUser?.id ?? null, assigned_by_name: currentUser?.name ?? null,
+    } as OwnerRow, { onConflict: 'table_id' })
+  }, [cfg, currentUser])
 
-    tableIds.forEach(tableId => {
-      const prev     = owners[tableId]
-      const tblName  = allTables.find(t => t.id === tableId)?.name ?? tableId
-      const log: TransferLog = {
-        id:           `TT-${Date.now()}-${tableId}`,
-        ts:           new Date().toISOString(),
-        tableId,      tableName: tblName,
-        fromUserId:   prev?.userId   ?? '',
-        fromUserName: prev?.userName ?? 'Unassigned',
-        toUserId,     toUserName,
-        byUserId:     currentUser.id,
-        byUserName:   currentUser.name,
-      }
-      newTransfers.unshift(log)
-      newOwners[tableId] = { userId: toUserId, userName: toUserName, userColor: toUserColor, assignedAt: new Date().toISOString() }
-      audit('TABLE TRANSFER', `Table ${tblName} transferred from ${log.fromUserName} to ${toUserName} by ${currentUser.name}`, 'info')
+  const releaseOwner = useCallback(async (tableId: string) => {
+    setOwners(prev => { const next = { ...prev }; delete next[tableId]; return next })
+    if (!supabase) return
+    await supabase.from('table_owners').delete().eq('table_id', tableId)
+  }, [])
+
+  const doTransfer = useCallback(async (tableIds: string[], toUserId: string, toUserName: string, toUserColor: string) => {
+    if (!currentUser) return
+    const allTables = [...cfg.restaurant, ...cfg.bar]
+    const now       = new Date().toISOString()
+
+    // Optimistic update — UI reflects change before Supabase confirms
+    setOwners(prev => {
+      const next = { ...prev }
+      tableIds.forEach(id => { next[id] = { userId: toUserId, userName: toUserName, userColor: toUserColor, assignedAt: now } })
+      return next
     })
 
-    setOwners(newOwners);         saveOwners(newOwners)
-    setTransfers(newTransfers);   saveTransfers(newTransfers)
+    if (supabase) {
+      for (const tableId of tableIds) {
+        const prev    = owners[tableId]
+        const tblName = allTables.find(t => t.id === tableId)?.name ?? tableId
+        const module  = cfg.restaurant.find(t => t.id === tableId) ? 'restaurant' : 'bar'
+
+        await supabase.from('table_owners').upsert({
+          table_id: tableId, table_name: tblName, module,
+          user_id: toUserId, user_name: toUserName, user_color: toUserColor,
+          assigned_at: now, assigned_by_id: currentUser.id, assigned_by_name: currentUser.name,
+        } as OwnerRow, { onConflict: 'table_id' })
+
+        await supabase.from('table_transfer_log').insert({
+          id:             `TT-${Date.now()}-${tableId}`,
+          table_id:       tableId, table_name: tblName,
+          from_user_id:   prev?.userId   ?? null,
+          from_user_name: prev?.userName ?? 'Unassigned',
+          to_user_id:     toUserId, to_user_name: toUserName,
+          by_user_id:     currentUser.id, by_user_name: currentUser.name,
+        } as TransferRow)
+
+        audit('TABLE TRANSFER', `Table ${tblName} transferred from ${prev?.userName ?? 'Unassigned'} to ${toUserName} by ${currentUser.name}`, 'info')
+      }
+    }
+
     toast(`${tableIds.length === 1 ? 'Table' : `${tableIds.length} tables`} transferred to ${toUserName}`, 'success')
-  }, [owners, transfers, currentUser, cfg, audit, toast])
+    setTransferTableIds(null)
+  }, [owners, currentUser, cfg, audit, toast])
 
   // ── Status cycling ─────────────────────────────────────────────
-  const cycleStatus = (tableId: string) => {
+  const cycleStatus = async (tableId: string) => {
     if (posOccupied.has(tableId)) { toast('Table has an active order — close the order in POS to change status', 'warn'); return }
     const curr    = cfg.status[tableId] ?? 'free'
     const next    = NEXT_STATUS[curr]
     const updated = { ...cfg, status: { ...cfg.status, [tableId]: next } }
     saveCfg(updated)
     if (next === 'occupied' && currentUser && !owners[tableId]) {
-      assignOwner(tableId, currentUser.id, currentUser.name, currentUser.color)
+      await assignOwner(tableId, currentUser.id, currentUser.name, currentUser.color)
       audit('TABLE ASSIGNED', `Table ${tableId} assigned to ${currentUser.name}`, 'info')
     }
-    if (next === 'free') releaseOwner(tableId)
+    if (next === 'free') await releaseOwner(tableId)
   }
+
+  // ── Permission: who can transfer a given table ─────────────────
+  // Managers/admins can transfer any table; staff only their own
+  const canTransferTable = (tableId: string): boolean =>
+    canManage || owners[tableId]?.userId === currentUser?.id
 
   // ── Table CRUD ─────────────────────────────────────────────────
   const addTable = async () => {
@@ -233,7 +310,8 @@ export default function TablesPage() {
     const updated: TablesConfig = { ...cfg, [mod]: cfg[mod].filter(t => t.id !== id) }
     const { [id]: _, ...rest } = updated.status
     updated.status = rest
-    saveCfg(updated); releaseOwner(id)
+    saveCfg(updated)
+    await releaseOwner(id)
     await syncToSupabase(updated, mod)
     toast(`Table ${id} deleted`, 'warn')
   }
@@ -252,9 +330,9 @@ export default function TablesPage() {
       updated.status = { ...rest, [name]: oldStatus ?? 'free' }
       updated[mod] = updated[mod].map(t => t.name === name ? { ...t, id: name } : t)
       if (owners[editId]) {
-        const next = { ...owners, [name]: owners[editId] }
-        delete next[editId]
-        setOwners(next); saveOwners(next)
+        const owner = owners[editId]
+        await releaseOwner(editId)
+        await assignOwner(name, owner.userId, owner.userName, owner.userColor, mod)
       }
     }
     saveCfg(updated)
@@ -264,13 +342,17 @@ export default function TablesPage() {
   }
 
   // ── Derived data ───────────────────────────────────────────────
-  const tables        = cfg[mod]
-  const free          = tables.filter(t => getStatus(t.id) === 'free').length
-  const occupied      = tables.filter(t => getStatus(t.id) === 'occupied').length
-  const reserved      = tables.filter(t => getStatus(t.id) === 'reserved').length
-  const occupiedAll   = [...cfg.restaurant, ...cfg.bar].filter(t => getStatus(t.id) === 'occupied')
-  const myOpenTables  = currentUser ? tables.filter(t => getStatus(t.id) === 'occupied' && owners[t.id]?.userId === currentUser.id) : []
-  const tableCfgMap   = Object.fromEntries([...cfg.restaurant, ...cfg.bar].map(t => [t.id, t.name]))
+  const tables      = cfg[mod]
+  const free        = tables.filter(t => getStatus(t.id) === 'free').length
+  const occupied    = tables.filter(t => getStatus(t.id) === 'occupied').length
+  const reserved    = tables.filter(t => getStatus(t.id) === 'reserved').length
+  const occupiedAll = [...cfg.restaurant, ...cfg.bar].filter(t => getStatus(t.id) === 'occupied')
+
+  const myOpenTables = currentUser
+    ? tables.filter(t => getStatus(t.id) === 'occupied' && owners[t.id]?.userId === currentUser.id)
+    : []
+
+  const tableCfgMap = Object.fromEntries([...cfg.restaurant, ...cfg.bar].map(t => [t.id, t.name]))
 
   const staffGroups = (() => {
     const groups: Record<string, { user: TableOwner; tables: TableEntry[] }> = {}
@@ -288,6 +370,14 @@ export default function TablesPage() {
     ...(canManage ? [{ id: 'overview' as const, label: '👥 Staff Overview' }] : []),
     { id: 'history'  as const, label: '📋 Transfer History' },
   ]
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--txt3)', fontSize: 13 }}>
+        Loading table ownership data…
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -362,10 +452,11 @@ export default function TablesPage() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
                 {tables.map(t => {
-                  const status = getStatus(t.id)
-                  const owner  = owners[t.id]
-                  const isMe   = owner?.userId === currentUser?.id
-                  const isEdit = editId === t.id
+                  const status  = getStatus(t.id)
+                  const owner   = owners[t.id]
+                  const isMe    = owner?.userId === currentUser?.id
+                  const isEdit  = editId === t.id
+                  const canXfer = canTransferTable(t.id)
                   return (
                     <div key={t.id} style={{
                       background: 'var(--surf)', border: `2px solid ${STATUS_COLOR[status]}`,
@@ -409,22 +500,29 @@ export default function TablesPage() {
                           <div style={{ display: 'flex' }}>
                             {status === 'occupied' && (
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   if (!owner && currentUser) {
-                                    assignOwner(t.id, currentUser.id, currentUser.name, currentUser.color)
+                                    await assignOwner(t.id, currentUser.id, currentUser.name, currentUser.color)
                                     audit('TABLE ASSIGNED', `Table ${t.name} assigned to ${currentUser.name}`, 'info')
                                     toast(`Table ${t.name} assigned to you`, 'success')
-                                  } else {
+                                  } else if (canXfer) {
                                     setTransferTableIds([t.id])
                                   }
                                 }}
-                                style={{ flex: 1, padding: '7px 0', background: 'transparent', border: 'none', borderTop: '1px solid var(--bdr)', borderRight: '1px solid var(--bdr)', color: 'var(--blue)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                                style={{
+                                  flex: 1, padding: '7px 0', background: 'transparent', border: 'none',
+                                  borderTop: '1px solid var(--bdr)', borderRight: '1px solid var(--bdr)',
+                                  color: !owner ? 'var(--grn)' : canXfer ? 'var(--blue)' : 'var(--txt3)',
+                                  fontSize: 11, fontWeight: 700,
+                                  cursor: !owner || canXfer ? 'pointer' : 'default',
+                                  opacity: !owner || canXfer ? 1 : 0.35,
+                                }}>
                                 {!owner ? 'Assign' : 'Transfer'}
                               </button>
                             )}
                             {canManage && (
                               <button onClick={() => { setEditId(t.id); setEditName(t.name); setEditSeats(t.seats) }}
-                                style={{ flex: 1, padding: '7px 0', background: 'transparent', border: 'none', borderTop: '1px solid var(--bdr)', borderRight: status === 'occupied' || true ? '1px solid var(--bdr)' : 'none', color: 'var(--txt3)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
+                                style={{ flex: 1, padding: '7px 0', background: 'transparent', border: 'none', borderTop: '1px solid var(--bdr)', borderRight: '1px solid var(--bdr)', color: 'var(--txt3)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
                             )}
                             {canManage && (
                               <button onClick={() => deleteTable(t.id)}
@@ -552,10 +650,7 @@ export default function TablesPage() {
           tableCfgMap={tableCfgMap}
           currentOwners={owners}
           users={users}
-          onConfirm={(toId, toName, toColor) => {
-            doTransfer(transferTableIds, toId, toName, toColor)
-            setTransferTableIds(null)
-          }}
+          onConfirm={(toId, toName, toColor) => doTransfer(transferTableIds, toId, toName, toColor)}
           onClose={() => setTransferTableIds(null)}
         />
       )}

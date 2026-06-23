@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -77,6 +77,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [showSplitBill, setShowSplitBill] = useState(false)
   const [showHeld,      setShowHeld]      = useState(false)
   const [showOpen,      setShowOpen]      = useState(false)
+  const [confirmClear,      setConfirmClear]      = useState(false)
+  const [confirmDeleteHeld, setConfirmDeleteHeld] = useState<string | null>(null)
   const [lastTx,        setLastTx]        = useState<Transaction | null>(null)
   const [lastTicket,    setLastTicket]    = useState<OrderTicket | null>(null)
   const [orderNote,     setOrderNote]     = useState('')
@@ -914,7 +916,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   }
 
   const resumeOrder = (held: HeldOrder) => {
-    if (cart.length > 0 && !confirm('Replace current cart with held order?')) return
     dispatch({ type: 'CLEAR_CART' })
     held.cart.forEach(ci => dispatch({ type: 'ADD_TO_CART', item: ci }))
     dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: held.orderType })

@@ -486,7 +486,6 @@ export default function PayrollPage() {
       return idx >= 0 ? prev.map(x => x.id === p.id ? p : x) : [...prev, p]
     })
     setShowProfileModal(false); setEditProfile(null)
-    toast(editProfile ? 'Profile updated' : 'Profile created', 'success')
   }
 
   // ── Time Clock ──────────────────────────────────────────────────
@@ -503,7 +502,6 @@ export default function PayrollPage() {
     const already = timeEntries.find(e => e.staffId === data.staffId && e.clockOut === null)
     if (already) { toast(`${data.staffName} is already clocked in`, 'warn'); return }
     setTimeEntries(prev => [{ id: `TE-${Date.now()}`, ...data }, ...prev])
-    toast(`${data.staffName} clocked in at ${data.clockIn}`, 'success')
   }
 
   const doClockOut = (entryId: string, clockOut: string, breakMinutes: number) => {
@@ -511,7 +509,6 @@ export default function PayrollPage() {
     const e = timeEntries.find(x => x.id === entryId)
     if (e) {
       const net = Math.max(0, minutesBetween(e.clockIn, clockOut) - breakMinutes)
-      toast(`${e.staffName} clocked out — ${fmtHrs(net)} worked`, 'success')
     }
   }
 
@@ -520,12 +517,10 @@ export default function PayrollPage() {
       const idx = prev.findIndex(x => x.id === e.id)
       return idx >= 0 ? prev.map(x => x.id === e.id ? e : x) : [e, ...prev]
     })
-    toast('Time entry saved', 'success')
   }
 
   const deleteEntry = (id: string) => {
     setTimeEntries(prev => prev.filter(e => e.id !== id))
-    toast('Entry deleted', 'success')
   }
 
   // ── Process Payroll ─────────────────────────────────────────────
@@ -614,7 +609,6 @@ export default function PayrollPage() {
     }
     setPayrollRuns(prev => [run, ...prev])
     setPreview([]); setCalculated(false)
-    toast('Payroll run saved', 'success')
     setTab('reports')
   }
 
@@ -713,7 +707,7 @@ export default function PayrollPage() {
                         <div style={{ display: 'flex', gap: 5 }}>
                           <button className="btn btn-gh btn-xs" onClick={() => { setEditProfile(p); setShowProfileModal(true) }}>Edit</button>
                           <button className="btn btn-xs" style={{ background: 'var(--red-bg)', color: 'var(--red)', border: 'none' }}
-                            onClick={() => { setProfiles(prev => prev.filter(x => x.id !== p.id)); toast('Profile deleted', 'success') }}>Del</button>
+                            onClick={() => { setProfiles(prev => prev.filter(x => x.id !== p.id)) }}>Del</button>
                         </div>
                       </td>
                     </tr>
@@ -1062,7 +1056,6 @@ export default function PayrollPage() {
                 setPayrollRuns(prev => prev.filter(r => r.id !== deleteRunId))
                 if (selectedRunId === deleteRunId) setSelectedRunId(null)
                 setDeleteRunId(null)
-                toast('Payroll run deleted', 'success')
               }}>Delete</button>
             </div>
           </div>

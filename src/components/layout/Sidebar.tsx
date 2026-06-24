@@ -25,6 +25,7 @@ const NAV_ITEMS: Record<ModuleKey, NavItem[]> = {
     { id:'menu',         ic:'🍽', lbl:'Menu Manager',    roles:['admin','manager'] },
     { id:'audit',        ic:'🔍', lbl:'Audit Log',       roles:['admin'] },
     { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin'] },
+    { id:'printer-diag', ic:'🖨️', lbl:'Printer Diagnostics', roles:['admin'] },
   ],
   bar: [
     { id:'pos',          ic:'🧾', lbl:'Point of Sale',  roles:['admin','manager','staff'] },
@@ -35,6 +36,7 @@ const NAV_ITEMS: Record<ModuleKey, NavItem[]> = {
     { id:'voids',        ic:'🚫', lbl:'Void Report',     roles:['admin','manager'] },
     { id:'menu',         ic:'🍽', lbl:'Menu Manager',    roles:['admin','manager'] },
     { id:'settings',     ic:'⚙️', lbl:'Settings',        roles:['admin'] },
+    { id:'printer-diag', ic:'🖨️', lbl:'Printer Diagnostics', roles:['admin'] },
   ],
   carwash: [
     { id:'pos',                ic:'🚗', lbl:'Dashboard',         roles:['admin','manager','staff'] },
@@ -46,7 +48,8 @@ const NAV_ITEMS: Record<ModuleKey, NavItem[]> = {
     { id:'reports',            ic:'📊', lbl:'Reports',           roles:['admin','manager'] },
     { id:'voids',              ic:'🚫', lbl:'Void Report',       roles:['admin','manager'] },
     { id:'carwash-services',   ic:'🔧', lbl:'Services & Prices', roles:['admin','manager'] },
-    { id:'settings',           ic:'⚙️', lbl:'Settings',          roles:['admin'] },
+    { id:'settings',           ic:'⚙️', lbl:'Settings',               roles:['admin'] },
+    { id:'printer-diag',       ic:'🖨️', lbl:'Printer Diagnostics',    roles:['admin'] },
   ],
 }
 

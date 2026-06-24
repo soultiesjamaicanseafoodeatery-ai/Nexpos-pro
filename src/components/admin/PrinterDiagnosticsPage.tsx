@@ -12,22 +12,19 @@ interface DiagResult {
   duration?: number
 }
 
-function getQZ(): unknown {
-  return typeof window !== 'undefined' ? (window as Window & { qz?: unknown }).qz ?? null : null
+type QZInstance = {
+  websocket: { isActive: () => boolean }
+  printers:  { find: (q?: string) => Promise<string | string[]>; details?: () => Promise<unknown> }
 }
 
-function getQZTyped() {
-  const qz = getQZ() as {
-    websocket: { isActive: () => boolean }
-    printers: { find: (q?: string) => Promise<string | string[]>; details?: () => Promise<unknown> }
-  } | null
-  return qz
+function getRawQZ(): QZInstance | null {
+  if (typeof window === 'undefined') return null
+  return ((window as unknown as Record<string, unknown>).qz as QZInstance) ?? null
 }
 
 export default function PrinterDiagnosticsPage() {
   const { state } = useApp()
   const { biz } = state
-  const printers = biz.printers ?? {}
 
   const [connecting, setConnecting] = useState(false)
   const [results, setResults] = useState<DiagResult[]>([])
@@ -50,7 +47,7 @@ export default function PrinterDiagnosticsPage() {
 
   const handleRefreshPrinters = async () => {
     const t0 = Date.now()
-    const qz = getQZTyped()
+    const qz = getRawQZ()
     if (!qz) {
       add({ ts: ts(), label: 'Refresh Printers', raw: null, error: { message: 'window.qz is null — QZ Tray script not loaded. Click Connect QZ first.' } })
       return
@@ -75,7 +72,7 @@ export default function PrinterDiagnosticsPage() {
 
   const handleTestEnumeration = async () => {
     const t0 = Date.now()
-    const qz = getQZTyped()
+    const qz = getRawQZ()
     if (!qz) {
       add({ ts: ts(), label: 'Test Enumeration', raw: null, error: { message: 'window.qz is null. Click Connect QZ first.' } })
       return
@@ -88,27 +85,30 @@ export default function PrinterDiagnosticsPage() {
     const [r1, r2, r3] = await Promise.all([
       tryCall(() => qz.printers.find()),
       tryCall(() => qz.printers.find('')),
-      tryCall(() => qz.printers.details ? qz.printers.details() : Promise.reject(new Error('printers.details() does not exist'))),
+      tryCall(() => qz.printers.details
+        ? qz.printers.details()
+        : Promise.reject(new Error('printers.details() does not exist on this QZ version'))
+      ),
     ])
 
-    const rawQZ = getQZ() as Record<string, unknown> | null
+    const qzObj = getRawQZ() as unknown as Record<string, unknown>
     add({
       ts: ts(), label: 'Test Enumeration',
       raw: {
-        'find()':          r1.ok ? r1.value : { ERROR: r1.error },
-        'find(\'\')':      r2.ok ? r2.value : { ERROR: r2.error },
+        'find()':             r1.ok ? r1.value : { ERROR: r1.error },
+        'find(\'\')':         r2.ok ? r2.value : { ERROR: r2.error },
         'printers.details()': r3.ok ? r3.value : { ERROR: r3.error },
-        'window.qz keys':   rawQZ ? Object.keys(rawQZ) : null,
-        'printers keys':    rawQZ?.printers ? Object.keys(rawQZ.printers as object) : null,
-        'websocket active': qz.websocket.isActive(),
-        'user agent':       typeof navigator !== 'undefined' ? navigator.userAgent : null,
+        'window.qz keys':     qzObj ? Object.keys(qzObj) : null,
+        'printers keys':      qzObj?.printers ? Object.keys(qzObj.printers as object) : null,
+        'websocket active':   qz.websocket.isActive(),
+        'user agent':         typeof navigator !== 'undefined' ? navigator.userAgent : null,
       },
       duration: Date.now() - t0,
     })
   }
 
   const connected = qzIsConnected()
-  const qzLoaded  = typeof window !== 'undefined' && !!(window as Window & { qz?: unknown }).qz
+  const qzLoaded  = typeof window !== 'undefined' && !!((window as unknown as Record<string, unknown>).qz)
 
   const Row = ({ label, value, mono = false, highlight }: { label: string; value: string; mono?: boolean; highlight?: string }) => (
     <div style={{ display: 'flex', gap: 16, padding: '8px 0', borderBottom: '1px solid var(--bdr)', alignItems: 'flex-start' }}>
@@ -121,26 +121,18 @@ export default function PrinterDiagnosticsPage() {
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
 
-        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', marginBottom: 4 }}>🖨️ Printer Diagnostics</div>
+        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', marginBottom: 4 }}>Printer Diagnostics</div>
         <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 24 }}>Raw QZ Tray probe — no filtering or name modification applied</div>
 
         {/* Status panel */}
         <div style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: 20, marginBottom: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', marginBottom: 12 }}>Current State</div>
-          <Row
-            label="QZ Connection Status"
-            value={connected ? '● Connected' : '○ Disconnected'}
-            highlight={connected ? 'var(--grn,#22c55e)' : 'var(--red,#ef4444)'}
-          />
-          <Row
-            label="window.qz present"
-            value={qzLoaded ? 'Yes — script loaded' : 'No — script not loaded'}
-            highlight={qzLoaded ? 'var(--grn,#22c55e)' : 'var(--red,#ef4444)'}
-          />
-          <Row label="Configured Receipt Printer" value={printers.receipt || '(not set)'} mono />
-          <Row label="Configured Kitchen Printer" value={printers.kitchen || '(not set)'} mono />
-          <Row label="Configured Bar Printer"     value={(printers as { bar?: string }).bar || '(not set)'} mono />
-          <Row label="Print Width"                value={`${printers.width ?? 80}mm`} />
+          <Row label="QZ Connection Status"      value={connected ? 'Connected' : 'Disconnected'}       highlight={connected ? 'var(--grn,#22c55e)' : 'var(--red,#ef4444)'} />
+          <Row label="window.qz present"         value={qzLoaded  ? 'Yes — script loaded' : 'No — not loaded'} highlight={qzLoaded ? 'var(--grn,#22c55e)' : 'var(--red,#ef4444)'} />
+          <Row label="Configured Receipt Printer" value={biz.printers?.receipt || '(not set)'}  mono />
+          <Row label="Configured Kitchen Printer" value={biz.printers?.kitchen || '(not set)'}  mono />
+          <Row label="Configured Bar Printer"     value={biz.printers?.bar     || '(not set)'}  mono />
+          <Row label="Print Width"                value={`${biz.printers?.width ?? 80}mm`} />
         </div>
 
         {/* Buttons */}
@@ -150,19 +142,19 @@ export default function PrinterDiagnosticsPage() {
             disabled={connecting}
             style={{ padding: '10px 20px', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: connecting ? 'not-allowed' : 'pointer', opacity: connecting ? .6 : 1 }}
           >
-            {connecting ? 'Connecting…' : '⚡ Connect QZ'}
+            {connecting ? 'Connecting...' : 'Connect QZ'}
           </button>
           <button
             onClick={handleRefreshPrinters}
             style={{ padding: '10px 20px', borderRadius: 'var(--r)', background: 'var(--grn)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
           >
-            🔄 Refresh Printers
+            Refresh Printers
           </button>
           <button
             onClick={handleTestEnumeration}
             style={{ padding: '10px 20px', borderRadius: 'var(--r)', background: '#7c3aed', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
           >
-            🔬 Test Enumeration
+            Test Enumeration
           </button>
         </div>
 
@@ -177,7 +169,7 @@ export default function PrinterDiagnosticsPage() {
               <div key={i} style={{ background: 'var(--bg2)', border: `1px solid ${r.error ? 'var(--red,#ef4444)' : 'var(--bdr)'}`, borderRadius: 'var(--r3)', overflow: 'hidden' }}>
                 <div style={{ padding: '10px 16px', background: r.error ? 'rgba(239,68,68,.08)' : 'var(--surf2)', borderBottom: '1px solid var(--bdr)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: r.error ? 'var(--red,#ef4444)' : 'var(--grn,#22c55e)' }}>
-                    {r.error ? '✕' : '✓'} {r.label}
+                    {r.error ? 'FAIL' : 'OK'} — {r.label}
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--txt3)' }}>
                     {r.ts}{r.duration !== undefined ? ` · ${r.duration}ms` : ''}

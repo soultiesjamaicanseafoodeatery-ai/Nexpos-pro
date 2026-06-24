@@ -41,8 +41,8 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
       const html = buildCustomerReceipt(tx, biz, { width: pw })
       if (html) await smartPrint(html, 'Customer Receipt', biz.printers?.receipt, pw).catch(() => {})
       if (ticket.hasKitchen) {
-        const kHtml = buildKitchenTicket(orderData, { width: pw })
-        if (kHtml) await smartPrint(kHtml, 'Kitchen Ticket', biz.printers?.kitchen, pw).catch(() => {})
+        const kHtml = buildKitchenTicket(orderData, { width: 58 })
+        if (kHtml) await smartPrint(kHtml, 'Kitchen Ticket', biz.printers?.kitchen, 58).catch(() => {})
       }
       if (ticket.hasBar) {
         const bHtml = buildBarTicket(orderData, { width: pw })
@@ -76,7 +76,7 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
   }
 
   const receiptHTML = buildCustomerReceipt(tx, biz, { width })
-  const kitchenHTML = buildKitchenTicket(orderData, { width })
+  const kitchenHTML = buildKitchenTicket(orderData, { width: 58 })
   const barHTML     = buildBarTicket(orderData, { width })
   const carwashHTML = buildCarwashWorkOrder(orderData, { width })
 
@@ -96,7 +96,7 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
       bar:      'Bar Ticket',
       carwash:  'Car Wash Work Order',
     }
-    const pw = (biz.printers?.width ?? 80) as 58 | 80
+    const pw = type === 'kitchen' ? 58 : (biz.printers?.width ?? 80) as 58 | 80
     const printerMap: Record<string, string | undefined> = {
       customer: biz.printers?.receipt,
       kitchen:  biz.printers?.kitchen,

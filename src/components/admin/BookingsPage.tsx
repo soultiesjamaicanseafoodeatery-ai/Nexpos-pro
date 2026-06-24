@@ -21,6 +21,7 @@ export default function BookingsPage() {
   const [isNew, setIsNew]       = useState(false)
   const [filterDate, setFilterDate] = useState('')
   const [loading, setLoading]   = useState(true)
+  const [pendingDel, setPendingDel] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {

@@ -52,9 +52,16 @@ export async function smartPrint(
 ): Promise<void> {
   if (!html) return
   if (printerName?.trim()) {
-    const { qzPrint } = await import('./qzTray')
-    const ok = await qzPrint(printerName.trim(), html, width)
-    if (ok) return
+    if (width === 58) {
+      const { qzPrintRaw } = await import('./qzTray')
+      const text = html.replace(/<\/?pre>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      const ok = await qzPrintRaw(printerName.trim(), text)
+      if (ok) return
+    } else {
+      const { qzPrint } = await import('./qzTray')
+      const ok = await qzPrint(printerName.trim(), html, width)
+      if (ok) return
+    }
   }
   if (!silentOnly) {
     printTicket(html, title)

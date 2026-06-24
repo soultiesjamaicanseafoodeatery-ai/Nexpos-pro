@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { createSign } from 'crypto'
+import { createSign, createPrivateKey } from 'crypto'
 import { NextResponse } from 'next/server'
 
 export async function POST(req: Request) {
@@ -10,14 +10,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing data' }, { status: 400 })
     }
 
-    const privateKey = process.env.QZ_PRIVATE_KEY
-    if (!privateKey) {
+    const rawKey = process.env.QZ_PRIVATE_KEY
+    if (!rawKey) {
       return NextResponse.json({ error: 'QZ_PRIVATE_KEY not configured in Vercel env vars' }, { status: 503 })
     }
 
+    const privateKey = createPrivateKey(rawKey.replace(/\\n/g, '\n'))
     const sign = createSign('SHA512')
     sign.update(data)
-    const signature = sign.sign(privateKey.replace(/\\n/g, '\n'), 'base64')
+    const signature = sign.sign(privateKey, 'base64')
     return NextResponse.json({ signature })
   } catch (e) {
     console.error('[qz-sign]', e)

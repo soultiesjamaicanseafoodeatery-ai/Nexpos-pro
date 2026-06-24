@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { OrderTicket, Transaction, BusinessConfig, KitchenStatus, BarStatus, CarwashStatus, PrintWidth, ReprintLog } from '@/types'
 import {
@@ -26,6 +26,36 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
   const [tab,      setTab]      = useState<Tab>('customer')
   const [width,    setWidth]    = useState<PrintWidth>(80)
   const [printing, setPrinting] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const pw = (biz.printers?.width ?? 80) as 58 | 80
+    const nowStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const todayStr = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+    const orderData = {
+      orderNum: ticket.orderNum, table: ticket.table, server: ticket.server,
+      guestCount: ticket.guestCount, orderType: ticket.orderType, date: todayStr, time: nowStr,
+      items: ticket.items, orderNote: ticket.orderNote, customerName: ticket.customerName,
+    }
+    ;(async () => {
+      const html = buildCustomerReceipt(tx, biz, { width: pw })
+      if (html) await smartPrint(html, 'Customer Receipt', biz.printers?.receipt, pw).catch(() => {})
+      if (ticket.hasKitchen) {
+        const kHtml = buildKitchenTicket(orderData, { width: pw })
+        if (kHtml) await smartPrint(kHtml, 'Kitchen Ticket', biz.printers?.kitchen, pw).catch(() => {})
+      }
+      if (ticket.hasBar) {
+        const bHtml = buildBarTicket(orderData, { width: pw })
+        if (bHtml) await smartPrint(bHtml, 'Bar Ticket', biz.printers?.bar || biz.printers?.kitchen, pw).catch(() => {})
+      }
+      if (ticket.hasCarwash) {
+        const cHtml = buildCarwashWorkOrder(orderData, { width: pw })
+        if (cHtml) await smartPrint(cHtml, 'Car Wash Work Order', biz.printers?.receipt, pw).catch(() => {})
+      }
+      onClose()
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
 
   if (!isOpen) return null
 

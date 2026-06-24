@@ -78,6 +78,26 @@ export default function PrinterDiagnosticsPage() {
     }
   }
 
+  const handleTestSignAPI = async () => {
+    const t0 = Date.now()
+    try {
+      const res = await fetch('/api/qz-sign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: 'test-challenge-string' }),
+      })
+      const body = await res.text()
+      addResult({
+        ts: nowTs(), label: `Test Sign API (HTTP ${res.status})`,
+        raw: { status: res.status, ok: res.ok, body },
+        error: res.ok ? undefined : { message: `HTTP ${res.status}: ${body}` },
+        duration: Date.now() - t0,
+      })
+    } catch (e) {
+      addResult({ ts: nowTs(), label: 'Test Sign API', raw: null, error: errObj(e), duration: Date.now() - t0 })
+    }
+  }
+
   const handleTestEnumeration = async () => {
     const t0 = Date.now()
     const qz = getWindowQZ()
@@ -161,6 +181,9 @@ export default function PrinterDiagnosticsPage() {
           </button>
           <button onClick={handleTestEnumeration} style={{ padding: '10px 20px', borderRadius: 'var(--r)', background: '#7c3aed', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
             Test Enumeration
+          </button>
+          <button onClick={handleTestSignAPI} style={{ padding: '10px 20px', borderRadius: 'var(--r)', background: '#b45309', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+            Test Sign API
           </button>
         </div>
 

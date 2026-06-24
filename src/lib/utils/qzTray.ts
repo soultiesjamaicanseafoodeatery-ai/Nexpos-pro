@@ -95,8 +95,12 @@ function setupSecurity(qz: QZTrayAPI) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data: toSign }),
     })
-    if (!res.ok) throw new Error(`Sign API ${res.status}`)
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`Sign API ${res.status}: ${body}`)
+    }
     const json = await res.json()
+    if (!json.signature) throw new Error(`Sign API no signature: ${JSON.stringify(json)}`)
     return json.signature as string
   })
 }

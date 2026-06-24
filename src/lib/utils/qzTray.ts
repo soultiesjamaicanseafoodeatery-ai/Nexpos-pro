@@ -66,7 +66,7 @@ async function loadScript(): Promise<boolean> {
 }
 
 // Public certificate -- safe to embed in source. Private key lives server-side in QZ_PRIVATE_KEY.
-const QZ_CERT = ``
+const QZ_CERT = `
 -----BEGIN CERTIFICATE-----
 MIIDCzCCAfOgAwIBAgIUKkhy+v9ycLXXMuctycMsuAmhxPowDQYJKoZIhvcNAQEL
 BQAwFTETMBEGA1UEAwwKTmV4UE9TIFBybzAeFw0yNjA2MjQwNTU1MDhaFw0zNjA2
@@ -86,7 +86,7 @@ I/Ie1rS/dSIyncJGTX+vAxmpv2nxGesq3yWAsfhYi3/DvoSJRCQ43BO+pV2KLGKs
 IG/rkHUeuzggzluMXH1y835cJfsQnroia//oTjFRlut4DjzuE1NrC838vXgA8xyK
 Nc305DqZJUUA98K3NBlM
 -----END CERTIFICATE-----
-```
+`
 
 function setupSecurity(qz: QZTrayAPI) {
   qz.security.setCertificatePromise(resolve => resolve(QZ_CERT))

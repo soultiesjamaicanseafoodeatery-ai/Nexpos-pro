@@ -167,8 +167,8 @@ function StaffModal({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <input
                 style={inputStyle}
-                type="password"
-                autoComplete="new-password"
+                type="text"
+                autoComplete="off"
                 inputMode="numeric"
                 maxLength={4}
                 value={form.pin}
@@ -177,8 +177,8 @@ function StaffModal({
               />
               <input
                 style={inputStyle}
-                type="password"
-                autoComplete="new-password"
+                type="text"
+                autoComplete="off"
                 inputMode="numeric"
                 maxLength={4}
                 value={form.confirmPin}

@@ -79,6 +79,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [showOpen,      setShowOpen]      = useState(false)
   const [confirmClear,      setConfirmClear]      = useState(false)
   const [confirmDeleteHeld, setConfirmDeleteHeld] = useState<string | null>(null)
+  const [pendingBarAdd,    setPendingBarAdd]    = useState<'modal' | 'direct' | null>(null)
+  const [pendingDirectItem, setPendingDirectItem] = useState<MenuItem | null>(null)
   const [lastTx,        setLastTx]        = useState<Transaction | null>(null)
   const [lastTicket,    setLastTicket]    = useState<OrderTicket | null>(null)
   const [orderNote,     setOrderNote]     = useState('')
@@ -424,10 +426,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
     if (activeModule === 'bar' || modalItem?.module === 'bar') {
       const hasBarItems = cart.some(ci => ci.module === 'bar')
-      if (!hasBarItems) {
-        const ok = window.confirm('Age Verification Required\n\nBy proceeding you confirm the customer has presented valid ID and is 18 years of age or older.\n\nServing alcohol to a minor is a criminal offence under the Jamaica Licences Act.\n\nCustomer is 18+?')
-        if (!ok) return
-      }
+      if (!hasBarItems) { setPendingBarAdd('modal'); return }
     }
     const cartItem: CartItem = {
       id: crypto.randomUUID(),
@@ -451,10 +450,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const addToCartDirect = (item: MenuItem) => {
     if (activeModule === 'bar' || item.module === 'bar') {
       const hasBarItems = cart.some(ci => ci.module === 'bar')
-      if (!hasBarItems) {
-        const ok = window.confirm('Age Verification Required\n\nBy proceeding you confirm the customer has presented valid ID and is 18 years of age or older.\n\nServing alcohol to a minor is a criminal offence under the Jamaica Licences Act.\n\nCustomer is 18+?')
-        if (!ok) return
-      }
+      if (!hasBarItems) { setPendingDirectItem(item); setPendingBarAdd('direct'); return }
     }
     const cartItem: CartItem = {
       id: crypto.randomUUID(),
@@ -468,6 +464,32 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     }
     dispatch({ type: 'ADD_TO_CART', item: cartItem })
   }
+
+  const confirmAge = () => {
+    if (pendingBarAdd === 'modal' && modalItem) {
+      const effectivePrice = modalSizeId ? modalSizePrice : modalItem.price
+      const flavourName = liveFlavours.find(f => f.id === modalFlavourId)?.name
+      const sideName = modalSideIds.map(id => liveSides.find(s => s.id === id)?.name).filter(Boolean) as string[]
+      const sizeName = liveSizesDefs.find(s => s.id === modalSizeId)?.name
+      dispatch({ type: 'ADD_TO_CART', item: {
+        id: crypto.randomUUID(), itemId: modalItem.id, name: modalItem.name, price: effectivePrice,
+        qty: modalQty, addons: [...modalAddons], module: activeModule, note: modalNote || undefined,
+        plate: activeModule === 'carwash' ? (ps.plate || undefined) : undefined,
+        flavour: flavourName, size: sizeName, sides: sideName.length > 0 ? sideName : undefined,
+      }})
+      closeModal()
+    } else if (pendingBarAdd === 'direct' && pendingDirectItem) {
+      dispatch({ type: 'ADD_TO_CART', item: {
+        id: crypto.randomUUID(), itemId: pendingDirectItem.id, name: pendingDirectItem.name,
+        price: pendingDirectItem.price, qty: 1, addons: [], module: activeModule,
+        plate: activeModule === 'carwash' ? (ps.plate || undefined) : undefined,
+      }})
+    }
+    setPendingBarAdd(null)
+    setPendingDirectItem(null)
+  }
+
+  const cancelAge = () => { setPendingBarAdd(null); setPendingDirectItem(null) }
 
   // Handle item click — open modal only if the item has assigned add-ons/flavours/sizes/sides
   const handleItemClick = (item: MenuItem) => {
@@ -1559,8 +1581,15 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Split</button>
                   <button onClick={holdOrder}
                     style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Hold</button>
-                  <button onClick={() => { if (cart.length > 0 && window.confirm(`Clear all ${cart.length} item(s) from cart? This cannot be undone.`)) dispatch({ type: 'CLEAR_CART' }) }}
-                    style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Clear</button>
+                  <button onClick={() => {
+                      if (cart.length === 0) return
+                      if (!confirmClear) { setConfirmClear(true); return }
+                      setConfirmClear(false)
+                      dispatch({ type: 'CLEAR_CART' })
+                    }}
+                    style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: confirmClear ? '#7f1d1d22' : 'transparent', color: confirmClear ? '#ef4444' : 'var(--txt3)', border: `1.5px solid ${confirmClear ? '#ef4444' : 'var(--bdr)'}`, cursor: cart.length > 0 ? 'pointer' : 'not-allowed' }}>
+                    {confirmClear ? 'Confirm?' : 'Clear'}
+                  </button>
                 </div>
 
                 {/* Reprint */}
@@ -1605,9 +1634,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     <button onClick={() => resumeOrder(h)} style={{ flex: 2, padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
                       Resume
                     </button>
-                    <button onClick={() => { if (confirm(`Delete held order "${h.label}"?`)) { dispatch({ type: 'REMOVE_HELD_ORDER', id: h.id }) } }}
-                      style={{ flex: 1, padding: '9px 0', borderRadius: 'var(--r)', background: 'transparent', color: '#ef4444', border: '1px solid #ef444444', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                      Delete
+                    <button onClick={() => {
+                        if (confirmDeleteHeld !== h.id) { setConfirmDeleteHeld(h.id); return }
+                        setConfirmDeleteHeld(null)
+                        dispatch({ type: 'REMOVE_HELD_ORDER', id: h.id })
+                      }}
+                      style={{ flex: 1, padding: '9px 0', borderRadius: 'var(--r)', background: 'transparent', color: confirmDeleteHeld === h.id ? '#fbbf24' : '#ef4444', border: `1px solid ${confirmDeleteHeld === h.id ? '#fbbf24' : '#ef444444'}`, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                      {confirmDeleteHeld === h.id ? 'Sure?' : 'Delete'}
                     </button>
                   </div>
                 </div>
@@ -1998,6 +2031,28 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 </div>
               )
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* Age Verification overlay */}
+      {pendingBarAdd && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 420, padding: 28, textAlign: 'center' }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>🍺</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)', marginBottom: 10 }}>Age Verification Required</div>
+            <div style={{ fontSize: 13, color: 'var(--txt2)', lineHeight: 1.7, marginBottom: 28 }}>
+              Confirm that the customer has presented valid ID and is <strong>18 years of age or older</strong>.<br />
+              Serving alcohol to a minor is a criminal offence under the Jamaica Licences Act.
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button onClick={cancelAge} style={{ flex: 1, padding: 14, borderRadius: 'var(--r)', background: 'transparent', border: '1.5px solid var(--bdr)', color: 'var(--txt3)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                ✕ Under 18 — Decline
+              </button>
+              <button onClick={confirmAge} style={{ flex: 1, padding: 14, borderRadius: 'var(--r)', background: 'var(--grn)', border: 'none', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
+                ✓ Confirmed 18+
+              </button>
+            </div>
           </div>
         </div>
       )}

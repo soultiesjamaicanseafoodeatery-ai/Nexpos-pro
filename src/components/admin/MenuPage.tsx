@@ -43,8 +43,9 @@ function DelConfirm({ name, onConfirm, onCancel }: { name: string; onConfirm: ()
   )
 }
 
-function ItemModal({ item, mod, categories, onSave, onClose }: {
+function ItemModal({ item, mod, categories, flavours, sides, addons, onSave, onClose }: {
   item: MenuItem | null; mod: ModuleKey; categories: string[]
+  flavours: Flavour[]; sides: Side[]; addons: Addon[]
   onSave: (data: MenuItem) => void; onClose: () => void
 }) {
   const cats = categories.filter(c => c !== 'All')
@@ -58,6 +59,27 @@ function ItemModal({ item, mod, categories, onSave, onClose }: {
     duration: item?.duration ?? '',
   })
   const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) => setForm(f => ({ ...f, [k]: v }))
+
+  const [assignedFlavourIds, setAssignedFlavourIds] = useState<string[]>([])
+  const [assignedSideIds,    setAssignedSideIds]    = useState<string[]>([])
+  const [assignedAddonIds,   setAssignedAddonIds]   = useState<string[]>([])
+
+  useEffect(() => {
+    if (!item?.id) return
+    fetch('/api/assignments')
+      .then(r => r.json())
+      .then((data: Record<string, { flavour_ids: string[]; side_ids: string[]; addon_ids: string[] }>) => {
+        const a = data[item.id]
+        if (a) {
+          setAssignedFlavourIds(a.flavour_ids ?? [])
+          setAssignedSideIds(a.side_ids ?? [])
+          setAssignedAddonIds(a.addon_ids ?? [])
+        }
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id])
+
   const valid = form.name.trim().length > 0 && form.price > 0
 
   const handleSave = () => {
@@ -74,12 +96,28 @@ function ItemModal({ item, mod, categories, onSave, onClose }: {
       module: mod,
       ...(form.duration ? { duration: form.duration } : {}),
     }
+    fetch('/api/assignments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: saved.id, flavour_ids: assignedFlavourIds, side_ids: assignedSideIds, addon_ids: assignedAddonIds }),
+    }).catch(() => {})
     onSave(saved)
   }
 
+  const chipOn  = (on: boolean, color: string, bg: string): React.CSSProperties => ({
+    padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+    border: `1.5px solid ${on ? color : 'var(--bdr)'}`,
+    background: on ? bg : 'var(--surf2)',
+    color: on ? color : 'var(--txt3)',
+  })
+
+  const activeFlavours = flavours.filter(f => f.active)
+  const activeSides    = sides.filter(s => s.active)
+  const activeAddons   = addons.filter(a => a.active)
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 480, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,.5)', overflow: 'hidden' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 520, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,.5)', overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bdr)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{item ? 'Edit Item' : 'Add Item'}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--txt3)', fontSize: 20 }}>×</button>
@@ -126,6 +164,69 @@ function ItemModal({ item, mod, categories, onSave, onClose }: {
               {form.active ? 'Active' : 'Inactive'}
             </button>
           </div>
+
+          {activeFlavours.length > 0 && (
+            <div>
+              <label style={lbl}>
+                🌶️ Flavours
+                <span style={{ fontWeight: 400, textTransform: 'none' as const, letterSpacing: 0, marginLeft: 6 }}>— tap to assign to this item</span>
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                {activeFlavours.map(f => {
+                  const on = assignedFlavourIds.includes(f.id)
+                  return (
+                    <button key={f.id}
+                      onClick={() => setAssignedFlavourIds(prev => prev.includes(f.id) ? prev.filter(x => x !== f.id) : [...prev, f.id])}
+                      style={chipOn(on, 'var(--ora)', 'rgba(249,115,22,.14)')}>
+                      {f.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {activeSides.length > 0 && (
+            <div>
+              <label style={lbl}>
+                🍚 Sides
+                <span style={{ fontWeight: 400, textTransform: 'none' as const, letterSpacing: 0, marginLeft: 6 }}>— tap to assign to this item</span>
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                {activeSides.map(s => {
+                  const on = assignedSideIds.includes(s.id)
+                  return (
+                    <button key={s.id}
+                      onClick={() => setAssignedSideIds(prev => prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id])}
+                      style={chipOn(on, 'var(--grn)', 'rgba(34,197,94,.14)')}>
+                      {s.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {activeAddons.length > 0 && (
+            <div>
+              <label style={lbl}>
+                ✨ Add-Ons
+                <span style={{ fontWeight: 400, textTransform: 'none' as const, letterSpacing: 0, marginLeft: 6 }}>— tap to assign to this item</span>
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                {activeAddons.map(a => {
+                  const on = assignedAddonIds.includes(a.id)
+                  return (
+                    <button key={a.id}
+                      onClick={() => setAssignedAddonIds(prev => prev.includes(a.id) ? prev.filter(x => x !== a.id) : [...prev, a.id])}
+                      style={chipOn(on, 'var(--blue)', 'rgba(59,130,246,.14)')}>
+                      {a.icon} {a.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
         <div style={{ padding: '14px 20px', borderTop: '1px solid var(--bdr)', display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '10px 8px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Cancel</button>
@@ -827,7 +928,7 @@ export default function MenuPage() {
       </div>
 
       {showItemModal && (
-        <ItemModal item={editItem} mod={mod} categories={categories} onSave={saveItem} onClose={() => { setShowItemModal(false); setEditItem(null) }} />
+        <ItemModal item={editItem} mod={mod} categories={categories} flavours={flavours ?? []} sides={sides ?? []} addons={addons} onSave={saveItem} onClose={() => { setShowItemModal(false); setEditItem(null) }} />
       )}
       {delItemId && (
         <DelConfirm name={items.find(i => i.id === delItemId)?.name ?? ''} onConfirm={handleDeleteItem} onCancel={() => setDelItemId(null)} />

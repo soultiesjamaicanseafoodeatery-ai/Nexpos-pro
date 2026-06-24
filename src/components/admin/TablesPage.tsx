@@ -145,6 +145,7 @@ export default function TablesPage() {
   const [saving,    setSaving]    = useState(false)
 
   const [transferTableIds, setTransferTableIds] = useState<string[] | null>(null)
+  const [pendingDelTable,  setPendingDelTable]  = useState<string | null>(null)
 
   const saveCfg = (next: TablesConfig) => { setCfg(next); storage.set('tables_config', next) }
 
@@ -339,7 +340,8 @@ export default function TablesPage() {
   }
 
   const deleteTable = async (id: string) => {
-    if (!confirm(`Delete table "${id}"? This cannot be undone.`)) return
+    if (pendingDelTable !== id) { setPendingDelTable(id); return }
+    setPendingDelTable(null)
     const updated: TablesConfig = { ...cfg, [mod]: cfg[mod].filter(t => t.id !== id) }
     const { [id]: _, ...rest } = updated.status
     updated.status = rest
@@ -556,7 +558,7 @@ export default function TablesPage() {
                             )}
                             {canManage && (
                               <button onClick={() => deleteTable(t.id)}
-                                style={{ flex: 1, padding: '7px 0', background: 'transparent', border: 'none', borderTop: '1px solid var(--bdr)', color: 'var(--red,#ef4444)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Del</button>
+                                style={{ flex: 1, padding: '7px 0', background: 'transparent', border: 'none', borderTop: '1px solid var(--bdr)', color: pendingDelTable === t.id ? '#fbbf24' : 'var(--red,#ef4444)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{pendingDelTable === t.id ? 'Sure?' : 'Del'}</button>
                             )}
                           </div>
                         </>

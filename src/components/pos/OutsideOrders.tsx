@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function OutsideOrders({ onCountChange }: Props) {
-  const { state, toast } = useApp()
+  const { state } = useApp()
   const sym = state.biz.currencySymbol ?? 'J$'
   const [orders, setOrders] = useState<OutsideOrder[]>([])
   const [pendingCancel, setPendingCancel] = useState<string | null>(null)
@@ -56,7 +56,6 @@ export default function OutsideOrders({ onCountChange }: Props) {
   const markReady = async (order: OutsideOrder) => {
     if (!supabase) return
     await supabase.from('orders').update({ status: 'ready' }).eq('id', order.id)
-    toast(`✓ Ready — ${order.customer_name}`, 'success')
   }
 
   const cancel = async (order: OutsideOrder) => {
@@ -151,9 +150,9 @@ export default function OutsideOrders({ onCountChange }: Props) {
               </button>
               <button
                 onClick={() => cancel(order)}
-                style={{ padding: '10px 14px', background: 'var(--surf2)', color: 'var(--txt2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                style={{ padding: '10px 14px', background: 'var(--surf2)', color: pendingCancel === String(order.id) ? '#fbbf24' : 'var(--txt2)', border: `1px solid ${pendingCancel === String(order.id) ? '#fbbf24' : 'var(--bdr)'}`, borderRadius: 'var(--r)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
               >
-                ✕ Cancel
+                {pendingCancel === String(order.id) ? 'Sure?' : '✕ Cancel'}
               </button>
             </div>
           </div>

@@ -28,6 +28,7 @@ import VoidReport from '@/components/admin/VoidReport'
 import CarwashServicesPage from '@/components/admin/CarwashServicesPage'
 import CloseShiftWizard from '@/components/admin/CloseShiftWizard'
 import PayrollPage from '@/components/admin/PayrollPage'
+import PrinterDiagnosticsPage from '@/components/admin/PrinterDiagnosticsPage'
 
 const PAGE_ROLES: Record<string, string[]> = {
   pos:             ['admin','manager','staff'],
@@ -52,6 +53,7 @@ const PAGE_ROLES: Record<string, string[]> = {
   'carwash-services':   ['admin','manager'],
   audit:           ['admin'],
   settings:        ['admin'],
+  'printer-diag':  ['admin'],
 }
 
 const ACCESS_DENIED = (
@@ -160,6 +162,7 @@ export default function AppShell() {
       case 'voids':              return <VoidReport />
       case 'carwash-services':   return <CarwashServicesPage />
       case 'carwash-queue':      return <CarWashQueue />
+      case 'printer-diag':       return <PrinterDiagnosticsPage />
       default:                   return activeModule === 'carwash' ? <CarWashFlow /> : <POSFlow />
     }
   }

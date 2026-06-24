@@ -4,16 +4,22 @@ import { createSign, createPrivateKey } from 'crypto'
 import { NextResponse } from 'next/server'
 
 function normalizePem(raw: string): string {
-  // Convert literal \n sequences (common when pasting into Vercel dashboard)
   let pem = raw.replace(/\\n/g, '\n').trim()
 
-  // Extract type and base64 body, then reassemble with correct line breaks
+  if (!pem.startsWith('-----BEGIN')) {
+    // Stored without PEM headers — wrap as PKCS#8 private key
+    const b64 = pem.replace(/\s+/g, '')
+    const lines = (b64.match(/.{1,64}/g) ?? []).join('\n')
+    return `-----BEGIN PRIVATE KEY-----\n${lines}\n-----END PRIVATE KEY-----\n`
+  }
+
+  // Reconstruct with proper 64-char line breaks (handles single-line PEM)
   const m = pem.match(/-----BEGIN ([^-]+)-----\s*([\s\S]+?)\s*-----END \1-----/)
   if (m) {
     const type = m[1]
     const b64 = m[2].replace(/\s+/g, '')
     const lines = (b64.match(/.{1,64}/g) ?? []).join('\n')
-    pem = `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----\n`
+    return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----\n`
   }
 
   return pem
@@ -38,16 +44,7 @@ export async function POST(req: Request) {
     const signature = sign.sign(privateKey, 'base64')
     return NextResponse.json({ signature })
   } catch (e) {
-    const msg = String(e)
-    const rawKey = process.env.QZ_PRIVATE_KEY ?? ''
-    const debug = {
-      keyLength: rawKey.length,
-      hasLiteralNewlines: rawKey.includes('\\n'),
-      hasActualNewlines: rawKey.includes('\n'),
-      startsWithDash: rawKey.trimStart().startsWith('-----'),
-      firstChars: rawKey.substring(0, 27),
-    }
-    console.error('[qz-sign]', msg, debug)
-    return NextResponse.json({ error: msg, debug }, { status: 500 })
+    console.error('[qz-sign]', e)
+    return NextResponse.json({ error: String(e) }, { status: 500 })
   }
 }

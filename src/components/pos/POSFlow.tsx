@@ -7,13 +7,17 @@ import TakeoutDashboard from './workflow/TakeoutDashboard'
 import DeliveryDashboard from './workflow/DeliveryDashboard'
 import POSPage, { type OrderContext } from './POSPage'
 
-type FlowStep = 'service' | 'dine-in' | 'takeout' | 'delivery' | 'delivery-form' | 'order'
+type FlowStep = 'service' | 'dine-in' | 'takeout' | 'delivery' | 'takeout-form' | 'delivery-form' | 'order'
 
 export default function POSFlow() {
   const { dispatch } = useApp()
   const [step, setStep]             = useState<FlowStep>('service')
   const [prevStep, setPrevStep]     = useState<FlowStep>('service')
   const [orderContext, setOrderContext] = useState<OrderContext | null>(null)
+
+  // Takeout form state
+  const [tkName,  setTkName]  = useState('')
+  const [tkPhone, setTkPhone] = useState('')
 
   // Delivery form state
   const [dlName,    setDlName]    = useState('')
@@ -54,8 +58,11 @@ export default function POSFlow() {
   if (step === 'takeout') return (
     <TakeoutDashboard
       onBack={() => setStep('service')}
-      onNewOrder={(toNum) => { setPrevStep('takeout'); goToOrder({ orderType: 'takeout', ticketNum: toNum }, 'takeout') }}
-      onOpenOrder={(_id) => { setPrevStep('takeout'); goToOrder({ orderType: 'takeout' }, 'takeout') }}
+      onNewOrder={() => {
+        setTkName(''); setTkPhone('')
+        setPrevStep('takeout'); setStep('takeout-form')
+      }}
+      onOpenOrder={() => { setPrevStep('takeout'); goToOrder({ orderType: 'takeout' }) }}
     />
   )
 
@@ -67,6 +74,24 @@ export default function POSFlow() {
         setPrevStep('delivery'); setStep('delivery-form')
       }}
       onOpenOrder={() => { setPrevStep('delivery'); goToOrder({ orderType: 'delivery' }) }}
+    />
+  )
+
+  if (step === 'takeout-form') return (
+    <OrderForm
+      title="New Takeout Order"
+      icon="🥡"
+      accentColor="var(--grn)"
+      fields={[
+        { label: 'Customer Name', value: tkName, onChange: setTkName, placeholder: 'e.g. Maria Johnson', type: 'text' },
+        { label: 'Phone Number',  value: tkPhone, onChange: setTkPhone, placeholder: '876-000-0000', type: 'tel' },
+      ]}
+      onBack={() => setStep('takeout')}
+      onStart={() => goToOrder({
+        orderType: 'takeout',
+        customerName: tkName  || undefined,
+        phone:        tkPhone || undefined,
+      }, 'takeout')}
     />
   )
 

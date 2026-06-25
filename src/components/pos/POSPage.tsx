@@ -12,6 +12,7 @@ import PaymentModal from './PaymentModal'
 im port TicketModal from './TicketModal'
 import  SplitBillModal from './SplitBillModal'
 import  VoidReasonModal from './VoidReasonModal'
+import NoSaleModal from './NoSaleModal'
 imp ort { MODULE_DATA } from '@/lib/data/seed'
 im port { supabase } from '@/lib/supabase'
 impor t { storage } from '@/lib/utils/storage'
@@ -77,6 +78,7 @@ export default function POSPage({ onB ack, onPaymentComplete, orderContext }: PO
   const [showSplitBill, setShowSpli tBill] = useState(false)
   const [showHeld,       setShowHeld]      = useState(false)
   con st [showOpen,      setShowOpen]      = useSta te(false)
+  const [showNoSale,    setShowNoSale]    = useState(false)
   const [confirmClear,      setConf irmClear]      = useState(false)
   const [con firmDeleteHeld, setConfirmDeleteHeld] = useSt ate<string | null>(null)
   const [pendingBarA dd,    setPendingBarAdd]    = useState<'modal ' | 'direct' | null>(null)
@@ -1592,6 +1594,14 @@ export default function POSPage({ onB ack, onPaymentComplete, orderContext }: PO
                   </button>
                  </div>
 
+                                {/* No Sale */}
+                <button
+                  onClick={() => setShowNoSale(true)}
+                  style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1px dashed var(--bdr)', cursor: 'pointer', letterSpacing: '.3px' }}
+                >
+                  No Sale &#8212; Open Drawer
+                </button>
+
                 {/* Reprin t */}
                 {lastTx && lastTicket & & (
                   <button onClick={() =>  setShowTicket(true)} style={{ width: '100%',  padding: '8px 0', borderRadius: 'var(--r2)',  fontSize: 11, fontWeight: 700, background: 't ransparent', color: 'var(--txt3)', border: '1 .5px dashed var(--bdr)', cursor: 'pointer' }} >
@@ -1807,6 +1817,8 @@ export default function POSPage({ onB ack, onPaymentComplete, orderContext }: PO
       />
 
       {/* ── Void Item  Modal ── */}
+      <NoSaleModal isOpen={showNoSale} onClose={() => setShowNoSale(false)} />
+
       <VoidReasonModal
          isOpen={!!voidTarget}
         itemName={v oidTarget?.item.name ?? ''}

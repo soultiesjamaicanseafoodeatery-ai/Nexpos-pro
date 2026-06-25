@@ -59,7 +59,7 @@ export default function AuditPage() {
     const headers = ['Timestamp', 'Reason', 'Requested By', 'Approved By', 'Drawer Opened', 'Module']
     const rows = noSaleLogs.map((e: any) => [
       e.ts ?? '',
-      NO_SALE_REASON_LABELS[e.reason] ?? e.reason ?? '',
+      (NO_SALE_REASON_LABELS as Record<string, string>)[e.reason] ?? e.reason ?? '',
       e.requestedBy ?? '',
       e.approvedBy ?? '',
       e.drawerOpened ? 'Yes' : 'No',

@@ -56,7 +56,8 @@ export default function CloseShiftWizard() {
   const [pin,     setPin]     = useState('')
   const [pinErr,  setPinErr]  = useState('')
   const [pinSt,   setPinSt]   = useState<'idle'|'error'|'success'>('idle')
-  const countedCashRef = useRef<HTMLInputElement>(null)
+  const openingFloatRef = useRef<HTMLInputElement>(null)
+  const countedCashRef  = useRef<HTMLInputElement>(null)
   const [closing,  setClosing]  = useState(false)
   const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
   const [savedShiftStart, setSavedShiftStart] = useState<string | null>(null)
@@ -155,6 +156,14 @@ export default function CloseShiftWizard() {
     }, 3000)
     return () => clearTimeout(t)
   }, [step, dispatch])
+
+  // Auto-focus opening float when cash step loads
+  useEffect(() => {
+    if (step === 'cash') {
+      const t = setTimeout(() => openingFloatRef.current?.focus(), 50)
+      return () => clearTimeout(t)
+    }
+  }, [step])
 
   // ── System validation ─────────────────────────────────────────
   useEffect(() => {
@@ -382,8 +391,7 @@ export default function CloseShiftWizard() {
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <span style={{ fontSize:13, color:'var(--txt3)', flexShrink:0 }}>{sym}</span>
                   <input
-                    ref={k === 'countedCash' ? countedCashRef : undefined}
-                    autoFocus={k === 'openingFloat'}
+                    ref={k === 'openingFloat' ? openingFloatRef : countedCashRef}
                     type="number" min={0} step={0.01} value={data[k]}
                     onChange={e => setData(d => ({ ...d, [k]: e.target.value }))}
                     onKeyDown={e => {

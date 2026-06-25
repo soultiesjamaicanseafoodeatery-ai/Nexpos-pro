@@ -144,6 +144,7 @@ type Action =
   | { type: 'UPDATE_MENU_ADDON';   mod: ModuleKey; addon: Addon }
   | { type: 'DELETE_MENU_ADDON';   mod: ModuleKey; id: string }
   | { type: 'SYNC_HELD_ORDERS';    orders: HeldOrder[] }
+  | { type: 'TRANSFER_ORDER'; ticketId: string; toUserName: string }
   | { type: 'UPSERT_HELD_ORDER';   order:  HeldOrder  }
 
 const defaultPOS = (): POSState => ({
@@ -370,6 +371,20 @@ function reducer(state: AppState, action: Action): AppState {
       const orderTickets = state.orderTickets.map(t =>
         t.id === action.id ? { ...t, ...action.patch } : t
       )
+      storage.set('order_tickets', orderTickets)
+      return { ...state, orderTickets }
+    }
+
+    case 'TRANSFER_ORDER': {
+      const nowStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      const orderTickets = state.orderTickets.map(t => {
+        if (t.id !== action.ticketId) return t
+        return {
+          ...t,
+          server: action.toUserName,
+          transferHistory: [...(t.transferHistory ?? []), { from: t.server, to: action.toUserName, at: nowStr }],
+        }
+      })
       storage.set('order_tickets', orderTickets)
       return { ...state, orderTickets }
     }

@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react'
 import type {
@@ -59,7 +59,7 @@ import {
 } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
 
-// â”€â”€ State shape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── State shape ────────────────────────────────────────────────
 interface AppState {
   // Auth
   currentUser: User | null
@@ -100,6 +100,7 @@ interface AppState {
 type Action =
   | { type: 'LOGIN'; user: User; shift: Shift }
   | { type: 'LOGOUT' }
+  | { type: 'CLOCK_OUT' }
   | { type: 'SET_MODULE'; mod: ModuleKey }
   | { type: 'SET_PAGE'; page: string }
   | { type: 'SET_POS_STATE'; mod: ModuleKey; patch: Partial<POSState> }
@@ -110,7 +111,6 @@ type Action =
   | { type: 'SET_BIZ'; biz: BusinessConfig }
   | { type: 'ADD_AUDIT'; entry: AuditEntry }
   | { type: 'VOID_TRANSACTION'; id: number; reason: string }
-  | { type: 'CLOCK_OUT' }
   | { type: 'SET_ONLINE'; online: boolean }
   | { type: 'ADD_TO_CART'; item: CartItem }
   | { type: 'REMOVE_FROM_CART'; id: string }
@@ -208,6 +208,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'LOGIN': {
       storage.set('current_user', action.user)
       if (state.currentShift !== null) {
+        // Another employee joining an active business shift — no new shift record needed
         return { ...state, currentUser: action.user, activePage: 'pos' }
       }
       storage.set('current_shift', action.shift)
@@ -216,21 +217,23 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, currentUser: action.user, currentShift: action.shift, shifts, activePage: 'pos' }
     }
     case 'LOGOUT': {
-      const shifts = state.shifts.map(s =>
-        s.id === state.currentShift?.id ? { ...s, end: new Date().toISOString() } : s
-      )
-      storage.set('shifts', shifts)
+      // Lock screen only — keeps the business shift alive for the next employee
       storage.set('current_user', null)
-      storage.set('current_shift', null)
-      return { ...state, currentUser: null, currentShift: null, shifts, cart: [], cartPayMethod: 'cash', cartOrderType: 'dine-in', uiMode: 'pos' }
+      return { ...state, currentUser: null, cart: [], cartPayMethod: 'cash', cartOrderType: 'dine-in', uiMode: 'pos' }
     }
     case 'CLOCK_OUT': {
-      if (!state.currentShift) return state
-      const shifts = state.shifts.map(s =>
-        s.id === state.currentShift!.id ? { ...s, end: new Date().toISOString() } : s
-      )
-      storage.set('shifts', shifts)
-      return { ...state, currentShift: null, shifts }
+      // Personal clock-out — end this employee's session, business shift stays alive
+      const now = new Date().toISOString()
+      if (state.currentUser) {
+        try {
+          // Save grace period record so the same employee can resume within 40 min
+          const clockinAt = localStorage.getItem(`personal_clockin_${state.currentUser.id}`) ?? (state.currentShift?.start ?? now)
+          localStorage.setItem(`clockout_${state.currentUser.id}`, JSON.stringify({ clockinAt, at: now }))
+          localStorage.removeItem(`personal_clockin_${state.currentUser.id}`)
+        } catch {}
+      }
+      storage.set('current_user', null)
+      return { ...state, currentUser: null, cart: [], cartPayMethod: 'cash', cartOrderType: 'dine-in', uiMode: 'pos' }
     }
     case 'SET_MODULE':
       return { ...state, activeModule: action.mod, activePage: 'pos' }
@@ -296,7 +299,7 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, isOnline: action.online }
     case 'ADD_TO_CART': {
       const incoming = action.item
-      // Deduplicate: same itemId + same addon ids + same plate â†’ increment qty
+      // Deduplicate: same itemId + same addon ids + same plate → increment qty
       const existingIdx = state.cart.findIndex(ci =>
         ci.itemId === incoming.itemId &&
         ci.plate === incoming.plate &&
@@ -450,6 +453,7 @@ function reducer(state: AppState, action: Action): AppState {
           : s
       )
       storage.set('shifts', shifts)
+      storage.set('current_shift', null)
       // Held orders survive shift boundaries - next shift inherits open tables
       return { ...state, currentShift: null, shifts }
     }
@@ -688,4 +692,3 @@ export function useApp() {
   if (!ctx) throw new Error('useApp must be used inside AppProvider')
   return ctx
 }
-

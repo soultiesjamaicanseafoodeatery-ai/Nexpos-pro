@@ -37,6 +37,7 @@ export interface OrderContext {
   customerName?: string
   phone?: string
   address?: string
+  ticketNum?: string
 }
 
 interface POSPageProps {
@@ -639,7 +640,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       items: cart,
     }
 
-    const orderNum   = String(tx.id).slice(-4).padStart(4, '0')
+    const orderNum   = orderContext?.ticketNum ?? String(tx.id).slice(-4).padStart(4, '0')
     const hasKitchen = cart.some(ci => ci.module === 'restaurant')
     const hasBar     = cart.some(ci => ci.module === 'bar')
     const hasCarwash = cart.some(ci => ci.module === 'carwash')
@@ -737,7 +738,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const selTable   = posState['restaurant'].selTable ?? posState['bar'].selTable
     const nowTime    = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     const today      = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
-    const orderNum   = String(Date.now()).slice(-4).padStart(4, '0')
+    const orderNum   = orderContext?.ticketNum ?? String(Date.now()).slice(-4).padStart(4, '0')
     const hasKitchen = activeCart.some(ci => ci.module === 'restaurant')
     const hasBar     = activeCart.some(ci => ci.module === 'bar')
     const hasCarwash = activeCart.some(ci => ci.module === 'carwash')
@@ -1070,6 +1071,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             </span>
           )}
 
+          {/* Takeout ticket number */}
+          {orderContext.orderType === 'takeout' && orderContext.ticketNum && (
+            <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--txt)', background: 'var(--surf)', padding: '4px 14px', borderRadius: 'var(--r)', border: `2px solid ${mod.color}44`, flexShrink: 0 }}>
+              {orderContext.ticketNum}
+            </span>
+          )}
+
           {/* Guest count — editable for dine-in */}
           {orderContext.orderType === 'dine-in' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
@@ -1079,19 +1087,23 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             </div>
           )}
 
-          {/* Customer name */}
-          {customerName && (
+          {/* Customer name — editable inline for takeout */}
+          {orderContext.orderType === 'takeout' ? (
+            <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Name (optional)" style={{ fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--r)', border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', width: 140, flexShrink: 0 }} />
+          ) : customerName ? (
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', background: 'var(--surf)', padding: '4px 10px', borderRadius: 'var(--r)', border: '1px solid var(--bdr)', flexShrink: 0 }}>
               {customerName}
             </span>
-          )}
+          ) : null}
 
-          {/* Phone */}
-          {customerPhone && (
+          {/* Phone — editable inline for takeout */}
+          {orderContext.orderType === 'takeout' ? (
+            <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Phone (optional)" style={{ fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--r)', border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', width: 130, flexShrink: 0, fontFamily: 'var(--mono)' }} />
+          ) : customerPhone ? (
             <span style={{ fontSize: 12, color: 'var(--txt3)', fontFamily: 'var(--mono)', fontWeight: 600, flexShrink: 0 }}>
               {customerPhone}
             </span>
-          )}
+          ) : null}
 
           {/* Delivery address */}
           {orderContext.address && (

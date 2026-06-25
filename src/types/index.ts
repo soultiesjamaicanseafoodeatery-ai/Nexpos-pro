@@ -493,6 +493,7 @@ export interface OrderTicket {
   gratuityPct?:  number
   timeline:      OrderTimeline
   reprints:      ReprintLog[]
+  transferHistory?: { from: string; to: string; at: string }[]
 }
 
 // ── Promo Codes ───────────────────────────────────────────────

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { supabase } from '@/lib/supabase'
@@ -263,6 +263,17 @@ export default function SettingsPage() {
                 <option value="30">30 Minutes (Recommended)</option>
                 <option value="60">60 Minutes</option>
               </select>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--txt2)' }}>
+                <input type="checkbox"
+                  checked={form.staffOpenItemAllowed ?? false}
+                  onChange={e => set({ staffOpenItemAllowed: e.target.checked })} />
+                Allow Staff to use Open Item (sell non-menu items)
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4, marginLeft: 22 }}>
+                Admins and Managers can always use Open Item.
+              </div>
             </div>
           </div>
       {/* ` Tax & Fees ── */}
@@ -535,3 +546,4 @@ export default function SettingsPage() {
     </div>
   )
 }
+

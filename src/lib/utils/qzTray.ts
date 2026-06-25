@@ -212,7 +212,7 @@ export async function qzPrint(printerName: string, html: string, width: 58 | 80 
 // Send raw ESC/POS text to a printer.
 // Encodes the entire payload (init + text + cut) as a single base64 block so QZ Tray
 // sends exact bytes — flavor:'plain' can use the system charset and garble the output.
-export async function qzPrintRaw(printerName: string, text: string): Promise<boolean> {
+export async function qzPrintRaw(printerName: string, text: string, buzz = false): Promise<boolean> {
   if (!printerName.trim() || !text.trim()) return false
   try {
     const ok = await qzConnect()
@@ -222,10 +222,11 @@ export async function qzPrintRaw(printerName: string, text: string): Promise<boo
     const config = qz.configs.create(printerName)
 
     // Build a single ESC/POS byte stream and base64-encode the whole thing
-    const init     = [0x1B, 0x40]                                       // ESC @ — initialize
-    const textBytes = Array.from(new TextEncoder().encode(text))         // UTF-8 (ASCII-safe)
-    const feed     = [0x1B, 0x64, 0x05, 0x1D, 0x56, 0x41, 0x03]       // 5-line feed + full cut
-    const allBytes = [...init, ...textBytes, ...feed]
+    const init      = [0x1B, 0x40]                                       // ESC @ — initialize
+    const buzzer    = buzz ? [0x1B, 0x42, 0x03, 0x01] : []              // ESC B — 3 beeps × 100 ms (ignored if unsupported)
+    const textBytes = Array.from(new TextEncoder().encode(text))          // UTF-8 (ASCII-safe)
+    const feed      = [0x1B, 0x64, 0x05, 0x1D, 0x56, 0x41, 0x03]       // 5-line feed + full cut
+    const allBytes  = [...init, ...buzzer, ...textBytes, ...feed]
     let binary = ''
     for (const b of allBytes) { binary += String.fromCharCode(b) }
     const b64 = btoa(binary)

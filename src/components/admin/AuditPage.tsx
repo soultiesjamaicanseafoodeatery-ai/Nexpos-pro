@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { NO_SALE_REASON_LABELS } from '@/types'
 
@@ -81,7 +81,7 @@ export default function AuditPage() {
     count: noSaleLogs.filter((e: any) => e.reason === r).length,
   })).filter(x => x.count > 0)
 
-  const TAB: React.CSSProperties = {
+  const TAB: CSSProperties = {
     padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700,
     cursor: 'pointer', border: '1.5px solid transparent',
   }

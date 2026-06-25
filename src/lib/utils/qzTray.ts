@@ -221,12 +221,16 @@ export async function qzPrintRaw(printerName: string, text: string, buzz = false
     if (!qz) { dispatchPrintFailed('Printer offline -- QZ Tray not detected'); return false }
     const config = qz.configs.create(printerName)
 
-    // Build a single ESC/POS byte stream and base64-encode the whole thing
+    // Build a single ESC/POS byte stream and base64-encode the whole thing.
+    // Buzzer goes AFTER the cut so the ticket is already hanging out of the printer
+    // when the beeping starts — staff hears it, grabs the ticket, and the beep runs
+    // out on its own (~14 s). Ignored silently on printers without a buzzer.
     const init      = [0x1B, 0x40]                                       // ESC @ — initialize
-    const buzzer    = buzz ? [0x1B, 0x42, 0x03, 0x01] : []              // ESC B — 3 beeps × 100 ms (ignored if unsupported)
     const textBytes = Array.from(new TextEncoder().encode(text))          // UTF-8 (ASCII-safe)
-    const feed      = [0x1B, 0x64, 0x05, 0x1D, 0x56, 0x41, 0x03]       // 5-line feed + full cut
-    const allBytes  = [...init, ...buzzer, ...textBytes, ...feed]
+    const feed      = [0x1B, 0x64, 0x05]                                 // feed 5 lines
+    const cut       = [0x1D, 0x56, 0x41, 0x03]                          // partial cut
+    const buzzer    = buzz ? [0x1B, 0x42, 0x09, 0x08] : []              // ESC B — 9 beeps × 1.6 s ≈ 14 s total
+    const allBytes  = [...init, ...textBytes, ...feed, ...cut, ...buzzer]
     let binary = ''
     for (const b of allBytes) { binary += String.fromCharCode(b) }
     const b64 = btoa(binary)

@@ -115,7 +115,7 @@ export default function SettingsPage() {
       return
     }
     if (qzStatus === 'connected') {
-      setPrinterError(')
+      setPrinterError('')
       if (w === 58) {
         const { qzPrintRaw } = await import('@/lib/utils/qzTray')
         const ok = await qzPrintRaw(printerName.trim(), content)

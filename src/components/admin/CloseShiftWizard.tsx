@@ -109,7 +109,7 @@ export default function CloseShiftWizard() {
   const cashSales  = payMap['Cash'] ?? 0
   const expected   = floatNum + cashSales
   const variance   = data.countedCash.trim() ? countedNum - expected : null
-  const VAR_LIMIT  = 500
+  const VAR_LIMIT  = 5000
 
   const mgrs = users.filter(u => u.active && (u.role === 'admin' || u.role === 'manager'))
 
@@ -383,30 +383,44 @@ export default function CloseShiftWizard() {
         <CardHead title="Cash Drawer Count" sub="Count the physical cash in the drawer and record it below" />
         <CardBody>
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            {(['openingFloat','countedCash'] as const).map(k => (
-              <div key={k}>
-                <div style={{ fontSize:11, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:7 }}>
-                  {k === 'openingFloat' ? 'Opening Float (cash at start of shift)' : 'Actual Cash Counted (physical count)'}
-                </div>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span style={{ fontSize:13, color:'var(--txt3)', flexShrink:0 }}>{sym}</span>
-                  <input
-                    ref={k === 'openingFloat' ? openingFloatRef : countedCashRef}
-                    type="number" min={0} step={0.01} value={data[k]}
-                    onChange={e => setData(d => ({ ...d, [k]: e.target.value }))}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        if (k === 'openingFloat') countedCashRef.current?.focus()
-                        else if (k === 'countedCash' && data.countedCash.trim()) setCountedSubmitted(true)
-                      }
-                    }}
-                    placeholder="0.00"
-                    style={{ flex:1, padding:'10px 14px', borderRadius:'var(--r2)', fontSize:15, fontWeight:700,
-                      border:`1.5px solid ${data[k] ? 'var(--blue)' : 'var(--bdr)'}`,
-                      background:'var(--bg3)', color:'var(--txt)', outline:'none' }} />
-                </div>
+
+            {/* Opening Float */}
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:7 }}>
+                Opening Float (cash at start of shift)
               </div>
-            ))}
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:13, color:'var(--txt3)', flexShrink:0 }}>{sym}</span>
+                <input
+                  ref={openingFloatRef}
+                  type="text" inputMode="decimal" value={data.openingFloat}
+                  onChange={e => setData(d => ({ ...d, openingFloat: e.target.value.replace(/[^0-9.]/g, '') }))}
+                  onKeyDown={e => { if (e.key === 'Enter') countedCashRef.current?.focus() }}
+                  placeholder="0.00"
+                  style={{ flex:1, padding:'10px 14px', borderRadius:'var(--r2)', fontSize:15, fontWeight:700,
+                    border:`1.5px solid ${data.openingFloat ? 'var(--blue)' : 'var(--bdr)'}`,
+                    background:'var(--bg3)', color:'var(--txt)', outline:'none' }} />
+              </div>
+            </div>
+
+            {/* Actual Cash Counted */}
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:7 }}>
+                Actual Cash Counted (physical count)
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:13, color:'var(--txt3)', flexShrink:0 }}>{sym}</span>
+                <input
+                  ref={countedCashRef}
+                  type="text" inputMode="decimal" value={data.countedCash}
+                  onChange={e => setData(d => ({ ...d, countedCash: e.target.value.replace(/[^0-9.]/g, '') }))}
+                  onKeyDown={e => { if (e.key === 'Enter' && data.countedCash.trim()) setCountedSubmitted(true) }}
+                  placeholder="0.00"
+                  style={{ flex:1, padding:'10px 14px', borderRadius:'var(--r2)', fontSize:15, fontWeight:700,
+                    border:`1.5px solid ${data.countedCash ? 'var(--blue)' : 'var(--bdr)'}`,
+                    background:'var(--bg3)', color:'var(--txt)', outline:'none' }} />
+              </div>
+            </div>
 
             {/* Blind count: submit physical count first, then reveal expected */}
             {!countedSubmitted ? (

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -111,6 +111,8 @@ export default function CloseShiftWizard() {
   const totalGrat  = shiftTxs.reduce((s,tx)=>s+(tx.gratuity??0), 0)
   const netSales   = totalSales - totalRefunds
   const avgTicket  = shiftTxs.length ? totalSales / shiftTxs.length : 0
+  const openItemTotal = shiftTxs.reduce((s, tx) => s + (tx.items?.filter(ci => ci.openItem && !ci.voided).reduce((n, ci) => n + ci.price * ci.qty, 0) ?? 0), 0)
+  const openItemCount = shiftTxs.reduce((s, tx) => s + (tx.items?.filter(ci => ci.openItem && !ci.voided).reduce((n, ci) => n + ci.qty, 0) ?? 0), 0)
 
   const modMap: Record<string,{count:number;total:number}> = {}
   shiftTxs.forEach(tx => {
@@ -677,6 +679,15 @@ export default function CloseShiftWizard() {
               {totalRefunds > 0 && <SummaryRow label="Refunds Issued"    value={'-'+fmtJ(totalRefunds)} color="var(--red)" />}
               <SummaryRow label="Net Revenue (after refunds)" value={fmtJ(grandTotal - totalRefunds)} bold color="var(--grn)" />
             </div>
+
+            {/* Open Item Sales */}
+            {openItemTotal > 0 && (
+              <div style={{ background:'var(--surf)', borderRadius:'var(--r2)', padding:'14px 16px', border:'1px solid rgba(249,115,22,.3)' }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'var(--ora)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:8 }}>Open Item Sales</div>
+                <SummaryRow label="Open Items Sold" value={String(openItemCount)} />
+                <SummaryRow label="Open Item Total" value={fmtJ(openItemTotal)} bold color="var(--ora)" />
+              </div>
+            )}
           </div>
         </CardBody>
         <CardFoot>
@@ -769,6 +780,11 @@ export default function CloseShiftWizard() {
                 </div>
               ))}
             </div>
+            {openItemTotal > 0 && (
+              <div style={{ padding:'10px 14px', borderRadius:'var(--r2)', fontSize:12, color:'var(--ora)', background:'rgba(249,115,22,.08)', border:'1px solid rgba(249,115,22,.25)' }}>
+                Open Item Sales: {fmtJ(openItemTotal)} ({openItemCount} item{openItemCount !== 1 ? 's' : ''})
+              </div>
+            )}
             {data.override && (
               <div style={{ padding:'10px 14px', borderRadius:'var(--r2)', fontSize:12, color:'var(--ora)', background:'#78350f18', border:'1px solid rgba(251,146,60,.3)' }}>
                 ⚠️ Manager override is active — shift will be closed with open transactions on record.
@@ -812,6 +828,7 @@ export default function CloseShiftWizard() {
           <SummaryRow label="Restaurant Sales"  value={fmtJ(modMap['restaurant']?.total ?? 0)} color="var(--ora)" />
           <SummaryRow label="Bar Sales"         value={fmtJ(modMap['bar']?.total ?? 0)} color="var(--pur)" />
           <SummaryRow label="Car Wash Sales"    value={fmtJ(cwTotal)} color="var(--blue)" />
+          {openItemTotal > 0 && <SummaryRow label="Open Item Sales" value={fmtJ(openItemTotal)} color="var(--ora)" />}
           <SummaryRow label="Grand Total"       value={fmtJ(grandDone)} bold color="var(--grn)" />
           <SummaryRow label="Total Orders"      value={String(shiftTxs.length + cwOrders.length)} />
           {variance !== null && (
@@ -880,5 +897,6 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
+
 
 

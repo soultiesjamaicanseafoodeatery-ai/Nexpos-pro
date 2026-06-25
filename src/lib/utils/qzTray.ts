@@ -210,7 +210,7 @@ export async function qzPrint(printerName: string, html: string, width: 58 | 80 
 }
 
 // Send raw ESC/POS text to a printer -- bypasses Windows paper-size settings.
-// Used for 58mm kitchen printers whose driver only knows 80mm paper.
+// Used for 58mm kitchen/bar printers whose driver only knows 80mm paper.
 export async function qzPrintRaw(printerName: string, text: string): Promise<boolean> {
   if (!printerName.trim() || !text.trim()) return false
   try {
@@ -222,7 +222,7 @@ export async function qzPrintRaw(printerName: string, text: string): Promise<boo
     const b64cmd = (bytes: number[]) => btoa(String.fromCharCode(...bytes))
     await qz.print(config, [
       { type: 'raw', format: 'command', flavor: 'base64', data: b64cmd([0x1B, 0x40]) },
-      { type: 'raw', format: 'plain',   flavor: 'plain',  data: text },
+      { type: 'raw', format: 'command', flavor: 'plain',  data: text },
       { type: 'raw', format: 'command', flavor: 'base64', data: b64cmd([0x1B, 0x64, 0x05, 0x1D, 0x56, 0x41, 0x03]) },
     ])
     return true

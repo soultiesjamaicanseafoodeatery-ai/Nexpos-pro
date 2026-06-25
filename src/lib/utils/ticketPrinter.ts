@@ -137,6 +137,7 @@ export function buildCustomerReceipt(
   // ── Totals
   L.push(row('Subtotal:', fmtN(tx.sub), w))
   if (tx.disc > 0)                              L.push(row('Discount:', '-' + fmtN(tx.disc), w))
+  if ((tx.gct ?? 0) > 0)                        L.push(row(`GCT (15%):`, fmtN(tx.gct!), w))
   if ((tx.serviceCharge ?? 0) > 0)              L.push(row('Service (10%):', fmtN(tx.serviceCharge!), w))
   if ((tx.gratuity ?? 0) > 0)                   L.push(row(`Gratuity (${tx.gratuityPct ?? 15}%):`, fmtN(tx.gratuity!), w))
   if ((tx.surchargeTotal ?? 0) > 0)             L.push(row('Surcharges:', fmtN(tx.surchargeTotal!), w))

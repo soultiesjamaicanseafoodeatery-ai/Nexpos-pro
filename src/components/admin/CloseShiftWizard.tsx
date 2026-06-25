@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { hashPin } from '@/lib/utils/hash'
 import type { User } from '@/types'
@@ -56,6 +56,7 @@ export default function CloseShiftWizard() {
   const [pin,     setPin]     = useState('')
   const [pinErr,  setPinErr]  = useState('')
   const [pinSt,   setPinSt]   = useState<'idle'|'error'|'success'>('idle')
+  const countedCashRef = useRef<HTMLInputElement>(null)
   const [closing,  setClosing]  = useState(false)
   const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
   const [savedShiftStart, setSavedShiftStart] = useState<string | null>(null)
@@ -132,6 +133,18 @@ export default function CloseShiftWizard() {
       }, 100)
     }
   }, [pinUser, pin])
+
+  // Keyboard support for PIN pad — type digits or Backspace when a user is selected
+  useEffect(() => {
+    if (step !== 'auth') return
+    const handler = (e: KeyboardEvent) => {
+      if (!pinUser) return
+      if (e.key >= '0' && e.key <= '9') pressPin(e.key)
+      else if (e.key === 'Backspace') { setPin(p => p.slice(0, -1)); setPinErr('') }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [step, pinUser, pressPin])
 
   // ── System validation ─────────────────────────────────────────
   useEffect(() => {
@@ -358,8 +371,17 @@ export default function CloseShiftWizard() {
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <span style={{ fontSize:13, color:'var(--txt3)', flexShrink:0 }}>{sym}</span>
-                  <input type="number" min={0} step={0.01} value={data[k]}
+                  <input
+                    ref={k === 'countedCash' ? countedCashRef : undefined}
+                    autoFocus={k === 'openingFloat'}
+                    type="number" min={0} step={0.01} value={data[k]}
                     onChange={e => setData(d => ({ ...d, [k]: e.target.value }))}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        if (k === 'openingFloat') countedCashRef.current?.focus()
+                        else if (k === 'countedCash' && data.countedCash.trim()) setCountedSubmitted(true)
+                      }
+                    }}
                     placeholder="0.00"
                     style={{ flex:1, padding:'10px 14px', borderRadius:'var(--r2)', fontSize:15, fontWeight:700,
                       border:`1.5px solid ${data[k] ? 'var(--blue)' : 'var(--bdr)'}`,

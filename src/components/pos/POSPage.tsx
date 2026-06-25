@@ -876,7 +876,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       { reason: reasonText, qty: item.qty }
     )
     const _pw = (biz.printers?.width ?? 80) as 58 | 80
-    smartPrint(html, 'VOID Ticket', biz.printers?.kitchen, _pw, true)
+    smartPrint(html, 'VOID Ticket', biz.printers?.kitchen, _pw, true, true)
     audit('VOID_ITEM', `Voided ${item.name} from Order #${ticket.orderNum} — ${reasonText}`, 'warn')
     setVoidTarget(null)
   }
@@ -901,7 +901,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     if (ticket.hasKitchen || ticket.hasBar) {
       const html = buildVoidTicket(ticket.orderNum, `ENTIRE ORDER (${ticket.items.filter(ci => !ci.voided).length} items)`, currentUser.name, nowTime, { reason: reasonText })
       const _pw2 = (biz.printers?.width ?? 80) as 58 | 80
-      smartPrint(html, 'VOID — Entire Order', biz.printers?.kitchen, _pw2, true)
+      smartPrint(html, 'VOID — Entire Order', biz.printers?.kitchen, _pw2, true, true)
     }
     audit('VOID_ORDER', `Order #${ticket.orderNum} voided — ${reasonText}`, 'warn')
     setVoidOrderTarget(null)

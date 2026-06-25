@@ -175,7 +175,7 @@ export default function NoSaleModal({ isOpen, onClose }: Props) {
               <div style={{ fontSize: 13, color: 'var(--txt2)', marginBottom: 16, lineHeight: 1.5 }}>Enter a manager or admin PIN to open the cash drawer.</div>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <input
-                  type="password" inputMode="numeric" maxLength={4}
+                  type="password" inputMode="numeric" maxLength={4} autoComplete="new-password"
                   value={pin}
                   onChange={e => { setPin(e.target.value.replace(/\D/g, '')); setPinError('') }}
                   onKeyDown={e => { if (e.key === 'Enter' && pin.length >= 4) onPinSubmit() }}

@@ -52,6 +52,7 @@ export async function smartPrint(
   printerName?: string,
   width: PrintWidth = 80,
   silentOnly = false,
+  buzz = false,
 ): Promise<void> {
   if (!html) return
   if (printerName?.trim()) {
@@ -59,7 +60,7 @@ export async function smartPrint(
     const text = html
       .replace(/<\/?pre>/g, '')
       .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    const ok = await qzPrintRaw(printerName.trim(), text)
+    const ok = await qzPrintRaw(printerName.trim(), text, buzz)
     if (ok) return
   }
   if (!silentOnly) {

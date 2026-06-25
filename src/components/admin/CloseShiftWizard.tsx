@@ -58,6 +58,7 @@ export default function CloseShiftWizard() {
   const [pinSt,   setPinSt]   = useState<'idle'|'error'|'success'>('idle')
   const openingFloatRef = useRef<HTMLInputElement>(null)
   const countedCashRef  = useRef<HTMLInputElement>(null)
+  const [countedHasValue, setCountedHasValue] = useState(false)
   const [closing,  setClosing]  = useState(false)
   const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
   const [savedShiftStart, setSavedShiftStart] = useState<string | null>(null)
@@ -393,12 +394,12 @@ export default function CloseShiftWizard() {
                 <span style={{ fontSize:13, color:'var(--txt3)', flexShrink:0 }}>{sym}</span>
                 <input
                   ref={openingFloatRef}
-                  type="text" inputMode="decimal" value={data.openingFloat}
-                  onChange={e => setData(d => ({ ...d, openingFloat: e.target.value.replace(/[^0-9.]/g, '') }))}
+                  type="text" inputMode="decimal"
+                  defaultValue={data.openingFloat}
                   onKeyDown={e => { if (e.key === 'Enter') countedCashRef.current?.focus() }}
                   placeholder="0.00"
                   style={{ flex:1, padding:'10px 14px', borderRadius:'var(--r2)', fontSize:15, fontWeight:700,
-                    border:`1.5px solid ${data.openingFloat ? 'var(--blue)' : 'var(--bdr)'}`,
+                    border:'1.5px solid var(--bdr)',
                     background:'var(--bg3)', color:'var(--txt)', outline:'none' }} />
               </div>
             </div>
@@ -412,12 +413,16 @@ export default function CloseShiftWizard() {
                 <span style={{ fontSize:13, color:'var(--txt3)', flexShrink:0 }}>{sym}</span>
                 <input
                   ref={countedCashRef}
-                  type="text" inputMode="decimal" value={data.countedCash}
-                  onChange={e => setData(d => ({ ...d, countedCash: e.target.value.replace(/[^0-9.]/g, '') }))}
-                  onKeyDown={e => { if (e.key === 'Enter' && data.countedCash.trim()) setCountedSubmitted(true) }}
+                  type="text" inputMode="decimal"
+                  defaultValue={data.countedCash}
+                  onInput={e => setCountedHasValue(!!e.currentTarget.value.trim())}
+                  onKeyDown={e => { if (e.key === 'Enter' && countedCashRef.current?.value.trim()) {
+                    setData(d => ({ ...d, openingFloat: openingFloatRef.current?.value ?? '', countedCash: countedCashRef.current?.value ?? '' }))
+                    setCountedSubmitted(true)
+                  }}}
                   placeholder="0.00"
                   style={{ flex:1, padding:'10px 14px', borderRadius:'var(--r2)', fontSize:15, fontWeight:700,
-                    border:`1.5px solid ${data.countedCash ? 'var(--blue)' : 'var(--bdr)'}`,
+                    border:'1.5px solid var(--bdr)',
                     background:'var(--bg3)', color:'var(--txt)', outline:'none' }} />
               </div>
             </div>
@@ -425,12 +430,15 @@ export default function CloseShiftWizard() {
             {/* Blind count: submit physical count first, then reveal expected */}
             {!countedSubmitted ? (
               <button
-                onClick={() => { if (data.countedCash.trim()) setCountedSubmitted(true) }}
-                disabled={!data.countedCash.trim()}
+                onClick={() => { if (countedCashRef.current?.value.trim()) {
+                  setData(d => ({ ...d, openingFloat: openingFloatRef.current?.value ?? '', countedCash: countedCashRef.current?.value ?? '' }))
+                  setCountedSubmitted(true)
+                }}}
+                disabled={!countedHasValue}
                 style={{ marginTop:4, padding:'11px 0', borderRadius:'var(--r2)', fontSize:13, fontWeight:800,
-                  cursor:data.countedCash.trim()?'pointer':'not-allowed',
-                  background:data.countedCash.trim()?'var(--blue)':'var(--surf3)',
-                  color:data.countedCash.trim()?'#fff':'var(--txt3)', border:'none', width:'100%' }}>
+                  cursor:countedHasValue?'pointer':'not-allowed',
+                  background:countedHasValue?'var(--blue)':'var(--surf3)',
+                  color:countedHasValue?'#fff':'var(--txt3)', border:'none', width:'100%' }}>
                 Submit Count &amp; Reveal Expected
               </button>
             ) : (

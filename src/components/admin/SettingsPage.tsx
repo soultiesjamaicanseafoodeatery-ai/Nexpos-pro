@@ -128,7 +128,7 @@ export default function SettingsPage() {
       setPrinterError(`QZ Tray could not send to "${printerName.trim()}". Check Console (F12) for the exact error — common causes: wrong printer name, or certificate not yet trusted in QZ Tray Advanced.`)
     }
     // Fallback: browser print dialog (only for 80mm receipt/bar)
-    const win = window.open(', '_blank', 'width=440,height=600,menubar=no,toolbar=no')
+    const win = window.open('', '_blank', 'width=440,height=600,menubar=no,toolbar=no')
     if (!win) return
     win.document.write(`<!DOCTYPE html><html><head><title>${label}</title><style>
       *{margin:0;padding:0;box-sizing:border-box}

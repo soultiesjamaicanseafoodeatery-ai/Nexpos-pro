@@ -99,23 +99,12 @@ export default function Topbar() {
     return () => clearInterval(id)
   }, [])
 
-  const { color, bg } = MOD_COLOR[activeModule]
 
   return (
     <div style={{
       height: 52, background: 'var(--bg2)', borderBottom: '1px solid var(--bdr)',
       display: 'flex', alignItems: 'center', padding: '0 15px', gap: 8, flexShrink: 0,
     }}>
-      {/* Module badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 11px', borderRadius: 20, fontSize: 11, fontWeight: 800, color, background: bg, flexShrink: 0 }}>
-        {MOD_LABEL[activeModule]}
-      </div>
-
-      {/* Page title */}
-      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.2px', flexShrink: 0 }}>
-        {PAGE_TITLES[activePage]?.[activeModule] ?? PAGE_TITLES[activePage]?.['default'] ?? GENERIC_PAGE_TITLES[activePage] ?? activePage}
-      </div>
-
       {/* Order type pills — POS page, restaurant/bar only */}
       {activePage === 'pos' && activeModule !== 'carwash' && hasRestaurantItems && (
         <div style={{ display: 'flex', gap: 4, flex: 1 }}>

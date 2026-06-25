@@ -43,6 +43,9 @@ function wrap(text: string, indent: number, w: number): string[] {
 // ── Smart print — tries QZ Tray first, falls back to browser ─
 // silentOnly: when true, skips browser fallback — use for auto-prints triggered by system events.
 // Leave false (default) for user-initiated prints so they always get a fallback dialog.
+//
+// Always uses qzPrintRaw (ESC/POS plain text) regardless of paper width.
+// The old HTML pixel path (qzPrint) rendered blank pages on most thermal printer drivers.
 export async function smartPrint(
   html: string,
   title: string,
@@ -52,16 +55,12 @@ export async function smartPrint(
 ): Promise<void> {
   if (!html) return
   if (printerName?.trim()) {
-    if (width === 58) {
-      const { qzPrintRaw } = await import('./qzTray')
-      const text = html.replace(/<\/?pre>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      const ok = await qzPrintRaw(printerName.trim(), text)
-      if (ok) return
-    } else {
-      const { qzPrint } = await import('./qzTray')
-      const ok = await qzPrint(printerName.trim(), html, width)
-      if (ok) return
-    }
+    const { qzPrintRaw } = await import('./qzTray')
+    const text = html
+      .replace(/<\/?pre>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    const ok = await qzPrintRaw(printerName.trim(), text)
+    if (ok) return
   }
   if (!silentOnly) {
     printTicket(html, title)

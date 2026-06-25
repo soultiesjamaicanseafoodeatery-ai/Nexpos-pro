@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -13,6 +13,7 @@ import TicketModal from './TicketModal'
 import SplitBillModal from './SplitBillModal'
 import VoidReasonModal from './VoidReasonModal'
 import NoSaleModal from './NoSaleModal'
+import OpenItemModal from './OpenItemModal'
 import { MODULE_DATA } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
 import { storage } from '@/lib/utils/storage'
@@ -87,7 +88,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [showSplitBill, setShowSplitBill] = useState(false)
   const [showHeld,      setShowHeld]      = useState(false)
   const [showOpen,      setShowOpen]      = useState(false)
-  const [showNoSale, setShowNoSale] = useState(false)
+  const [showNoSale,    setShowNoSale]    = useState(false)
+  const [showOpenItem,  setShowOpenItem]  = useState(false)
   const [confirmClear,      setConfirmClear]      = useState(false)
   const [confirmDeleteHeld, setConfirmDeleteHeld] = useState<string | null>(null)
   const [pendingBarAdd,    setPendingBarAdd]    = useState<'modal' | 'direct' | null>(null)
@@ -525,6 +527,22 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     }
   }
 
+  const handleAddOpenItem = (description: string, price: number) => {
+    if (!currentUser) return
+    const cartItem: CartItem = {
+      id: crypto.randomUUID(),
+      itemId: 'OPEN_ITEM',
+      name: description,
+      price,
+      qty: 1,
+      addons: [],
+      module: activeModule,
+      openItem: true,
+    }
+    dispatch({ type: 'ADD_TO_CART', item: cartItem })
+    audit('OPEN_ITEM', `Open Item: "${description}" — ${fmt(price, sym)}`, 'info')
+  }
+
   const completeCheckout = (payData: { method: string; tender?: number; changeDue?: number; payments?: PaymentEntry[] }, overrideCalc?: ReturnType<typeof calcCart>) => {
     if (!currentUser) return
 
@@ -863,6 +881,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
   // ── Void entire open order (manager/admin only) ────────────
   const isManager = ['admin','manager'].includes(role)
+  const canUseOpenItem = isManager || !!(biz as any).staffOpenItemAllowed
   const handleVoidEntireOrder = (ticket: OrderTicket, reason: VoidReason, reasonText: string) => {
     if (!currentUser) return
     const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -1603,7 +1622,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                   </button>
                 </div>
 
-                <button onClick={() => setShowNoSale(true)}
+                {canUseOpenItem && (
+                  <button onClick={() => setShowOpenItem(true)}
+                    style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--ora)', border: '1px solid rgba(249,115,22,.3)', cursor: 'pointer', letterSpacing: '.2px' }}>
+                    &#43; Open Item
+                  </button>
+                )}
+                <button onClick={() => setShowNoSale(true)}>
                 style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1px dashed var(--bdr)', cursor: 'pointer', letterSpacing: '.3px' }}>
                 No Sale &#8212; Open Drawer
               </button>
@@ -1839,6 +1864,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       />
 
       {/* ── Void Entire Order Modal ── */}
+      <OpenItemModal isOpen={showOpenItem} onClose={() => setShowOpenItem(false)} onAdd={handleAddOpenItem} currencySymbol={sym} />
       <NoSaleModal isOpen={showNoSale} onClose={() => setShowNoSale(false)} />
       <VoidReasonModal
         isOpen={!!voidOrderTarget}
@@ -2075,3 +2101,4 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     </div>
   )
 }
+

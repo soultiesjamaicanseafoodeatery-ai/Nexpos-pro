@@ -758,7 +758,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
   // ── Send Order: print kitchen/bar tickets, keep order open ────
   const sendOrder = () => {
-    if (activeCart.length === 0) { toast('Add items before sending', 'warn'); return }
+    if (activeCart.length === 0) return
     if (!currentUser) return
 
     const selTable   = posState['restaurant'].selTable ?? posState['bar'].selTable
@@ -904,13 +904,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       smartPrint(html, 'VOID — Entire Order', biz.printers?.kitchen, _pw2, true)
     }
     audit('VOID_ORDER', `Order #${ticket.orderNum} voided — ${reasonText}`, 'warn')
-    toast(`Order #${ticket.orderNum} voided`, 'warn')
     setVoidOrderTarget(null)
   }
 
   // ── Add current cart items to an existing open order ───────
   const addToExistingOrder = (ticket: OrderTicket) => {
-    if (activeCart.length === 0) { toast('Cart is empty', 'warn'); return }
+    if (activeCart.length === 0) return
     if (!currentUser) return
     const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     const today   = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
@@ -940,7 +939,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   }
 
   const holdOrder = () => {
-    if (cart.length === 0) { toast('Nothing to hold', 'warn'); return }
+    if (cart.length === 0) return
     if (!currentUser) return
     const selTable = posState['restaurant'].selTable ?? posState['bar'].selTable
     const label = customerName || (selTable ? `Table ${selTable}` : `Order ${Date.now().toString().slice(-4)}`)
@@ -1526,13 +1525,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 </button>
                 {discMode === 'pct' ? (
                   <>
-                    <input type="number" min={0} max={100} value={discPct || ''} onChange={e => { const v = Math.min(100, Math.max(0, Number(e.target.value)||0)); if (v > 20 && !isManager) { toast('Large discounts require manager access', 'warn'); return }; setDiscPct(v) }} placeholder="0"
+                    <input type="number" min={0} max={100} value={discPct || ''} onChange={e => { const v = Math.min(100, Math.max(0, Number(e.target.value)||0)); if (v > 20 && !isManager) return; setDiscPct(v) }} placeholder="0"
                       style={{ width: 46, background: 'var(--surf2)', border: `1px solid ${discPct>0?'var(--grn)':'var(--bdr2)'}`, borderRadius: 6, padding: '4px 6px', fontSize: 13, color: discPct>0?'var(--grn)':'var(--txt)', textAlign: 'right' }} />
                     <span style={{ fontSize: 11, color: 'var(--txt3)' }}>%</span>
                   </>
                 ) : (
                   <>
-                    <input type="number" min={0} value={discFlat || ''} onChange={e => { const v = Math.max(0, Number(e.target.value)||0); if (v > calc.sub*0.2 && !isManager) { toast('Large discounts require manager access', 'warn'); return }; setDiscFlat(v) }} placeholder="0"
+                    <input type="number" min={0} value={discFlat || ''} onChange={e => { const v = Math.max(0, Number(e.target.value)||0); if (v > calc.sub*0.2 && !isManager) return; setDiscFlat(v) }} placeholder="0"
                       style={{ width: 60, background: 'var(--surf2)', border: `1px solid ${discFlat>0?'var(--grn)':'var(--bdr2)'}`, borderRadius: 6, padding: '4px 6px', fontSize: 13, color: discFlat>0?'var(--grn)':'var(--txt)', textAlign: 'right' }} />
                     <span style={{ fontSize: 11, color: 'var(--txt3)' }}>{sym}</span>
                   </>
@@ -1604,13 +1603,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 </div>
 
                 {/* Pay */}
-                <button onClick={() => { if (cart.length===0){toast('Add items first','warn');return}; setShowDetails(true); setShowPayment(true) }} disabled={cart.length === 0} style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r)', fontSize: 12, fontWeight: 900, border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', color: cart.length > 0 ? '#fff' : 'var(--txt3)', background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)', letterSpacing: '.3px', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <button onClick={() => { if (cart.length===0) return; setShowDetails(true); setShowPayment(true) }} disabled={cart.length === 0} style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r)', fontSize: 12, fontWeight: 900, border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', color: cart.length > 0 ? '#fff' : 'var(--txt3)', background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)', letterSpacing: '.3px', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   ✓ Pay {cart.length > 0 ? fmt(calc.total, sym) : '—'}
                 </button>
 
                 {/* Split / Hold / Clear */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-                  <button onClick={() => { if (cart.length===0){toast('Add items first','warn');return}; setShowSplitBill(true) }}
+                  <button onClick={() => { if (cart.length===0) return; setShowSplitBill(true) }}
                     style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Split</button>
                   <button onClick={holdOrder}
                     style={{ minHeight: 44, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}>Hold</button>

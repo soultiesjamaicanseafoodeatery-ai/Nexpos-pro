@@ -1,4 +1,4 @@
-﻿﻿'use client'
+﻿'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -807,17 +807,18 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       customerName: customerName || undefined,
     }
     const pw2 = (biz.printers?.width ?? 80) as 58 | 80
+    // silentOnly=false on Send to Kitchen: opens browser dialog if QZ Tray is unavailable
     if (hasKitchen) {
       const html = buildKitchenTicket(ticketData, { width: pw2 })
-      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, pw2, true)
+      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, pw2, false)
     }
     if (hasBar) {
       const html = buildBarTicket(ticketData, { width: pw2 })
-      smartPrint(html, 'Bar Ticket', biz.printers?.bar || biz.printers?.kitchen, pw2, true)
+      smartPrint(html, 'Bar Ticket', biz.printers?.bar || biz.printers?.kitchen, pw2, false)
     }
     if (hasCarwash) {
       const html = buildCarwashWorkOrder(ticketData, { width: pw2 })
-      smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw2, true)
+      smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw2, false)
     }
 
     dispatch({ type: 'ADD_ORDER_TICKET', ticket: newTicket })

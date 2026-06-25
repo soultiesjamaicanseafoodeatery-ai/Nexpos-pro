@@ -1,12 +1,13 @@
-﻿'use client'
+'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { User, Shift } from '@/types'
 import { ROLES } from '@/lib/data/seed'
 import { hashPin } from '@/lib/utils/hash'
 
 const WEAK_PINS = ['1234', '2222', '3333', '4444', '5555', '6666', '0000', '1111', '9999', '1212']
+const GRACE_MS  = 40 * 60 * 1000  // 40-minute resume window after clock-out
 
 const MOD_TAG_CLS: Record<string, string> = {
   restaurant: 'mod-rest',
@@ -20,7 +21,7 @@ const MOD_TAG_LBL: Record<string, string> = {
 }
 
 
-// â”€â”€ PIN lockout helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── PIN lockout helpers ───────────────────────────────────────
 const MAX_PIN_ATTEMPTS = 5
 const LOCKOUT_DURATION_MS = 10 * 60 * 1000
 
@@ -57,6 +58,21 @@ function clearFailedAttempts(userId: string) {
     localStorage.removeItem(getLockoutKey(userId))
   } catch {}
 }
+
+// ── Grace period helpers ──────────────────────────────────────
+interface ClockoutRecord { clockinAt: string; at: string }
+
+function getGraceRecord(userId: string): ClockoutRecord | null {
+  try {
+    const raw = localStorage.getItem(`clockout_${userId}`)
+    if (!raw) return null
+    const rec: ClockoutRecord = JSON.parse(raw)
+    if (Date.now() - new Date(rec.at).getTime() < GRACE_MS) return rec
+    localStorage.removeItem(`clockout_${userId}`)
+  } catch {}
+  return null
+}
+
 export default function AuthScreen() {
   const { state, dispatch, toast } = useApp()
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
@@ -67,6 +83,15 @@ export default function AuthScreen() {
   const [lockoutInfo, setLockoutInfo] = useState<{ locked: boolean; remaining: number }>({ locked: false, remaining: 0 })
   const [screenLocked, setScreenLocked] = useState(true)
   const [clockTime, setClockTime] = useState(() => new Date())
+  // Grace period resume dialog
+  const [graceRecord, setGraceRecord]   = useState<ClockoutRecord | null>(null)
+  const [pendingUser, setPendingUser]   = useState<User | null>(null)
+
+  // Use a ref so doLogin always has the latest dispatch/state without stale closures
+  const dispatchRef = useRef(dispatch)
+  useEffect(() => { dispatchRef.current = dispatch }, [dispatch])
+  const moduleRef = useRef(state.activeModule)
+  useEffect(() => { moduleRef.current = state.activeModule }, [state.activeModule])
 
   const activeUsers = state.users.filter(u => u.active)
 
@@ -85,10 +110,57 @@ export default function AuthScreen() {
     setPinState('idle')
   }, [])
 
+  const doLogin = useCallback((user: User, isResume: boolean, clockinAt?: string) => {
+    const now = new Date().toISOString()
+    const nowStr = new Date().toLocaleString()
+    clearFailedAttempts(user.id)
+
+    if (isResume && clockinAt) {
+      // Restore original clock-in time so session duration is continuous
+      try { localStorage.setItem(`personal_clockin_${user.id}`, clockinAt) } catch {}
+      try { localStorage.removeItem(`clockout_${user.id}`) } catch {}
+    } else {
+      // Fresh clock-in — only set if no existing session (coming from LOGOUT, not CLOCK_OUT)
+      try {
+        if (!localStorage.getItem(`personal_clockin_${user.id}`)) {
+          localStorage.setItem(`personal_clockin_${user.id}`, now)
+        }
+      } catch {}
+    }
+
+    const shift: Shift = {
+      id: 'SH' + Date.now(),
+      userId: user.id,
+      userName: user.name,
+      role: user.role,
+      modules: user.allowedModules,
+      start: now,
+      end: null,
+      txCount: 0,
+      revenue: 0,
+    }
+
+    setScreenLocked(true)
+    dispatchRef.current({ type: 'LOGIN', user, shift })
+    dispatchRef.current({
+      type: 'ADD_AUDIT',
+      entry: {
+        id: crypto.randomUUID(), ts: nowStr,
+        user: user.name, userId: user.id,
+        action: isResume ? 'SHIFT_RESUME' : 'CLOCK_IN',
+        detail: isResume
+          ? `${user.name} resumed shift (clocked back in within grace period)`
+          : `${user.name} clocked in`,
+        type: 'info',
+        mod: moduleRef.current,
+      },
+    })
+  }, [])
+
   const pressKey = useCallback((digit: string) => {
     if (!selectedUser) { toast('Tap your name first', 'warn'); return }
     const lockout = isLockedOut(selectedUser.id)
-    if (lockout.locked) { setLockoutInfo(lockout); setError(`Account locked â€” try again in \ min`); return }
+    if (lockout.locked) { setLockoutInfo(lockout); setError(`Account locked — try again in ${lockout.remaining} min`); return }
     if (pin.length >= 4) return
     setError('')
     const newPin = pin + digit
@@ -117,38 +189,36 @@ export default function AuthScreen() {
 
         if (correct) {
           setPinState('success')
+          const wasWeakPin = WEAK_PINS.includes(newPin)
           setTimeout(() => {
-            const shift: Shift = {
-              id: 'SH' + Date.now(),
-              userId: selectedUser.id,
-              userName: selectedUser.name,
-              role: selectedUser.role,
-              modules: selectedUser.allowedModules,
-              start: new Date().toISOString(),
-              end: null,
-              txCount: 0,
-              revenue: 0,
+            // Check if this user clocked out recently — offer to resume
+            const rec = getGraceRecord(selectedUser.id)
+            if (rec) {
+              setPendingUser(selectedUser)
+              setGraceRecord(rec)
+              if (wasWeakPin) setShowWeakPinWarning(true)
+            } else {
+              doLogin(selectedUser, false)
+              if (wasWeakPin) setShowWeakPinWarning(true)
             }
-            clearFailedAttempts(selectedUser.id)
-            setScreenLocked(true)
-            dispatch({ type: 'LOGIN', user: selectedUser, shift })
-            if (WEAK_PINS.includes(newPin)) setShowWeakPinWarning(true)
           }, 280)
         } else {
           const attempts = recordFailedAttempt(selectedUser.id)
-          const lockout = isLockedOut(selectedUser.id)
-          setLockoutInfo(lockout)
+          const lockout2 = isLockedOut(selectedUser.id)
+          setLockoutInfo(lockout2)
           setPinState('error')
-          setError(lockout.locked ? `Account locked for \ min â€” too many failed attempts` : `Incorrect PIN â€” try again (\/\)`)
+          setError(lockout2.locked
+            ? `Account locked for ${lockout2.remaining} min — too many failed attempts`
+            : `Incorrect PIN — try again (${attempts}/${MAX_PIN_ATTEMPTS})`)
           setTimeout(() => {
             setPin('')
             setPinState('idle')
-            if (!lockout.locked) setError('')
+            if (!lockout2.locked) setError('')
           }, 1000)
         }
       }, 200)
     }
-  }, [selectedUser, pin, dispatch, toast])
+  }, [selectedUser, pin, toast, doLogin])
 
   const delKey = useCallback(() => {
     setPin(p => p.slice(0, -1))
@@ -160,7 +230,7 @@ export default function AuthScreen() {
     setPinState('idle')
   }, [])
 
-  // Keyboard support â€” digits, Backspace, Escape
+  // Keyboard support — digits, Backspace, Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key >= '0' && e.key <= '9') {
@@ -182,6 +252,62 @@ export default function AuthScreen() {
   }, [])
 
   const bizName = state.biz?.name || 'NexPOS Pro'
+
+  // ── Grace period resume dialog ───────────────────────────────
+  if (graceRecord && pendingUser) {
+    const minsAgo   = Math.max(0, Math.floor((Date.now() - new Date(graceRecord.at).getTime()) / 60000))
+    const minsLeft  = Math.floor(GRACE_MS / 60000) - minsAgo
+    const user      = pendingUser
+    const rec       = graceRecord
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, background: 'var(--bg)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 1000, padding: 20,
+      }}>
+        <div style={{
+          background: 'var(--bg2)', border: '1px solid var(--bdr)',
+          borderRadius: 'var(--r4)', width: '100%', maxWidth: 400,
+          overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,.6)',
+          padding: 28,
+        }}>
+          <div style={{ fontSize: 36, textAlign: 'center', marginBottom: 16 }}>⏱</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)', textAlign: 'center', marginBottom: 8 }}>
+            Resume Your Shift?
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--txt3)', textAlign: 'center', marginBottom: 24, lineHeight: 1.5 }}>
+            You clocked out {minsAgo} minute{minsAgo !== 1 ? 's' : ''} ago.
+            <br />You have {minsLeft} minute{minsLeft !== 1 ? 's' : ''} left to resume.
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
+            <button
+              onClick={() => {
+                setGraceRecord(null)
+                setPendingUser(null)
+                doLogin(user, true, rec.clockinAt)
+              }}
+              style={{ width: '100%', padding: '13px', borderRadius: 'var(--r2)', fontSize: 14, fontWeight: 800,
+                background: 'var(--grn)', color: '#fff', border: 'none', cursor: 'pointer' }}
+            >
+              Resume My Shift
+            </button>
+            <button
+              onClick={() => {
+                try { localStorage.removeItem(`clockout_${user.id}`) } catch {}
+                setGraceRecord(null)
+                setPendingUser(null)
+                doLogin(user, false)
+              }}
+              style={{ width: '100%', padding: '11px', borderRadius: 'var(--r2)', fontSize: 13, fontWeight: 700,
+                background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}
+            >
+              Start New Session
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (screenLocked) return (
     <div style={{
@@ -222,7 +348,7 @@ export default function AuthScreen() {
         overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,.6)',
         display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 500,
       }}>
-        {/* LEFT â€” name list */}
+        {/* LEFT — name list */}
         <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--bdr)' }}>
           <div style={{
             padding: '20px 20px 14px', textAlign: 'center',
@@ -237,6 +363,8 @@ export default function AuthScreen() {
             {activeUsers.map(user => {
               const role = ROLES[user.role]
               const isSelected = selectedUser?.id === user.id
+              let hasGrace = false
+              try { hasGrace = !!getGraceRecord(user.id) } catch {}
               return (
                 <button
                   key={user.id}
@@ -267,6 +395,11 @@ export default function AuthScreen() {
                             </span>
                           ))
                       }
+                      {hasGrace && (
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: 'rgba(251,146,60,.15)', color: 'var(--ora)' }}>
+                          ⏱ Resume?
+                        </span>
+                      )}
                     </div>
                   </div>
                 </button>
@@ -275,7 +408,7 @@ export default function AuthScreen() {
           </div>
         </div>
 
-        {/* RIGHT â€” PIN entry */}
+        {/* RIGHT — PIN entry */}
         <div style={{ display: 'flex', flexDirection: 'column', padding: 20 }}>
           {!selectedUser ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--txt3)', textAlign: 'center', gap: 12 }}>
@@ -292,7 +425,7 @@ export default function AuthScreen() {
                   <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>{selectedUser.name}</div>
                   <div style={{ fontSize: 10.5, color: 'var(--txt3)', marginTop: 1 }}>{ROLES[selectedUser.role]?.label}</div>
                 </div>
-                <button onClick={resetAuth} style={{ background: 'transparent', border: 'none', color: 'var(--txt3)', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>Ã—</button>
+                <button onClick={resetAuth} style={{ background: 'transparent', border: 'none', color: 'var(--txt3)', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
               </div>
 
               {/* PIN dots */}
@@ -338,7 +471,7 @@ export default function AuthScreen() {
                 ))}
                 <button onClick={clearKey} style={{ padding: '15px 8px', borderRadius: 'var(--r)', background: 'var(--surf)', border: '1px solid var(--bdr)', fontSize: 12, color: 'var(--txt3)', cursor: 'pointer', transition: 'all .12s' }}>CLR</button>
                 <button onClick={() => pressKey('0')} style={{ padding: '15px 8px', borderRadius: 'var(--r)', background: 'var(--surf)', border: '1px solid var(--bdr)', fontSize: 19, fontWeight: 700, color: 'var(--txt)', cursor: 'pointer', textAlign: 'center', transition: 'all .12s', fontFamily: 'var(--mono)' }}>0</button>
-                <button onClick={delKey} style={{ padding: '15px 8px', borderRadius: 'var(--r)', background: 'var(--surf)', border: '1px solid var(--bdr)', fontSize: 15, color: 'var(--txt3)', cursor: 'pointer', transition: 'all .12s' }}>âŒ«</button>
+                <button onClick={delKey} style={{ padding: '15px 8px', borderRadius: 'var(--r)', background: 'var(--surf)', border: '1px solid var(--bdr)', fontSize: 15, color: 'var(--txt3)', cursor: 'pointer', transition: 'all .12s' }}>⌫</button>
               </div>
 
               <div style={{ color: 'var(--red)', fontSize: 12, fontWeight: 700, minHeight: 18, textAlign: 'center', marginTop: 8 }}>{error}</div>
@@ -348,7 +481,7 @@ export default function AuthScreen() {
 
         {/* Footer */}
         <div style={{ padding: '10px 20px', borderTop: '1px solid var(--bdr)', textAlign: 'center', fontSize: 10.5, color: 'var(--txt3)', gridColumn: '1 / -1' }}>
-          NexPOS Pro Â· Multi-module POS System
+          NexPOS Pro · Multi-module POS System
         </div>
       </div>
     </div>

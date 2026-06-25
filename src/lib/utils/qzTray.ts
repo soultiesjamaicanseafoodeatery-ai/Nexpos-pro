@@ -219,13 +219,12 @@ export async function qzPrintRaw(printerName: string, text: string): Promise<boo
     const qz = getQZ()
     if (!qz) { dispatchPrintFailed('Printer offline -- QZ Tray not detected'); return false }
     const config = qz.configs.create(printerName)
-    const init = [0x1B, 0x40]
-    const feed = [0x1B, 0x64, 0x05]
-    const cut  = [0x1D, 0x56, 0x41, 0x03]
-    const textBytes: number[] = []
-    for (const ch of text) { const c = ch.charCodeAt(0); textBytes.push(c < 128 ? c : 0x3F) }
-    const b64 = btoa(String.fromCharCode(...init, ...textBytes, ...feed, ...cut))
-    await qz.print(config, [{ type: 'raw', format: 'command', flavor: 'base64', data: b64 }])
+    const b64cmd = (bytes: number[]) => btoa(String.fromCharCode(...bytes))
+    await qz.print(config, [
+      { type: 'raw', format: 'command', flavor: 'base64', data: b64cmd([0x1B, 0x40]) },
+      { type: 'raw', format: 'plain',   flavor: 'plain',  data: text },
+      { type: 'raw', format: 'command', flavor: 'base64', data: b64cmd([0x1B, 0x64, 0x05, 0x1D, 0x56, 0x41, 0x03]) },
+    ])
     return true
   } catch (e) {
     console.error('[QZ Tray] Raw print failed:', e)

@@ -108,17 +108,23 @@ export default function SettingsPage() {
 
   useEffect(() => { if (tab === 'printers') checkQZ() }, [tab, checkQZ])
 
-  const testPrint = async (label: string, content: string, printerName?: string) => {
-    const w = (form.printers?.width ?? 80) as 58 | 80
+  const testPrint = async (label: string, content: string, printerName?: string, printWidth?: 58 | 80) => {
+    const w = printWidth ?? (form.printers?.width ?? 80) as 58 | 80
     if (!printerName?.trim()) {
       setPrinterError('No printer name set — type the printer name in the field above first.')
       return
     }
     if (qzStatus === 'connected') {
       setPrinterError('')
-      const { qzPrint } = await import('@/lib/utils/qzTray')
-      const ok = await qzPrint(printerName.trim(), `<pre>${content}</pre>`, w)
-      if (ok) return
+      if (w === 58) {
+        const { qzPrintRaw } = await import('@/lib/utils/qzTray')
+        const ok = await qzPrintRaw(printerName.trim(), content)
+        if (ok) return
+      } else {
+        const { qzPrint } = await import('@/lib/utils/qzTray')
+        const ok = await qzPrint(printerName.trim(), `<pre>${content}</pre>`, w)
+        if (ok) return
+      }
       setPrinterError(`QZ Tray could not send to "${printerName.trim()}". Check Console (F12) for the exact error — common causes: wrong printer name, or certificate not yet trusted in QZ Tray Advanced.`)
     }
     // Fallback: browser print dialog

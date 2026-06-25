@@ -1,147 +1,139 @@
-// ── Users & Auth ──────────────────────────────────────────────
-export type UserRole = 'admin' | 'manager' | 'staff'
+// ── Users & Auth ───────� ��──────────────� ��──────────────� ��────────
+export type UserRo le = 'admin' | 'manager' | 'staff'
 
-export interface User {
+export in terface User {
   id: string
-  name: string
-  ini: string
-  pin?: string        // plain text (seed fallback only)
-  pin_hash?: string   // SHA-256 hex (Supabase staff)
-  role: UserRole
+  name: string ini: string
+  pin?: string        // plain te xt (seed fallback only)
+  pin_hash?: string  // SHA-256 hex (Supabase staff)
+  role: User Role
   color: string
-  allowedModules: ModuleKey[]
+  allowedModules: Module Key[]
   active: boolean
   staffId?: string
-}
-
+} 
 export interface RoleConfig {
-  label: string
+  label: strin g
   color: string
   pages: string[]
 }
 
-// ── Modules ───────────────────────────────────────────────────
-export type ModuleKey = 'restaurant' | 'bar' | 'carwash'
+// ─ ─ Modules ─────────── ─────────────── ─────────────── ──────────
+export type Mo duleKey = 'restaurant' | 'bar' | 'carwash'
 
-export interface MenuItem {
+e xport interface MenuItem {
   id: string
-  name: string
+  nam e: string
   desc: string
   price: number
-  cat: string
+  ca t: string
   emoji: string
-  active: boolean
-  module?: string
+  active: boolean  module?: string
   duration?: string
-  gradient?: string
+  gradie nt?: string
   accent?: string
 }
 
-export interface Addon {
+export inter face Addon {
   id: string
   name: string
-  desc: string
+  de sc: string
   price: number
   icon: string
-  active: boolean
+  a ctive: boolean
 }
 
-export interface ModuleData {
+export interface ModuleData  {
   label: string
   icon: string
-  color: string
+  color: st ring
   cobText: string
   selCls: string
-  aoCls: string
+  aoC ls: string
   taxRate: number
-  categories: string[]
+  categories: st ring[]
   tables?: string[]
-  tableStatus?: Record<string, string>
+  tableStatus?: Re cord<string, string>
   tabs?: string[]
-  items: MenuItem[]
+  item s: MenuItem[]
   addons: Addon[]
-  bays?: string[]
+  bays?: stri ng[]
   bayStatus?: Record<string, string>
-  plans?: MemberPlan[]
+  p lans?: MemberPlan[]
   members?: Member[]
-  taxConfig?: TaxConfig
+  ta xConfig?: TaxConfig
 }
 
-// ── Tax ───────────────────────────────────────────────────────
-export interface TaxConfig {
+// ── Tax ──� �──────────────� �──────────────� �──────────────� �───────
+export interface TaxCo nfig {
   name: string
   rate: number
-  enabled: boolean
+  enable d: boolean
   taxableOrderTypes: string[]
-  serviceChargeRate: number
-  serviceChargeEnabled: boolean
+  se rviceChargeRate: number
+  serviceChargeEnable d: boolean
 }
 
-export type OrderType = 'dine-in' | 'takeout' | 'delivery' | 'walk-in'
+export type OrderType = 'dine-i n' | 'takeout' | 'delivery' | 'walk-in'
 
-export interface OrderCalc {
+expo rt interface OrderCalc {
   sub: number
-  disc: number
+  disc : number
   memberDiscAmt: number
-  manualDiscAmt: number
+  manualDisc Amt: number
   taxableBase: number
-  gct: number
+  gct: numb er
   gctRate: number
-  gctApplies: boolean
-  serviceCharge: number
+  gctApplies: boolean serviceCharge: number
   scRate: number
-  gratuity: number
+  grat uity: number
   deliveryFee: number
-  legacyTax: number
+  legacyTa x: number
   surchargeTotal: number
-  total: number
+  total: n umber
   orderType: string
 }
 
-export type SurchargeType = 'credit_card_fee' | 'service_charge' | 'delivery_fee' | 'other'
+export type Surc hargeType = 'credit_card_fee' | 'service_char ge' | 'delivery_fee' | 'other'
 
-export interface Surcharge {
+export interf ace Surcharge {
   id: string
-  type: SurchargeType
+  type: Surcharg eType
   description: string
-  amountType: 'percentage' | 'fixed'
+  amountType: 'pe rcentage' | 'fixed'
   value: number
 }
 
-// ── Membership ────────────────────────────────────────────────
-export interface MemberPlan {
+// ─ ─ Membership ────────── ─────────────── ─────────────── ────────
+export interface Mem berPlan {
   id: string
   name: string
-  price: number
+  price : number
   discount: number
-  color: string
-  freeAddons: string[]
-  unlimited: boolean
-  description: string
+  color: string  freeAddons: string[]
+  unlimited: boolean description: string
 }
 
-export interface BillingRecord {
+export interface Billi ngRecord {
   date: string
-  amount: number
-  status: 'paid' | 'failed' | 'pending'
+  amount: number status: 'paid' | 'failed' | 'pending'
 }
 
-export interface MemberBilling {
-  status: 'active' | 'failed' | 'cancelled' | 'expired'
-  autoRenew: boolean
+expo rt interface MemberBilling {
+  status: 'activ e' | 'failed' | 'cancelled' | 'expired'
+  aut oRenew: boolean
   monthlyFee: number
-  nextBillingDate: string
-  lastBillingDate: string
-  lastBillingStatus: string
+  nextBi llingDate: string
+  lastBillingDate: string  lastBillingStatus: string
   failedAttempts: number
   paymentMethod: string
-  billingHistory: BillingRecord[]
+  billingHisto ry: BillingRecord[]
 }
 
-export interface Vehicle {
+export interface Vehic le {
   id?: string
   plate: string
-  make: string
+  make: st ring
   model: string
   year: number
   color: string
@@ -149,357 +141,369 @@ export interface Vehicle {
   washes?: number
 }
 
-export interface Member {
+e xport interface Member {
   id: string
-  name: string
+  name:  string
   email: string
   phone: string
-  planId: string
+  pla nId: string
   type: string
-  discount: number
+  discount: number 
   vehicles: Vehicle[]
   washes: number
-  joined: string
+  joi ned: string
   billing: MemberBilling
 }
 
-// ── Cart ──────────────────────────────────────────────────────
+// � �─ Cart ───────────� �──────────────� �──────────────� �────────────
 export interface CartItem {
-  id: string        // unique cart line id (crypto.randomUUID())
-  itemId: string    // original MenuItem.id
-  name: string
-  price: number     // base price per unit
+  id: string        // u nique cart line id (crypto.randomUUID())
+  it emId: string    // original MenuItem.id
+  nam e: string
+  price: number     // base price p er unit
   qty: number
   addons: Addon[]
-  module: ModuleKey
+  mod ule: ModuleKey
   note?: string
-  plate?: string    // carwash only
+  plate?: stri ng    // carwash only
   flavour?: string  // selected flavour name
   size?: string     // selected size name
-  sides?: string[]  // selected side names
-  // Void — soft-delete; item stays in array for audit
-  voided?: boolean
+  sides?: string[]  // sel ected side names
+  // Void — soft-delete; i tem stays in array for audit
+  voided?: boole an
   voidReason?: VoidReason
-  voidReasonText?: string
+  voidReasonText ?: string
   voidedBy?: string
-  voidedAt?: string
+  voidedAt?: st ring
 }
 
-// ── Transactions ──────────────────────────────────────────────
-export interface PaymentEntry {
+// ── Transactions ────� �──────────────� �──────────────� �───────────
+export int erface PaymentEntry {
   method: string
-  amount: number
+  amou nt: number
 }
 
-export interface Transaction {
-  id: number
+export interface Transaction {   id: number
   ts: string
   mod: ModuleKey | 'mixed'
   cashier: string
-  userId: string
-  customer: string
+  userId: string customer: string
   item: string
-  addons: string[]
+  addons: str ing[]
   sub: number
   disc: number
-  tax: number
+  tax: num ber
   total: number
   pay: string
-  orderType?: string
+  orderType ?: string
   gct?: number
-  serviceCharge?: number
+  serviceCharge?: nu mber
   gratuity?: number
-  gratuityPct?: number
+  gratuityPct?: numb er
   surchargeTotal?: number
-  guestCount?: number
+  guestCount?: n umber
   customerName?: string
-  tableNum?: string
+  tableNum?: st ring
   tender?: number
-  changeDue?: number
-  payments?: PaymentEntry[]
+  changeDue?: number  payments?: PaymentEntry[]
   customerEmail?: string
   voided?: boolean
-  voidReason?: string
+  voidReason?: stri ng
   voidedBy?: string
-  voidedAt?: string
-  refunded?: boolean
-  refundReason?: string
-  refundedBy?: string
+  voidedAt?: string refunded?: boolean
+  refundReason?: string refundedBy?: string
   refundedAt?: string
-  refundAmount?: number
+  r efundAmount?: number
   note?: string
-  items?: CartItem[]
+  items? : CartItem[]
 }
 
-export interface HeldOrder {
-  id: string
+export interface HeldOrder {   id: string
   label: string
-  cart: CartItem[]
+  cart: CartItem []
   orderType: OrderType
-  module: ModuleKey
+  module: ModuleKey 
   selTable: string | null
-  guestCount: number
+  guestCount: numb er
   customerName: string
-  discPct: number
-  discFlat: number
+  discPct: number  discFlat: number
   gratuityPct: number
-  gratuityOverride: boolean
-  openedAt?: string
-  savedAt: string
+  gra tuityOverride: boolean
+  openedAt?: string savedAt: string
   savedBy: string
 }
 
-// ── Shifts ────────────────────────────────────────────────────
-export interface Shift {
+// ─� � Shifts ──────────── ─────────────── ─────────────── ──────────
+export interfa ce Shift {
   id: string
   userId: string
-  userName: string
+  us erName: string
   role: UserRole
-  modules: ModuleKey[]
+  modules: Mo duleKey[]
   start: string
-  end: string | null
+  end: string | nul l
   txCount: number
   revenue: number
-  // formal close metadata
+  // fo rmal close metadata
   closedBy?: string
-  closedAt?: string
+  clo sedAt?: string
   openingFloat?: number
-  countedCash?: number
+  coun tedCash?: number
   cashVariance?: number
-  varianceNote?: string
-  wasOverridden?: boolean
+  va rianceNote?: string
+  wasOverridden?: boolean 
   isFormalClose?: boolean
 }
 
-// ── Fleet ─────────────────────────────────────────────────────
-export interface FleetInvoice {
+// ── Fleet  ──────────────� �──────────────� �──────────────� �────────
+export interface Fl eetInvoice {
   id: string
   date: string
-  dueDate: string
+  du eDate: string
   amount: number
-  status: 'paid' | 'unpaid' | 'overdue'
+  status: 'pai d' | 'unpaid' | 'overdue'
   items: number
-}
-
-export interface FleetAccount {
-  id: string
-  companyName: string
-  contactName: string
-  email: string
+} export interface FleetAccount {
+  id: string   companyName: string
+  contactName: string  email: string
   phone: string
-  address: string
+  address: str ing
   accountType: string
-  discount: number
-  creditLimit: number
-  currentBalance: number
+  discount: number   creditLimit: number
+  currentBalance: numbe r
   billingCycle: string
-  invoiceDay: number
+  invoiceDay: number 
   paymentTerms: string
   status: 'active' | 'overdue' | 'suspended'
   created: string
-  accountManager: string
+  a ccountManager: string
   notes: string
-  vehicles: Vehicle[]
+  vehic les: Vehicle[]
   invoices: FleetInvoice[]
-}
-
-// ── Business Config ───────────────────────────────────────────
-export interface BusinessConfig {
+} // ── Business Config ──────� ��──────────────� ��──────────────� ��──────
+export interface Busines sConfig {
   name: string
-  tagline: string
-  address: string
+  tagline: string address: string
   phone: string
-  email: string
+  email: stri ng
   website: string
   gctRegNo: string
-  trn: string
+  trn : string
   currency: string
-  currencySymbol: string
+  currencySymbol:  string
   logo: string
   logoUrl: string
-  primaryColor: string
+  pr imaryColor: string
   accentColor: string
-  receiptWidth: number
+  re ceiptWidth: number
   footer: {
-    message: string
+    message: s tring
     refundPolicy: string
-    social: { instagram: string; facebook: string; whatsapp: string }
+    social: { instagram: string; facebook: string; whatsapp : string }
     qrEnabled: boolean
-    qrText: string
+    qrText:  string
     promoMsg: string
   }
-  modules: {
-    restaurant: { terminalName: string; dineInFooter: string; takeoutFooter: string; deliveryFooter: string }
-    bar: { terminalName: string; footer: string }
-    carwash: { terminalName: string; footer: string }
+  modules: { 
+    restaurant: { terminalName: string; dine InFooter: string; takeoutFooter: string; deli veryFooter: string }
+    bar: { terminalName:  string; footer: string }
+    carwash: { term inalName: string; footer: string }
   }
-  printers?: {
-    receipt: string    // Windows printer name for customer receipts
-    kitchen: string    // Windows printer name for kitchen tickets
-    bar: string        // Windows printer name for bar tickets (falls back to kitchen if blank)
-    width: 58 | 80     // thermal paper width in mm
-    autoPrint: boolean  // legacy
-    receiptPreview: boolean // show receipt modal before printing (default false = always print silently)
-    drawerEnabled: boolean // open cash drawer after cash payment
+  prin ters?: {
+    receipt: string    // Windows pr inter name for customer receipts
+    kitchen:  string    // Windows printer name for kitche n tickets
+    bar: string        // Windows p rinter name for bar tickets (falls back to ki tchen if blank)
+    width: 58 | 80     // the rmal paper width in mm
+    autoPrint: boolean   // legacy
+    receiptPreview: boolean // sh ow receipt modal before printing (default fal se = always print silently)
+    drawerEnabled : boolean // open cash drawer after cash paym ent
   }
   autoLogoutMinutes?: number
 }
 
-// ── POS State ─────────────────────────────────────────────────
+// � �─ POS State ────────── ─────────────── ─────────────── ─────────
 export interface POSState {
   selItem: MenuItem | null
-  selAddons: Addon[]
+  selAd dons: Addon[]
   selTable: string | null
-  selTab: string | null
+  sel Tab: string | null
   payMethod: string
-  member: Member | null
+  memb er: Member | null
   plate: string
-  qty: number
+  qty: numb er
   note: string
   cat: string
   orderType: OrderType
   customerName: string
-  customerPhone: string
+  customerPh one: string
   customerAddress: string
-  pickupTime: string
+  picku pTime: string
   deliveryFee: number
-  driverId: string
+  driverI d: string
   taxOverride: boolean | null
-  serviceCharge: number
+  ser viceCharge: number
   gratuityPct: number
-  seatNote: string
+  se atNote: string
   manualDiscPct?: number
-  manualDiscFlat?: number
+  man ualDiscFlat?: number
 }
 
-// ── Audit ─────────────────────────────────────────────────────
-export interface AuditEntry {
+// ── Audit ─� �──────────────� �──────────────� �──────────────� �──────
+export interface AuditEnt ry {
   id: string
   ts: string
-  user: string
+  user: string 
   userId: string | null
   action: string
-  detail: string
-  type: 'info' | 'warn' | 'error' | 'success'
+  d etail: string
+  type: 'info' | 'warn' | 'erro r' | 'success'
   mod: ModuleKey
 }
 
-// ── Loyalty ───────────────────────────────────────────────────
-export interface LoyaltyMember {
+// ── Loyalty ────────────� ��──────────────� ��──────────────� ��────────
+export interface L oyaltyMember {
   email: string
-  name: string
+  name: string 
   points: number
   tier: string
-  history: { date: string; pts: number; desc: string }[]
-}
+  history: {  date: string; pts: number; desc: string }[] }
 
-// ── Void System ───────────────────────────────────────────────
-export type VoidReason =
+// ── Void System ──────� �──────────────� �──────────────� �──────────
+export type V oidReason =
   | 'wrong_item'
-  | 'customer_changed_mind'
+  | 'customer_ch anged_mind'
   | 'duplicate_entry'
-  | 'kitchen_error'
+  | 'kitche n_error'
   | 'bar_error'
-  | 'manager_approved'
+  | 'manager_approve d'
   | 'other'
 
-export const VOID_REASON_LABELS: Record<VoidReason, string> = {
-  wrong_item:            'Wrong Item',
-  customer_changed_mind: 'Customer Changed Mind',
-  duplicate_entry:       'Duplicate Entry',
-  kitchen_error:         'Kitchen Error',
-  bar_error:             'Bar Error',
-  manager_approved:      'Manager Approved',
-  other:                 'Other',
+export const VOID_REASON_LABE LS: Record<VoidReason, string> = {
+  wrong_it em:            'Wrong Item',
+  customer_chang ed_mind: 'Customer Changed Mind',
+  duplicate _entry:       'Duplicate Entry',
+  kitchen_er ror:         'Kitchen Error',
+  bar_error:           'Bar Error',
+  manager_approved:    'Manager Approved',
+  other:    'Other',
 }
 
 export interface VoidLog {
-  id: string
+  i d: string
   ts: string
   user: string
-  userId: string
+  userI d: string
   role: string
-  voidType: 'item' | 'order' | 'transaction'
-  orderNum?: string
-  txId?: number
+  voidType: 'item' |  'order' | 'transaction'
+  orderNum?: string   txId?: number
   itemName?: string
-  reason: VoidReason
+  reason:  VoidReason
   reasonText?: string
-  amount: number
+  amount: n umber
   mod: ModuleKey
 }
 
-// ── Order Tickets & Kitchen Status ────────────────────────────
-export type KitchenStatus  = 'pending' | 'preparing' | 'ready' | 'served'
-export type BarStatus      = 'pending' | 'preparing' | 'ready'
+// ── Order Tic kets & Kitchen Status ───────� �──────────────� �─────
+export type KitchenStatus  =  'pending' | 'preparing' | 'ready' | 'served' 
+export type BarStatus      = 'pending' | 'pr eparing' | 'ready'
 export type CarwashStatus  = 'queued'  | 'in_progress' | 'completed'
-export type PrintWidth     = 58 | 80
+ex port type PrintWidth     = 58 | 80
 
-export type OrderStatus = 'sent' | 'preparing' | 'ready' | 'served' | 'paid' | 'voided'
+export ty pe OrderStatus = 'sent' | 'preparing' | 'read y' | 'served' | 'paid' | 'voided'
 
-export interface RefundLog {
+export int erface RefundLog {
   id: string
-  ts: string
-  txId: number
+  ts: string   txId: number
   user: string
-  userId: string
+  userId: strin g
   role: string
   reason: string
-  refundType: 'full' | 'partial'
+  refundTyp e: 'full' | 'partial'
   amount: number
-  mod: ModuleKey
+  mod:  ModuleKey
 }
 
 export interface OrderTimeline {
   created:           string
-  sentToKitchen?:    string
+  sentToKitchen ?:    string
   kitchenPreparing?: string
-  kitchenReady?:     string
-  barPreparing?:     string
+  ki tchenReady?:     string
+  barPreparing?: string
   barReady?:         string
-  served?:           string
-  paid?:             string   // set at payment time; absent on unpaid open orders
+  served?:            string
+  paid?:             string    // set at payment time; absent on unpaid o pen orders
 }
 
-export interface ReprintLog {
-  type: 'customer' | 'kitchen' | 'bar' | 'carwash' | 'void'
+export interface ReprintLog {  type: 'customer' | 'kitchen' | 'bar' | 'carw ash' | 'void'
   by:   string
   at:   string
-}
+} 
 
 export interface OrderTicket {
-  id:            string
+  id:      string
   orderNum:      string
-  txId?:         number      // set at payment time; absent on open orders
-  table?:        string
-  server:        string
-  guestCount?:   number
+  txId?:         number      // set at payment time; a bsent on open orders
+  table?:        string   server:        string
+  guestCount?:   numb er
   customerName?: string
-  orderType:     string
-  status?:       OrderStatus  // absent on legacy tickets (treat as 'paid')
-  hasKitchen:    boolean
+  orderType:     s tring
+  status?:       OrderStatus  // absent  on legacy tickets (treat as 'paid')
+  hasKit chen:    boolean
   hasBar:        boolean
-  hasCarwash:    boolean
-  kitchenStatus: KitchenStatus
+  h asCarwash:    boolean
+  kitchenStatus: Kitche nStatus
   barStatus:     BarStatus
-  carwashStatus: CarwashStatus
-  items:         CartItem[]
+  carwashS tatus: CarwashStatus
+  items:         CartIte m[]
   orderNote?:    string
-  discPct?:      number      // saved at SEND ORDER for later payment calc
+  discPct?: number      // saved at SEND ORDER for later payment calc
   discFlat?:     number
-  gratuityPct?:  number
-  timeline:      OrderTimeline
+  gratui tyPct?:  number
+  timeline:      OrderTimelin e
   reprints:      ReprintLog[]
 }
 
-// ── Promo Codes ───────────────────────────────────────────────
-export interface PromoCode {
+// ── Promo Codes ─────────── ─────────────── ─────────────── ──────
+export interface PromoCode  {
   code: string
   type: 'pct' | 'flat'
-  value: number
+  va lue: number
   minOrder: number
-  uses: number
+  uses: number 
   maxUses: number
   expiry: string
-  active: boolean
+  active:  boolean
+}  
+
+// -- No Sale --
+export type NoSaleReason =
+  | 'making_change'
+  | 'cash_drop'
+  | 'shift_float'
+  | 'drawer_check'
+  | 'customer_request'
+  | 'other'
+
+export const NO_SALE_REASON_LABELS: Record<NoSaleReason, string> = {
+  making_change:    'Making Change',
+  cash_drop:        'Cash Drop',
+  shift_float:      'Shift Float',
+  drawer_check:     'Drawer Check',
+  customer_request: 'Customer Request',
+  other:            'Other',
+}
+
+export interface NoSaleLog {
+  id: string
+  ts: string
+  requestedBy: string
+  requestedById: string
+  requestedByRole: string
+  approvedBy: string
+  approvedById: string
+  reason: NoSaleReason
+  reasonText?: string
+  drawerOpened: boolean
+  shiftId: string
+  mod: ModuleKey
 }

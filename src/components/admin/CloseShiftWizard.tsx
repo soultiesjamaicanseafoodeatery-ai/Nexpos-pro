@@ -43,6 +43,27 @@ const Btn = ({ children, onClick, primary, danger, disabled, style: s }: {
   }}>{children}</button>
 )
 
+const Card = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ width:'100%', background:'var(--bg2)', border:'1px solid var(--bdr)', borderRadius:'var(--r4)',
+    overflow:'hidden', boxShadow:'0 32px 80px rgba(0,0,0,.7)' }}>
+    {children}
+  </div>
+)
+const CardHead = ({ title, sub, warn }: { title: string; sub?: string; warn?: boolean }) => (
+  <div style={{ padding:'18px 24px', borderBottom:'1px solid var(--bdr)', background: warn ? '#7f1d1d18' : undefined }}>
+    <div style={{ fontSize:16, fontWeight:800, color: warn ? 'var(--red)' : 'var(--txt)' }}>{title}</div>
+    {sub && <div style={{ fontSize:12, color:'var(--txt3)', marginTop:3 }}>{sub}</div>}
+  </div>
+)
+const CardBody = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ padding:'20px 24px' }}>{children}</div>
+)
+const CardFoot = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ padding:'14px 24px', borderTop:'1px solid var(--bdr)', display:'flex', gap:10, justifyContent:'flex-end' }}>
+    {children}
+  </div>
+)
+
 export default function CloseShiftWizard() {
   const { state, dispatch, toast, audit } = useApp()
   const { currentUser, currentShift, users, transactions, heldOrders, orderTickets, isOnline, biz } = state
@@ -213,27 +234,6 @@ export default function CloseShiftWizard() {
   const progressSteps = STEPS.filter(s => s !== 'done')
   const si = STEPS.indexOf(step)
 
-  // ── Common card wrapper ───────────────────────────────────────
-  const Card = ({ children }: { children: React.ReactNode }) => (
-    <div style={{ width:'100%', background:'var(--bg2)', border:'1px solid var(--bdr)', borderRadius:'var(--r4)',
-      overflow:'hidden', boxShadow:'0 32px 80px rgba(0,0,0,.7)' }}>
-      {children}
-    </div>
-  )
-  const CardHead = ({ title, sub, warn }: { title: string; sub?: string; warn?: boolean }) => (
-    <div style={{ padding:'18px 24px', borderBottom:'1px solid var(--bdr)', background: warn ? '#7f1d1d18' : undefined }}>
-      <div style={{ fontSize:16, fontWeight:800, color: warn ? 'var(--red)' : 'var(--txt)' }}>{title}</div>
-      {sub && <div style={{ fontSize:12, color:'var(--txt3)', marginTop:3 }}>{sub}</div>}
-    </div>
-  )
-  const CardBody = ({ children }: { children: React.ReactNode }) => (
-    <div style={{ padding:'20px 24px' }}>{children}</div>
-  )
-  const CardFoot = ({ children }: { children: React.ReactNode }) => (
-    <div style={{ padding:'14px 24px', borderTop:'1px solid var(--bdr)', display:'flex', gap:10, justifyContent:'flex-end' }}>
-      {children}
-    </div>
-  )
   const Back = ({ to }: { to: WStep }) => (
     <Btn onClick={() => { if (step === 'payments') setCountedSubmitted(false); setStep(to) }}>← Back</Btn>
   )
@@ -395,7 +395,8 @@ export default function CloseShiftWizard() {
                 <input
                   ref={openingFloatRef}
                   type="text" inputMode="decimal"
-                  defaultValue={data.openingFloat}
+                  value={data.openingFloat}
+                  onChange={e => setData(d => ({ ...d, openingFloat: e.target.value }))}
                   onKeyDown={e => { if (e.key === 'Enter') countedCashRef.current?.focus() }}
                   placeholder="0.00"
                   style={{ flex:1, padding:'10px 14px', borderRadius:'var(--r2)', fontSize:15, fontWeight:700,
@@ -414,12 +415,13 @@ export default function CloseShiftWizard() {
                 <input
                   ref={countedCashRef}
                   type="text" inputMode="decimal"
-                  defaultValue={data.countedCash}
-                  onInput={e => setCountedHasValue(!!e.currentTarget.value.trim())}
-                  onKeyDown={e => { if (e.key === 'Enter' && countedCashRef.current?.value.trim()) {
-                    setData(d => ({ ...d, openingFloat: openingFloatRef.current?.value ?? '', countedCash: countedCashRef.current?.value ?? '' }))
-                    setCountedSubmitted(true)
-                  }}}
+                  value={data.countedCash}
+                  onChange={e => {
+                    const v = e.target.value
+                    setData(d => ({ ...d, countedCash: v }))
+                    setCountedHasValue(!!v.trim())
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter' && data.countedCash.trim()) setCountedSubmitted(true) }}
                   placeholder="0.00"
                   style={{ flex:1, padding:'10px 14px', borderRadius:'var(--r2)', fontSize:15, fontWeight:700,
                     border:'1.5px solid var(--bdr)',
@@ -430,10 +432,7 @@ export default function CloseShiftWizard() {
             {/* Blind count: submit physical count first, then reveal expected */}
             {!countedSubmitted ? (
               <button
-                onClick={() => { if (countedCashRef.current?.value.trim()) {
-                  setData(d => ({ ...d, openingFloat: openingFloatRef.current?.value ?? '', countedCash: countedCashRef.current?.value ?? '' }))
-                  setCountedSubmitted(true)
-                }}}
+                onClick={() => { if (countedHasValue) setCountedSubmitted(true) }}
                 disabled={!countedHasValue}
                 style={{ marginTop:4, padding:'11px 0', borderRadius:'var(--r2)', fontSize:13, fontWeight:800,
                   cursor:countedHasValue?'pointer':'not-allowed',
@@ -881,4 +880,5 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
+
 

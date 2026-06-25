@@ -6,6 +6,7 @@ import type {
   BusinessConfig, FleetAccount,  POSState, LoyaltyMember, PromoCode,
   CartIte m, OrderType, HeldOrder, OrderTicket, VoidLog , VoidReason, RefundLog,
   MenuItem, Addon,
+  NoSaleLog,
 }  from '@/types'
 
 const STAFF_API = '/api/staf f'
@@ -85,6 +86,7 @@ interface AppState {
   promos: PromoCode[]
    voidLogs: VoidLog[]
   refundLogs: RefundLog[] 
+  noSaleLogs: NoSaleLog[]
   // Menu — mutable, localStorage-backed,  same data the POS reads
   menuData: Record<Mo duleKey, { items: MenuItem[]; categories: str ing[]; addons: Addon[] }>
   // UI
@@ -142,6 +144,7 @@ t ype Action =
   | { t ype: 'DELETE_MENU_ADDON';   mod: ModuleKey; i d: string }
   | { type: 'SYNC_HELD_ORDERS';     orders: HeldOrder[] }
   | { type: 'UPSERT_H ELD_ORDER';   order:  HeldOrder  }
+  | { type: 'ADD_NO_SALE_LOG'; entry: NoSaleLog }
 
 const def aultPOS = (): POSState => ({
   selItem: null,  selAddons: [], selTable: null, selTab: null, 
@@ -190,6 +193,7 @@ function initState(): AppState {
     promos : storage.get<PromoCode[]>('promos') ?? SEED_ PROMOS,
     voidLogs: (() => { const v = stor age.get('void_logs'); return Array.isArray(v)  ? (v as VoidLog[]) : [] })(),
     refundLogs : (() => { const v = storage.get('refund_logs '); return Array.isArray(v) ? (v as RefundLog []) : [] })(),
+    noSaleLogs: (() => { const v = storage.get('no_sale_logs'); return Array.isArray(v) ? (v as NoSaleLog[]) : [] })(),
     toasts: [],
     syncQueue:  storage.get<unknown[]>('sync_queue') ?? [],
      isOnline: true,
@@ -404,6 +408,11 @@ function reducer(state:  AppState, action: Action): AppState {
       storage.set('tx', transactio ns)
       return { ...state, transactions }
      }
+        case 'ADD_NO_SALE_LOG': {
+      const noSaleLogs = [action.entry, ...state.noSaleLogs].slice(0, 1000)
+      storage.set('no_sale_logs', noSaleLogs)
+      return { ...state, noSaleLogs }
+    }
     case 'ADD_REFUND_LOG': {
       const  refundLogs = [action.entry, ...state.refundL ogs].slice(0, 500)
       storage.set('refund_ logs', refundLogs)

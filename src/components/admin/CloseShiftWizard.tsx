@@ -146,6 +146,16 @@ export default function CloseShiftWizard() {
     return () => window.removeEventListener('keydown', handler)
   }, [step, pinUser, pressPin])
 
+  // Auto-logout 3 seconds after shift is closed
+  useEffect(() => {
+    if (step !== 'done') return
+    const t = setTimeout(() => {
+      dispatch({ type: 'LOGOUT' })
+      dispatch({ type: 'HIDE_EOD' })
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [step, dispatch])
+
   // ── System validation ─────────────────────────────────────────
   useEffect(() => {
     if (step !== 'validate') return
@@ -788,7 +798,10 @@ export default function CloseShiftWizard() {
           </div>
         </CardBody>
         <div style={{ padding:'14px 24px', borderTop:'1px solid var(--bdr)', display:'flex', justifyContent:'center' }}>
-          <Btn primary onClick={cancel} style={{ padding:'12px 40px', fontSize:14 }}>Back to POS</Btn>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontSize:12, color:'var(--txt3)', marginBottom:10 }}>Logging out automatically in 3 seconds…</div>
+            <Btn primary onClick={() => { dispatch({ type: 'LOGOUT' }); cancel() }} style={{ padding:'12px 40px', fontSize:14 }}>Logout Now</Btn>
+          </div>
         </div>
       </Card>
     )

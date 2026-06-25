@@ -5,20 +5,14 @@ import { qzIsConnected } from '@/lib/utils/qzTray'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { ModuleKey, HeldOrder } from '@/types'
 import ShiftEndModal from '@/components/layout/ShiftEndModal'
+import SessionReportModal from '@/components/layout/SessionReportModal'
 
-const MOD_LABEL: Record<ModuleKey, string> = {
-  restaurant: 'Restaurant',
-  bar:        'Bar',
-  carwash:    'Car Wash',
-}
 const MOD_COLOR: Record<ModuleKey, { color: string; bg: string }> = {
   restaurant: { color: 'var(--ora)', bg: 'var(--ora-bg)' },
   bar:        { color: 'var(--pur)', bg: 'var(--pur-bg)' },
   carwash:    { color: 'var(--blue)',bg: 'var(--blue-bg)'},
 }
-const PAGE_TITLES: Record<string, Record<ModuleKey | 'default', string>> = {
-  pos: { restaurant: 'Point of Sale', bar: 'Point of Sale', carwash: 'Dashboard', default: 'Point of Sale' },
-}
+
 const GENERIC_PAGE_TITLES: Record<string, string> = {
   tables:'Tables', transactions:'Transactions',
   reports:'Reports', staff:'Staff', settings:'Settings', audit:'Audit Log',
@@ -30,16 +24,19 @@ const GENERIC_PAGE_TITLES: Record<string, string> = {
 }
 
 const ORDER_TYPE_LABELS = { 'dine-in': 'Dine-in', takeout: 'Takeout', delivery: 'Delivery' } as const
+const GRACE_MS = 40 * 60 * 1000
 
 export default function Topbar() {
   const { state, dispatch } = useApp()
   const { activeModule, activePage, currentUser, currentShift, isOnline, cartOrderType, cart, posState } = state
   const hasRestaurantItems = cart.some(ci => (ci as { module?: string }).module === 'restaurant')
-  const [clock, setClock] = useState('')
-  const [printerOk, setPrinterOk] = useState<boolean | null>(null)
-  const [showShiftEnd, setShowShiftEnd] = useState(false)
+  const [clock, setClock]             = useState('')
+  const [printerOk, setPrinterOk]     = useState<boolean | null>(null)
+  const [showShiftEnd, setShowShiftEnd]         = useState(false)
+  const [showSessionReport, setShowSessionReport] = useState(false)
+  const [sessionClockinAt, setSessionClockinAt] = useState<string>('')
 
-  // ── Save any open cart to held orders before any logout ───────
+  // ── Save any open cart to held orders ────────────────────────
   function saveCart() {
     if (cart.length > 0 && currentUser) {
       const ps = posState[activeModule]
@@ -67,13 +64,47 @@ export default function Topbar() {
     }
   }
 
-  // ── Logout — fast user switch, no order check ─────────────────
+  function addAudit(action: string, detail: string) {
+    dispatch({
+      type: 'ADD_AUDIT',
+      entry: {
+        id: crypto.randomUUID(), ts: new Date().toLocaleString(),
+        user: currentUser?.name ?? 'System',
+        userId: currentUser?.id ?? null,
+        action, detail, type: 'info',
+        mod: activeModule,
+      },
+    })
+  }
+
+  // ── Logout — lock screen, shift stays alive ───────────────────
   function handleLogout() {
     saveCart()
+    addAudit('LOCK_SCREEN', `${currentUser?.name ?? 'Staff'} locked the screen`)
     dispatch({ type: 'LOGOUT' })
   }
 
-  // ── Clock Out — end of shift, checks active orders first ──────
+  // ── Open session report, resolving personal clock-in time ─────
+  function openSessionReport() {
+    const userId = currentUser?.id ?? ''
+    let clockinAt: string
+    try {
+      clockinAt = localStorage.getItem(`personal_clockin_${userId}`) ?? (currentShift?.start ?? new Date().toISOString())
+    } catch {
+      clockinAt = currentShift?.start ?? new Date().toISOString()
+    }
+    setSessionClockinAt(clockinAt)
+    setShowSessionReport(true)
+  }
+
+  // ── Confirm clock-out after session report ───────────────────
+  function doClockOut() {
+    setShowSessionReport(false)
+    addAudit('CLOCK_OUT', `${currentUser?.name ?? 'Staff'} clocked out`)
+    dispatch({ type: 'CLOCK_OUT' })
+  }
+
+  // ── Clock Out — end of shift flow ────────────────────────────
   function handleClockOut() {
     saveCart()
     const isManager = ['admin', 'manager'].includes(currentUser?.role ?? '')
@@ -81,8 +112,11 @@ export default function Topbar() {
       !['paid', 'voided'].includes(t.status ?? '') &&
       (isManager || t.server === currentUser?.name)
     )
-    if (hasActive) { setShowShiftEnd(true); return }
-    dispatch({ type: 'LOGOUT' })
+    if (hasActive) {
+      setShowShiftEnd(true)
+    } else {
+      openSessionReport()
+    }
   }
 
   useEffect(() => {
@@ -99,29 +133,37 @@ export default function Topbar() {
     return () => clearInterval(id)
   }, [])
 
+  const { color, bg } = MOD_COLOR[activeModule]
+  const pageTitle = GENERIC_PAGE_TITLES[activePage] ?? (activePage === 'pos' ? '' : activePage)
 
   return (
     <div style={{
       height: 52, background: 'var(--bg2)', borderBottom: '1px solid var(--bdr)',
       display: 'flex', alignItems: 'center', padding: '0 15px', gap: 8, flexShrink: 0,
     }}>
+      {/* Page title (non-POS pages only) */}
+      {activePage !== 'pos' && pageTitle && (
+        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.2px', flexShrink: 0 }}>
+          {pageTitle}
+        </div>
+      )}
+
       {/* Order type pills — POS page, restaurant/bar only */}
-      {activePage === 'pos' && activeModule !== 'carwash' && hasRestaurantItems && (
+      {activePage === 'pos' && activeModule !== 'carwash' && hasRestaurantItems ? (
         <div style={{ display: 'flex', gap: 4, flex: 1 }}>
           {(['dine-in', 'takeout', 'delivery'] as const).map(ot => (
             <button key={ot} onClick={() => dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: ot })} style={{
               padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-              border: `1.5px solid ${cartOrderType === ot ? 'var(--ora)' : 'var(--bdr)'}`,
-              background: cartOrderType === ot ? '#78350f22' : 'transparent',
-              color: cartOrderType === ot ? 'var(--ora)' : 'var(--txt3)',
+              border: `1.5px solid ${cartOrderType === ot ? color : 'var(--bdr)'}`,
+              background: cartOrderType === ot ? `${bg}` : 'transparent',
+              color: cartOrderType === ot ? color : 'var(--txt3)',
               transition: 'all .12s',
             }}>
               {ORDER_TYPE_LABELS[ot]}
             </button>
           ))}
         </div>
-      )}
-      {!(activePage === 'pos' && activeModule !== 'carwash' && hasRestaurantItems) && (
+      ) : (
         <div style={{ flex: 1 }} />
       )}
 
@@ -172,7 +214,7 @@ export default function Topbar() {
           </button>
         )}
 
-        {/* Clock Out — end of shift with transfer workflow */}
+        {/* Clock Out — end personal session */}
         <button onClick={handleClockOut} style={{
           padding: '8px 14px', borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 800, cursor: 'pointer',
           border: '1px solid rgba(251,146,60,.4)', background: 'rgba(251,146,60,.12)', color: 'var(--ora)',
@@ -180,7 +222,7 @@ export default function Topbar() {
           Clock Out
         </button>
 
-        {/* Logout — fast switch to login screen */}
+        {/* Logout — lock screen, shift stays active */}
         <button className="btn btn-gh btn-sm" onClick={handleLogout}>
           Logout
         </button>
@@ -188,8 +230,16 @@ export default function Topbar() {
 
       {showShiftEnd && (
         <ShiftEndModal
-          onLogout={() => { setShowShiftEnd(false); dispatch({ type: 'LOGOUT' }) }}
+          onLogout={() => { setShowShiftEnd(false); openSessionReport() }}
           onCancel={() => setShowShiftEnd(false)}
+        />
+      )}
+
+      {showSessionReport && (
+        <SessionReportModal
+          clockinAt={sessionClockinAt}
+          onClockOut={doClockOut}
+          onCancel={() => setShowSessionReport(false)}
         />
       )}
     </div>

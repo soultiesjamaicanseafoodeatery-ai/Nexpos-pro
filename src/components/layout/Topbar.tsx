@@ -39,11 +39,8 @@ export default function Topbar() {
   const [printerOk, setPrinterOk] = useState<boolean | null>(null)
   const [showShiftEnd, setShowShiftEnd] = useState(false)
 
-  function doLogout() {
-    dispatch({ type: 'LOGOUT' })
-  }
-
-  function handleLogout() {
+  // ── Save any open cart to held orders before any logout ───────
+  function saveCart() {
     if (cart.length > 0 && currentUser) {
       const ps = posState[activeModule]
       const selTable = posState['restaurant'].selTable ?? posState['bar'].selTable ?? null
@@ -68,13 +65,24 @@ export default function Topbar() {
       dispatch({ type: 'HOLD_ORDER', order: held })
       dispatch({ type: 'CLEAR_CART' })
     }
+  }
+
+  // ── Logout — fast user switch, no order check ─────────────────
+  function handleLogout() {
+    saveCart()
+    dispatch({ type: 'LOGOUT' })
+  }
+
+  // ── Clock Out — end of shift, checks active orders first ──────
+  function handleClockOut() {
+    saveCart()
     const isManager = ['admin', 'manager'].includes(currentUser?.role ?? '')
     const hasActive = state.orderTickets.some(t =>
       !['paid', 'voided'].includes(t.status ?? '') &&
       (isManager || t.server === currentUser?.name)
     )
     if (hasActive) { setShowShiftEnd(true); return }
-    doLogout()
+    dispatch({ type: 'LOGOUT' })
   }
 
   useEffect(() => {
@@ -145,6 +153,7 @@ export default function Topbar() {
             {printerOk ? '🖨 Ready' : '🖨 Offline'}
           </div>
         )}
+
         {/* Offline badge */}
         {!isOnline && (
           <div style={{ fontSize: 11, fontWeight: 700, padding: '8px 12px', borderRadius: 'var(--r2)', background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid rgba(245,101,101,.3)' }}>
@@ -164,7 +173,7 @@ export default function Topbar() {
           </div>
         )}
 
-        {/* Close Shift — managers only, requires active shift */}
+        {/* Close Shift — managers only */}
         {currentShift && (currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
           <button onClick={() => dispatch({ type: 'SHOW_EOD' })} style={{
             padding: '8px 14px', borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 800, cursor: 'pointer',
@@ -174,7 +183,15 @@ export default function Topbar() {
           </button>
         )}
 
-        {/* Logout / Clock Out */}
+        {/* Clock Out — end of shift with transfer workflow */}
+        <button onClick={handleClockOut} style={{
+          padding: '8px 14px', borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 800, cursor: 'pointer',
+          border: '1px solid rgba(251,146,60,.4)', background: 'rgba(251,146,60,.12)', color: 'var(--ora)',
+        }}>
+          Clock Out
+        </button>
+
+        {/* Logout — fast switch to login screen */}
         <button className="btn btn-gh btn-sm" onClick={handleLogout}>
           Logout
         </button>
@@ -182,7 +199,7 @@ export default function Topbar() {
 
       {showShiftEnd && (
         <ShiftEndModal
-          onLogout={() => { setShowShiftEnd(false); doLogout() }}
+          onLogout={() => { setShowShiftEnd(false); dispatch({ type: 'LOGOUT' }) }}
           onCancel={() => setShowShiftEnd(false)}
         />
       )}

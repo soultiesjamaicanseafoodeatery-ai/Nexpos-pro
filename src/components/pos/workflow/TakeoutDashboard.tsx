@@ -125,12 +125,7 @@ export default function TakeoutDashboard({ onNewOrder, onOpenOrder, onBack }: Pr
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--txt2)' }}>
               {filter === 'active' ? 'No active takeout orders' : 'No orders found'}
             </div>
-            <div style={{ fontSize: 12, marginTop: 6 }}>Tap <strong>+ New Takeout Order</strong> to get started</div>
-            <button onClick={onNewOrder} style={{
-              marginTop: 20, padding: '12px 32px', borderRadius: 'var(--r)',
-              background: 'var(--grn)', border: 'none', color: '#fff',
-              fontSize: 14, fontWeight: 800, cursor: 'pointer',
-            }}>+ New Takeout Order</button>
+            <div style={{ fontSize: 12, marginTop: 6 }}>Tap <strong>+ New Takeout Order</strong> above to get started</div>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>

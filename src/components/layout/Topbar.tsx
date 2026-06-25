@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { qzIsConnected } from '@/lib/utils/qzTray'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { ModuleKey, HeldOrder } from '@/types'
+import ShiftEndModal from '@/components/layout/ShiftEndModal'
 
 const MOD_LABEL: Record<ModuleKey, string> = {
   restaurant: 'Restaurant',
@@ -36,6 +37,11 @@ export default function Topbar() {
   const hasRestaurantItems = cart.some(ci => (ci as { module?: string }).module === 'restaurant')
   const [clock, setClock] = useState('')
   const [printerOk, setPrinterOk] = useState<boolean | null>(null)
+  const [showShiftEnd, setShowShiftEnd] = useState(false)
+
+  function doLogout() {
+    dispatch({ type: 'LOGOUT' })
+  }
 
   function handleLogout() {
     if (cart.length > 0 && currentUser) {
@@ -62,7 +68,13 @@ export default function Topbar() {
       dispatch({ type: 'HOLD_ORDER', order: held })
       dispatch({ type: 'CLEAR_CART' })
     }
-    dispatch({ type: 'LOGOUT' })
+    const isManager = ['admin', 'manager'].includes(currentUser?.role ?? '')
+    const hasActive = state.orderTickets.some(t =>
+      !['paid', 'voided'].includes(t.status ?? '') &&
+      (isManager || t.server === currentUser?.name)
+    )
+    if (hasActive) { setShowShiftEnd(true); return }
+    doLogout()
   }
 
   useEffect(() => {
@@ -162,11 +174,18 @@ export default function Topbar() {
           </button>
         )}
 
-        {/* Logout */}
+        {/* Logout / Clock Out */}
         <button className="btn btn-gh btn-sm" onClick={handleLogout}>
           Logout
         </button>
       </div>
+
+      {showShiftEnd && (
+        <ShiftEndModal
+          onLogout={() => { setShowShiftEnd(false); doLogout() }}
+          onCancel={() => setShowShiftEnd(false)}
+        />
+      )}
     </div>
   )
 }

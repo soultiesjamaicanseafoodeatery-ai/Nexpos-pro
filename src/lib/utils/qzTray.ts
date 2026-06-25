@@ -209,8 +209,9 @@ export async function qzPrint(printerName: string, html: string, width: 58 | 80 
   }
 }
 
-// Send raw ESC/POS text to a printer -- bypasses Windows paper-size settings.
-// Used for 58mm kitchen/bar printers whose driver only knows 80mm paper.
+// Send raw ESC/POS text to a printer.
+// Encodes the entire payload (init + text + cut) as a single base64 block so QZ Tray
+// sends exact bytes — flavor:'plain' can use the system charset and garble the output.
 export async function qzPrintRaw(printerName: string, text: string): Promise<boolean> {
   if (!printerName.trim() || !text.trim()) return false
   try {
@@ -219,11 +220,18 @@ export async function qzPrintRaw(printerName: string, text: string): Promise<boo
     const qz = getQZ()
     if (!qz) { dispatchPrintFailed('Printer offline -- QZ Tray not detected'); return false }
     const config = qz.configs.create(printerName)
-    const b64cmd = (bytes: number[]) => btoa(String.fromCharCode(...bytes))
+
+    // Build a single ESC/POS byte stream and base64-encode the whole thing
+    const init     = [0x1B, 0x40]                                       // ESC @ — initialize
+    const textBytes = Array.from(new TextEncoder().encode(text))         // UTF-8 (ASCII-safe)
+    const feed     = [0x1B, 0x64, 0x05, 0x1D, 0x56, 0x41, 0x03]       // 5-line feed + full cut
+    const allBytes = [...init, ...textBytes, ...feed]
+    let binary = ''
+    for (const b of allBytes) { binary += String.fromCharCode(b) }
+    const b64 = btoa(binary)
+
     await qz.print(config, [
-      { type: 'raw', format: 'command', flavor: 'base64', data: b64cmd([0x1B, 0x40]) },
-      { type: 'raw', format: 'command', flavor: 'plain',  data: text },
-      { type: 'raw', format: 'command', flavor: 'base64', data: b64cmd([0x1B, 0x64, 0x05, 0x1D, 0x56, 0x41, 0x03]) },
+      { type: 'raw', format: 'command', flavor: 'base64', data: b64 },
     ])
     return true
   } catch (e) {

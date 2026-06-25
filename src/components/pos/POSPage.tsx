@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -870,12 +870,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       mod: item.module,
     }
     dispatch({ type: 'ADD_VOID_LOG', entry: logEntry })
-    // Print void ticket to kitchen/bar
+    // Print void ticket to kitchen/bar via QZ Tray (no browser popup)
     const html = buildVoidTicket(
       ticket.orderNum, item.name, currentUser.name, nowTime,
       { reason: reasonText, qty: item.qty }
     )
-    printTicket(html, 'VOID Ticket')
+    const _pw = (biz.printers?.width ?? 80) as 58 | 80
+    smartPrint(html, 'VOID Ticket', biz.printers?.kitchen, _pw, true)
     audit('VOID_ITEM', `Voided ${item.name} from Order #${ticket.orderNum} — ${reasonText}`, 'warn')
     setVoidTarget(null)
   }
@@ -899,7 +900,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     }})
     if (ticket.hasKitchen || ticket.hasBar) {
       const html = buildVoidTicket(ticket.orderNum, `ENTIRE ORDER (${ticket.items.filter(ci => !ci.voided).length} items)`, currentUser.name, nowTime, { reason: reasonText })
-      printTicket(html, 'VOID — Entire Order')
+      const _pw2 = (biz.printers?.width ?? 80) as 58 | 80
+      smartPrint(html, 'VOID — Entire Order', biz.printers?.kitchen, _pw2, true)
     }
     audit('VOID_ORDER', `Order #${ticket.orderNum} voided — ${reasonText}`, 'warn')
     toast(`Order #${ticket.orderNum} voided`, 'warn')

@@ -1,677 +1,676 @@
 ﻿'use client'
 
-import React, { createContex t, useContext, useReducer, useEffect, useCall back, useRef } from 'react'
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react'
 import type {
-  U ser, UserRole, ModuleKey, Transaction, Shift,  AuditEntry,
-  BusinessConfig, FleetAccount,  POSState, LoyaltyMember, PromoCode,
-  CartIte m, OrderType, HeldOrder, OrderTicket, VoidLog , VoidReason, RefundLog,
+  User, UserRole, ModuleKey, Transaction, Shift, AuditEntry,
+  BusinessConfig, FleetAccount, POSState, LoyaltyMember, PromoCode,
+  CartItem, OrderType, HeldOrder, OrderTicket, VoidLog, VoidReason, RefundLog,
   MenuItem, Addon,
   NoSaleLog,
-}  from '@/types'
+} from '@/types'
 
-const STAFF_API = '/api/staf f'
+const STAFF_API = '/api/staff'
 
 interface DbStaffRow {
   id: string
-  nam e: string
+  name: string
   ini: string
   role: string
-  pin_ hash: string
+  pin_hash: string
   color: string
-  allowed_module s: string[] | string | null | undefined
-  act ive: boolean
+  allowed_modules: string[] | string | null | undefined
+  active: boolean
   staff_id: string | null
 }
 
-fun ction dbStaffToUser(row: DbStaffRow): User {
-   const rawMods = row.allowed_modules
-  let a llowedModules: ModuleKey[]
-  if (Array.isArra y(rawMods) && rawMods.length > 0) {
-    allow edModules = rawMods as ModuleKey[]
-  } else i f (typeof rawMods === 'string' && rawMods.len gth > 0) {
-    // Handle PostgreSQL literal " {restaurant,bar}" or JSON string "["restauran t"]"
+function dbStaffToUser(row: DbStaffRow): User {
+  const rawMods = row.allowed_modules
+  let allowedModules: ModuleKey[]
+  if (Array.isArray(rawMods) && rawMods.length > 0) {
+    allowedModules = rawMods as ModuleKey[]
+  } else if (typeof rawMods === 'string' && rawMods.length > 0) {
+    // Handle PostgreSQL literal "{restaurant,bar}" or JSON string "["restaurant"]"
     try {
-      const parsed = JSON.pars e(rawMods)
-      allowedModules = Array.isArr ay(parsed) && parsed.length > 0 ? parsed : [' restaurant']
+      const parsed = JSON.parse(rawMods)
+      allowedModules = Array.isArray(parsed) && parsed.length > 0 ? parsed : ['restaurant']
     } catch {
-      const stripp ed = rawMods.replace(/^\{|\}$/g, '').split(', ').map(s => s.trim()).filter(Boolean)
-      a llowedModules = stripped.length > 0 ? (stripp ed as ModuleKey[]) : ['restaurant']
+      const stripped = rawMods.replace(/^\{|\}$/g, '').split(',').map(s => s.trim()).filter(Boolean)
+      allowedModules = stripped.length > 0 ? (stripped as ModuleKey[]) : ['restaurant']
     }
-  }  else {
+  } else {
     allowedModules = ['restaurant']
-   }
+  }
   return {
     id: row.id,
-    name: row.n ame,
+    name: row.name,
     ini: row.ini,
-    pin_hash: row.pin_ hash,
-    role: (['admin', 'manager', 'staff' ] as string[]).includes(row.role) ? row.role  as UserRole : 'staff',
+    pin_hash: row.pin_hash,
+    role: (['admin', 'manager', 'staff'] as string[]).includes(row.role) ? row.role as UserRole : 'staff',
     color: row.color,
-     allowedModules,
+    allowedModules,
     active: row.active,
-     staffId: row.staff_id ?? undefined,
+    staffId: row.staff_id ?? undefined,
   }
 }
- import { storage } from '@/lib/utils/storage' 
+import { storage } from '@/lib/utils/storage'
 import {
-  SEED_USERS, MODULE_DATA, DEFAULT_ BIZ_CONFIG,
-  SEED_TRANSACTIONS, SEED_FLEET,  SEED_PROMOS, SEED_VERSION,
-} from '@/lib/data /seed'
-import { supabase } from '@/lib/supaba se'
+  SEED_USERS, MODULE_DATA, DEFAULT_BIZ_CONFIG,
+  SEED_TRANSACTIONS, SEED_FLEET, SEED_PROMOS, SEED_VERSION,
+} from '@/lib/data/seed'
+import { supabase } from '@/lib/supabase'
 
-// â”€â”€ State shape â”€ â”€â”€â”€â”€â”€â” €â”€â”€â”€â”€â”€â ”€â”€â”€â”€â”€â”� �â”€â”€â”€â”€â”€â� �€â”€â”€â”€â”€â”€� �”€â”€â”€â”€â”€â”� ��â”€â”€â”€â”€â”€â� ��€â”€â”€â”€â”€â”€ â”€
+// â”€â”€ State shape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface AppState {
   // Auth
-  cur rentUser: User | null
-  currentShift: Shift |  null
+  currentUser: User | null
+  currentShift: Shift | null
   users: User[]
   // Module
-  activeMod ule: ModuleKey
+  activeModule: ModuleKey
   activePage: string
   // POS
-   posState: Record<ModuleKey, POSState>
-  //  Global Cart
+  posState: Record<ModuleKey, POSState>
+  // Global Cart
   cart: CartItem[]
-  cartPayMetho d: string
+  cartPayMethod: string
   cartOrderType: OrderType
-  heldOr ders: HeldOrder[]
-  orderTickets: OrderTicket []
+  heldOrders: HeldOrder[]
+  orderTickets: OrderTicket[]
   // Data
   transactions: Transaction[]
-   shifts: Shift[]
+  shifts: Shift[]
   audit: AuditEntry[]
-  biz:  BusinessConfig
+  biz: BusinessConfig
   fleet: FleetAccount[]
-  loya lty: LoyaltyMember[]
+  loyalty: LoyaltyMember[]
   promos: PromoCode[]
-   voidLogs: VoidLog[]
-  refundLogs: RefundLog[] 
+  voidLogs: VoidLog[]
+  refundLogs: RefundLog[]
   noSaleLogs: NoSaleLog[]
-  // Menu — mutable, localStorage-backed,  same data the POS reads
-  menuData: Record<Mo duleKey, { items: MenuItem[]; categories: str ing[]; addons: Addon[] }>
+  // Menu — mutable, localStorage-backed, same data the POS reads
+  menuData: Record<ModuleKey, { items: MenuItem[]; categories: string[]; addons: Addon[] }>
   // UI
-  toasts: {  id: number; msg: string; type: string }[]
-   syncQueue: unknown[]
+  toasts: { id: number; msg: string; type: string }[]
+  syncQueue: unknown[]
   isOnline: boolean
-  ui Mode: 'pos' | 'admin'
+  uiMode: 'pos' | 'admin'
   showEOD: boolean
 }
 
-t ype Action =
-  | { type: 'LOGIN'; user: User;  shift: Shift }
+type Action =
+  | { type: 'LOGIN'; user: User; shift: Shift }
   | { type: 'LOGOUT' }
-  | {  type: 'SET_MODULE'; mod: ModuleKey }
-  | { ty pe: 'SET_PAGE'; page: string }
-  | { type: 'S ET_POS_STATE'; mod: ModuleKey; patch: Partial <POSState> }
-  | { type: 'ADD_TRANSACTION'; t x: Transaction }
-  | { type: 'ADD_TOAST'; msg : string; toastType: string; id: number }
-  |  { type: 'REMOVE_TOAST'; id: number }
-  | { t ype: 'SET_USERS'; users: User[] }
-  | { type:  'SET_BIZ'; biz: BusinessConfig }
-  | { type:  'ADD_AUDIT'; entry: AuditEntry }
-  | { type:  'VOID_TRANSACTION'; id: number; reason: stri ng }
+  | { type: 'SET_MODULE'; mod: ModuleKey }
+  | { type: 'SET_PAGE'; page: string }
+  | { type: 'SET_POS_STATE'; mod: ModuleKey; patch: Partial<POSState> }
+  | { type: 'ADD_TRANSACTION'; tx: Transaction }
+  | { type: 'ADD_TOAST'; msg: string; toastType: string; id: number }
+  | { type: 'REMOVE_TOAST'; id: number }
+  | { type: 'SET_USERS'; users: User[] }
+  | { type: 'SET_BIZ'; biz: BusinessConfig }
+  | { type: 'ADD_AUDIT'; entry: AuditEntry }
+  | { type: 'VOID_TRANSACTION'; id: number; reason: string }
   | { type: 'CLOCK_OUT' }
-  | { type: 'S ET_ONLINE'; online: boolean }
-  | { type: 'AD D_TO_CART'; item: CartItem }
-  | { type: 'REM OVE_FROM_CART'; id: string }
-  | { type: 'UPD ATE_CART_QTY'; id: string; qty: number }
-  |  { type: 'UPDATE_CART_NOTE'; id: string; note:  string }
+  | { type: 'SET_ONLINE'; online: boolean }
+  | { type: 'ADD_TO_CART'; item: CartItem }
+  | { type: 'REMOVE_FROM_CART'; id: string }
+  | { type: 'UPDATE_CART_QTY'; id: string; qty: number }
+  | { type: 'UPDATE_CART_NOTE'; id: string; note: string }
   | { type: 'CLEAR_CART' }
-  | { ty pe: 'SET_CART_PAY'; method: string }
-  | { ty pe: 'SET_CART_ORDER_TYPE'; orderType: OrderTy pe }
-  | { type: 'SET_PROMOS'; promos: PromoC ode[] }
-  | { type: 'HOLD_ORDER'; order: Held Order }
-  | { type: 'REMOVE_HELD_ORDER'; id:  string }
-  | { type: 'UPDATE_TRANSACTION'; tx : Transaction }
-  | { type: 'ADD_ORDER_TICKET '; ticket: OrderTicket }
-  | { type: 'UPDATE_ ORDER_TICKET'; id: string; patch: Partial<Ord erTicket> }
-  | { type: 'VOID_CART_ITEM'; id:  string; reason: VoidReason; reasonText?: str ing; by: string; at: string }
-  | { type: 'VO ID_TICKET_ITEM'; ticketId: string; itemId: st ring; reason: VoidReason; reasonText?: string ; by: string; at: string }
-  | { type: 'ADD_V OID_LOG'; entry: VoidLog }
-  | { type: 'REFUN D_TRANSACTION'; id: number; reason: string; r efundType: 'full' | 'partial'; amount: number ; by: string; at: string }
-  | { type: 'ADD_R EFUND_LOG'; entry: RefundLog }
-  | { type: 'S ET_UI_MODE'; mode: 'pos' | 'admin' }
-  | { ty pe: 'SHOW_EOD' }
-  | { type: 'HIDE_EOD' }
-  |  { type: 'CLOSE_SHIFT_FORMAL'; closedBy: stri ng; closedAt: string; openingFloat: number; c ountedCash: number; variance: number; varianc eNote: string; wasOverridden?: boolean }
-  |  { type: 'ADD_MENU_ITEM';       mod: ModuleKey ; item: MenuItem }
-  | { type: 'UPDATE_MENU_I TEM';    mod: ModuleKey; item: MenuItem }
-  |  { type: 'DELETE_MENU_ITEM';    mod: ModuleKe y; id: string }
-  | { type: 'SET_MENU_CATEGOR IES'; mod: ModuleKey; categories: string[] }
-   | { type: 'RENAME_CATEGORY';     mod: Modul eKey; oldName: string; newName: string }
-  |  { type: 'ADD_MENU_ADDON';      mod: ModuleKey ; addon: Addon }
-  | { type: 'UPDATE_MENU_ADD ON';   mod: ModuleKey; addon: Addon }
-  | { t ype: 'DELETE_MENU_ADDON';   mod: ModuleKey; i d: string }
-  | { type: 'SYNC_HELD_ORDERS';     orders: HeldOrder[] }
-  | { type: 'UPSERT_H ELD_ORDER';   order:  HeldOrder  }
+  | { type: 'SET_CART_PAY'; method: string }
+  | { type: 'SET_CART_ORDER_TYPE'; orderType: OrderType }
+  | { type: 'SET_PROMOS'; promos: PromoCode[] }
+  | { type: 'HOLD_ORDER'; order: HeldOrder }
+  | { type: 'REMOVE_HELD_ORDER'; id: string }
+  | { type: 'UPDATE_TRANSACTION'; tx: Transaction }
+  | { type: 'ADD_ORDER_TICKET'; ticket: OrderTicket }
+  | { type: 'UPDATE_ORDER_TICKET'; id: string; patch: Partial<OrderTicket> }
+  | { type: 'VOID_CART_ITEM'; id: string; reason: VoidReason; reasonText?: string; by: string; at: string }
+  | { type: 'VOID_TICKET_ITEM'; ticketId: string; itemId: string; reason: VoidReason; reasonText?: string; by: string; at: string }
+  | { type: 'ADD_VOID_LOG'; entry: VoidLog }
+  | { type: 'REFUND_TRANSACTION'; id: number; reason: string; refundType: 'full' | 'partial'; amount: number; by: string; at: string }
+  | { type: 'ADD_REFUND_LOG'; entry: RefundLog }
   | { type: 'ADD_NO_SALE_LOG'; entry: NoSaleLog }
+  | { type: 'SET_UI_MODE'; mode: 'pos' | 'admin' }
+  | { type: 'SHOW_EOD' }
+  | { type: 'HIDE_EOD' }
+  | { type: 'CLOSE_SHIFT_FORMAL'; closedBy: string; closedAt: string; openingFloat: number; countedCash: number; variance: number; varianceNote: string; wasOverridden?: boolean }
+  | { type: 'ADD_MENU_ITEM';       mod: ModuleKey; item: MenuItem }
+  | { type: 'UPDATE_MENU_ITEM';    mod: ModuleKey; item: MenuItem }
+  | { type: 'DELETE_MENU_ITEM';    mod: ModuleKey; id: string }
+  | { type: 'SET_MENU_CATEGORIES'; mod: ModuleKey; categories: string[] }
+  | { type: 'RENAME_CATEGORY';     mod: ModuleKey; oldName: string; newName: string }
+  | { type: 'ADD_MENU_ADDON';      mod: ModuleKey; addon: Addon }
+  | { type: 'UPDATE_MENU_ADDON';   mod: ModuleKey; addon: Addon }
+  | { type: 'DELETE_MENU_ADDON';   mod: ModuleKey; id: string }
+  | { type: 'SYNC_HELD_ORDERS';    orders: HeldOrder[] }
+  | { type: 'UPSERT_HELD_ORDER';   order:  HeldOrder  }
 
-const def aultPOS = (): POSState => ({
-  selItem: null,  selAddons: [], selTable: null, selTab: null, 
-  payMethod: 'cash', member: null, plate: '' , qty: 1, note: '',
-  cat: 'All', orderType:  'dine-in',
-  customerName: '', customerPhone:  '', customerAddress: '',
-  pickupTime: '', d eliveryFee: 0, driverId: '',
-  taxOverride: n ull, serviceCharge: 0, gratuityPct: 0, seatNo te: '',
+const defaultPOS = (): POSState => ({
+  selItem: null, selAddons: [], selTable: null, selTab: null,
+  payMethod: 'cash', member: null, plate: '', qty: 1, note: '',
+  cat: 'All', orderType: 'dine-in',
+  customerName: '', customerPhone: '', customerAddress: '',
+  pickupTime: '', deliveryFee: 0, driverId: '',
+  taxOverride: null, serviceCharge: 0, gratuityPct: 0, seatNote: '',
 })
 
 function initState(): AppState {
-   return {
-    currentUser: storage.get<User> ('current_user') ?? null,
-    currentShift: s torage.get<Shift>('current_shift') ?? null,
-     users: storage.get<User[]>('users') ?? SEE D_USERS,
+  return {
+    currentUser: storage.get<User>('current_user') ?? null,
+    currentShift: storage.get<Shift>('current_shift') ?? null,
+    users: storage.get<User[]>('users') ?? SEED_USERS,
     activeModule: 'restaurant',
-     activePage: 'pos',
+    activePage: 'pos',
     posState: {
-      rest aurant: { ...defaultPOS() },
-      bar:         { ...defaultPOS(), orderType: 'dine-in' },
-       carwash:    { ...defaultPOS(), orderTyp e: 'walk-in' as POSState['orderType'] },
-     },
+      restaurant: { ...defaultPOS() },
+      bar:        { ...defaultPOS(), orderType: 'dine-in' },
+      carwash:    { ...defaultPOS(), orderType: 'walk-in' as POSState['orderType'] },
+    },
     cart: [],
     cartPayMethod: 'cash',
-     cartOrderType: 'dine-in',
-    menuData: (( ) => {
-      const stored = storage.get<Recor d<ModuleKey, { items: MenuItem[]; categories:  string[]; addons: Addon[] }>>('menu_data')
-       if (stored && storage.get<string>('seed_ version') === SEED_VERSION) return stored
-       const fresh = {
-        restaurant: { item s: MODULE_DATA.restaurant.items as MenuItem[] , categories: MODULE_DATA.restaurant.categori es, addons: MODULE_DATA.restaurant.addons as  Addon[] },
-        bar:        { items: MODUL E_DATA.bar.items as MenuItem[],        catego ries: MODULE_DATA.bar.categories,        addo ns: MODULE_DATA.bar.addons as Addon[]         },
-        carwash:    { items: MODULE_DATA.c arwash.items as MenuItem[],    categories: MO DULE_DATA.carwash.categories,    addons: MODU LE_DATA.carwash.addons as Addon[]    },
-       }
+    cartOrderType: 'dine-in',
+    menuData: (() => {
+      const stored = storage.get<Record<ModuleKey, { items: MenuItem[]; categories: string[]; addons: Addon[] }>>('menu_data')
+      if (stored && storage.get<string>('seed_version') === SEED_VERSION) return stored
+      const fresh = {
+        restaurant: { items: MODULE_DATA.restaurant.items as MenuItem[], categories: MODULE_DATA.restaurant.categories, addons: MODULE_DATA.restaurant.addons as Addon[] },
+        bar:        { items: MODULE_DATA.bar.items as MenuItem[],        categories: MODULE_DATA.bar.categories,        addons: MODULE_DATA.bar.addons as Addon[]        },
+        carwash:    { items: MODULE_DATA.carwash.items as MenuItem[],    categories: MODULE_DATA.carwash.categories,    addons: MODULE_DATA.carwash.addons as Addon[]    },
+      }
       storage.set('menu_data', fresh)
-       storage.set('seed_version', SEED_VERSION)
-       return fresh
+      storage.set('seed_version', SEED_VERSION)
+      return fresh
     })(),
-    heldOrders:    (() => { const v = storage.get('held_orders' );   return Array.isArray(v) ? (v as HeldOrde r[]).filter(h => h?.id && Array.isArray(h?.ca rt)) : [] })(),
-    orderTickets: (() => { co nst v = storage.get('order_tickets'); return  Array.isArray(v) ? (v as OrderTicket[]).filte r(t => t?.id && t?.timeline && Array.isArray( t?.items)) : [] })(),
-    transactions: stora ge.get<Transaction[]>('tx') ?? SEED_TRANSACTI ONS,
-    shifts: storage.get<Shift[]>('shifts ') ?? [],
-    audit: storage.get<AuditEntry[] >('audit') ?? [],
-    biz: storage.get<Busine ssConfig>('biz_config') ?? DEFAULT_BIZ_CONFIG ,
-    fleet: storage.get<FleetAccount[]>('fle et') ?? SEED_FLEET,
-    loyalty: storage.get< LoyaltyMember[]>('loyalty') ?? [],
-    promos : storage.get<PromoCode[]>('promos') ?? SEED_ PROMOS,
-    voidLogs: (() => { const v = stor age.get('void_logs'); return Array.isArray(v)  ? (v as VoidLog[]) : [] })(),
-    refundLogs : (() => { const v = storage.get('refund_logs '); return Array.isArray(v) ? (v as RefundLog []) : [] })(),
+    heldOrders:   (() => { const v = storage.get('held_orders');   return Array.isArray(v) ? (v as HeldOrder[]).filter(h => h?.id && Array.isArray(h?.cart)) : [] })(),
+    orderTickets: (() => { const v = storage.get('order_tickets'); return Array.isArray(v) ? (v as OrderTicket[]).filter(t => t?.id && t?.timeline && Array.isArray(t?.items)) : [] })(),
+    transactions: storage.get<Transaction[]>('tx') ?? SEED_TRANSACTIONS,
+    shifts: storage.get<Shift[]>('shifts') ?? [],
+    audit: storage.get<AuditEntry[]>('audit') ?? [],
+    biz: storage.get<BusinessConfig>('biz_config') ?? DEFAULT_BIZ_CONFIG,
+    fleet: storage.get<FleetAccount[]>('fleet') ?? SEED_FLEET,
+    loyalty: storage.get<LoyaltyMember[]>('loyalty') ?? [],
+    promos: storage.get<PromoCode[]>('promos') ?? SEED_PROMOS,
+    voidLogs: (() => { const v = storage.get('void_logs'); return Array.isArray(v) ? (v as VoidLog[]) : [] })(),
+    refundLogs: (() => { const v = storage.get('refund_logs'); return Array.isArray(v) ? (v as RefundLog[]) : [] })(),
     noSaleLogs: (() => { const v = storage.get('no_sale_logs'); return Array.isArray(v) ? (v as NoSaleLog[]) : [] })(),
     toasts: [],
-    syncQueue:  storage.get<unknown[]>('sync_queue') ?? [],
-     isOnline: true,
+    syncQueue: storage.get<unknown[]>('sync_queue') ?? [],
+    isOnline: true,
     uiMode: 'pos',
-    sh owEOD: false,
+    showEOD: false,
   }
 }
 
-function reducer(state:  AppState, action: Action): AppState {
-  switc h (action.type) {
+function reducer(state: AppState, action: Action): AppState {
+  switch (action.type) {
     case 'LOGIN': {
-      s torage.set('current_user', action.user)
-       if (state.currentShift !== null) {
-        r eturn { ...state, currentUser: action.user, a ctivePage: 'pos' }
+      storage.set('current_user', action.user)
+      if (state.currentShift !== null) {
+        return { ...state, currentUser: action.user, activePage: 'pos' }
       }
-      storage.set( 'current_shift', action.shift)
-      const sh ifts = [action.shift, ...state.shifts]
-       storage.set('shifts', shifts)
-      return {  ...state, currentUser: action.user, currentSh ift: action.shift, shifts, activePage: 'pos'  }
+      storage.set('current_shift', action.shift)
+      const shifts = [action.shift, ...state.shifts]
+      storage.set('shifts', shifts)
+      return { ...state, currentUser: action.user, currentShift: action.shift, shifts, activePage: 'pos' }
     }
     case 'LOGOUT': {
-      const shif ts = state.shifts.map(s =>
-        s.id === s tate.currentShift?.id ? { ...s, end: new Date ().toISOString() } : s
+      const shifts = state.shifts.map(s =>
+        s.id === state.currentShift?.id ? { ...s, end: new Date().toISOString() } : s
       )
-      storage. set('shifts', shifts)
-      storage.set('curr ent_user', null)
-      storage.set('current_s hift', null)
-      return { ...state, current User: null, currentShift: null, shifts, cart:  [], cartPayMethod: 'cash', cartOrderType: 'd ine-in', uiMode: 'pos' }
+      storage.set('shifts', shifts)
+      storage.set('current_user', null)
+      storage.set('current_shift', null)
+      return { ...state, currentUser: null, currentShift: null, shifts, cart: [], cartPayMethod: 'cash', cartOrderType: 'dine-in', uiMode: 'pos' }
     }
-    case 'CLOC K_OUT': {
-      if (!state.currentShift) retu rn state
-      const shifts = state.shifts.ma p(s =>
-        s.id === state.currentShift!.i d ? { ...s, end: new Date().toISOString() } :  s
+    case 'CLOCK_OUT': {
+      if (!state.currentShift) return state
+      const shifts = state.shifts.map(s =>
+        s.id === state.currentShift!.id ? { ...s, end: new Date().toISOString() } : s
       )
-      storage.set('shifts', shifts )
-      return { ...state, currentShift: null , shifts }
+      storage.set('shifts', shifts)
+      return { ...state, currentShift: null, shifts }
     }
     case 'SET_MODULE':
-       return { ...state, activeModule: action.mod,  activePage: 'pos' }
+      return { ...state, activeModule: action.mod, activePage: 'pos' }
     case 'SET_PAGE':
-       return { ...state, activePage: action.page  }
+      return { ...state, activePage: action.page }
     case 'SET_POS_STATE':
       return {
-         ...state,
+        ...state,
         posState: {
-           ...state.posState,
-          [action.mod]:  { ...state.posState[action.mod], ...action.pa tch },
+          ...state.posState,
+          [action.mod]: { ...state.posState[action.mod], ...action.patch },
         },
       }
-    case 'ADD_TRANS ACTION': {
-      const transactions = [action .tx, ...state.transactions].slice(0, 50000)
-       storage.set('tx', transactions)
-      co nst currentShift = state.currentShift
-         ? { ...state.currentShift, txCount: state.cu rrentShift.txCount + 1, revenue: state.curren tShift.revenue + action.tx.total }
-        :  null
+    case 'ADD_TRANSACTION': {
+      const transactions = [action.tx, ...state.transactions].slice(0, 50000)
+      storage.set('tx', transactions)
+      const currentShift = state.currentShift
+        ? { ...state.currentShift, txCount: state.currentShift.txCount + 1, revenue: state.currentShift.revenue + action.tx.total }
+        : null
       // Auto-deduct inventory on sale
-       if (action.tx.items && action.tx.items.l ength > 0) {
-        const inv = storage.get< Array<{ id: string; name: string; quantity: n umber; lowStockThreshold: number }>>('invento ry') ?? []
+      if (action.tx.items && action.tx.items.length > 0) {
+        const inv = storage.get<Array<{ id: string; name: string; quantity: number; lowStockThreshold: number }>>('inventory') ?? []
         if (inv.length > 0) {
-           let changed = false
-          const upd atedInv = inv.map(invItem => {
-            co nst sold = action.tx.items!
-              .fi lter(ci => !ci.voided && ci.name.toLowerCase( ) === invItem.name.toLowerCase())
-               .reduce((s, ci) => s + ci.qty, 0)
-             if (sold > 0) { changed = true; return {  ...invItem, quantity: Math.max(0, invItem.qua ntity - sold) } }
+          let changed = false
+          const updatedInv = inv.map(invItem => {
+            const sold = action.tx.items!
+              .filter(ci => !ci.voided && ci.name.toLowerCase() === invItem.name.toLowerCase())
+              .reduce((s, ci) => s + ci.qty, 0)
+            if (sold > 0) { changed = true; return { ...invItem, quantity: Math.max(0, invItem.quantity - sold) } }
             return invItem
-           })
-          if (changed) storage.s et('inventory', updatedInv)
+          })
+          if (changed) storage.set('inventory', updatedInv)
         }
-      } 
-      return { ...state, transactions, curre ntShift }
+      }
+      return { ...state, transactions, currentShift }
     }
-    case 'VOID_TRANSACTION':  {
-      const transactions = state.transactio ns.map(t =>
-        t.id === action.id ? { .. .t, voided: true, voidReason: action.reason }  : t
+    case 'VOID_TRANSACTION': {
+      const transactions = state.transactions.map(t =>
+        t.id === action.id ? { ...t, voided: true, voidReason: action.reason } : t
       )
-      storage.set('tx', transact ions)
-      return { ...state, transactions } 
+      storage.set('tx', transactions)
+      return { ...state, transactions }
     }
     case 'ADD_TOAST': {
-      return {  ...state, toasts: [...state.toasts, { id: ac tion.id, msg: action.msg, type: action.toastT ype }] }
+      return { ...state, toasts: [...state.toasts, { id: action.id, msg: action.msg, type: action.toastType }] }
     }
     case 'REMOVE_TOAST':
-       return { ...state, toasts: state.toasts.filt er(t => t.id !== action.id) }
-    case 'SET_U SERS': {
-      storage.set('users', action.us ers)
-      return { ...state, users: action.u sers }
+      return { ...state, toasts: state.toasts.filter(t => t.id !== action.id) }
+    case 'SET_USERS': {
+      storage.set('users', action.users)
+      return { ...state, users: action.users }
     }
     case 'SET_BIZ': {
-      stor age.set('biz_config', action.biz)
-      retur n { ...state, biz: action.biz }
+      storage.set('biz_config', action.biz)
+      return { ...state, biz: action.biz }
     }
-    cas e 'ADD_AUDIT': {
-      const audit = [action. entry, ...state.audit].slice(0, 600)
-      st orage.set('audit', audit)
-      return { ...s tate, audit }
+    case 'ADD_AUDIT': {
+      const audit = [action.entry, ...state.audit].slice(0, 600)
+      storage.set('audit', audit)
+      return { ...state, audit }
     }
     case 'SET_ONLINE':
-       return { ...state, isOnline: action.onlin e }
+      return { ...state, isOnline: action.online }
     case 'ADD_TO_CART': {
-      const inc oming = action.item
-      // Deduplicate: sam e itemId + same addon ids + same plate â†� �� increment qty
-      const existingIdx = st ate.cart.findIndex(ci =>
-        ci.itemId == = incoming.itemId &&
-        ci.plate === inc oming.plate &&
-        ci.addons.length === i ncoming.addons.length &&
-        ci.addons.ev ery(a => incoming.addons.some(b => b.id === a .id))
+      const incoming = action.item
+      // Deduplicate: same itemId + same addon ids + same plate â†’ increment qty
+      const existingIdx = state.cart.findIndex(ci =>
+        ci.itemId === incoming.itemId &&
+        ci.plate === incoming.plate &&
+        ci.addons.length === incoming.addons.length &&
+        ci.addons.every(a => incoming.addons.some(b => b.id === a.id))
       )
-      if (existingIdx !== -1) { 
-        const cart = state.cart.map((ci, idx ) =>
-          idx === existingIdx ? { ...ci,  qty: ci.qty + incoming.qty } : ci
+      if (existingIdx !== -1) {
+        const cart = state.cart.map((ci, idx) =>
+          idx === existingIdx ? { ...ci, qty: ci.qty + incoming.qty } : ci
         )
-         return { ...state, cart }
+        return { ...state, cart }
       }
-       return { ...state, cart: [...state.cart, i ncoming] }
+      return { ...state, cart: [...state.cart, incoming] }
     }
-    case 'REMOVE_FROM_CART': 
-      return { ...state, cart: state.cart.fi lter(ci => ci.id !== action.id) }
-    case 'U PDATE_CART_QTY': {
-      if (action.qty < 1)  {
-        return { ...state, cart: state.cart .filter(ci => ci.id !== action.id) }
+    case 'REMOVE_FROM_CART':
+      return { ...state, cart: state.cart.filter(ci => ci.id !== action.id) }
+    case 'UPDATE_CART_QTY': {
+      if (action.qty < 1) {
+        return { ...state, cart: state.cart.filter(ci => ci.id !== action.id) }
       }
-       return {
+      return {
         ...state,
-        cart : state.cart.map(ci => ci.id === action.id ?  { ...ci, qty: action.qty } : ci),
+        cart: state.cart.map(ci => ci.id === action.id ? { ...ci, qty: action.qty } : ci),
       }
-     }
+    }
     case 'UPDATE_CART_NOTE':
-      return  {
+      return {
         ...state,
-        cart: state.cart. map(ci => ci.id === action.id ? { ...ci, note : action.note } : ci),
+        cart: state.cart.map(ci => ci.id === action.id ? { ...ci, note: action.note } : ci),
       }
-    case 'CLEA R_CART':
+    case 'CLEAR_CART':
       return { ...state, cart: [] }
-     case 'SET_CART_PAY':
-      return { ...st ate, cartPayMethod: action.method }
-    case  'SET_CART_ORDER_TYPE':
-      return { ...stat e, cartOrderType: action.orderType }
-    case  'SET_PROMOS':
-      return { ...state, promo s: action.promos }
+    case 'SET_CART_PAY':
+      return { ...state, cartPayMethod: action.method }
+    case 'SET_CART_ORDER_TYPE':
+      return { ...state, cartOrderType: action.orderType }
+    case 'SET_PROMOS':
+      return { ...state, promos: action.promos }
     case 'HOLD_ORDER': {
-       const heldOrders = [action.order, ...sta te.heldOrders]
-      storage.set('held_orders ', heldOrders)
-      return { ...state, heldO rders }
+      const heldOrders = [action.order, ...state.heldOrders]
+      storage.set('held_orders', heldOrders)
+      return { ...state, heldOrders }
     }
-    case 'REMOVE_HELD_ORDER': { 
-      const heldOrders = state.heldOrders.fi lter(h => h.id !== action.id)
-      storage.s et('held_orders', heldOrders)
-      return {  ...state, heldOrders }
+    case 'REMOVE_HELD_ORDER': {
+      const heldOrders = state.heldOrders.filter(h => h.id !== action.id)
+      storage.set('held_orders', heldOrders)
+      return { ...state, heldOrders }
     }
-    case 'SYNC_H ELD_ORDERS': {
-      storage.set('held_orders ', action.orders)
-      return { ...state, he ldOrders: action.orders }
+    case 'SYNC_HELD_ORDERS': {
+      storage.set('held_orders', action.orders)
+      return { ...state, heldOrders: action.orders }
     }
-    case 'UPS ERT_HELD_ORDER': {
-      const idx = state.he ldOrders.findIndex(h => h.id === action.order .id)
+    case 'UPSERT_HELD_ORDER': {
+      const idx = state.heldOrders.findIndex(h => h.id === action.order.id)
       const heldOrders = idx >= 0
-         ? state.heldOrders.map((h, i) => i === idx  ? action.order : h)
-        : [action.order,  ...state.heldOrders]
-      storage.set('held_ orders', heldOrders)
-      return { ...state,  heldOrders }
+        ? state.heldOrders.map((h, i) => i === idx ? action.order : h)
+        : [action.order, ...state.heldOrders]
+      storage.set('held_orders', heldOrders)
+      return { ...state, heldOrders }
     }
-    case 'UPDATE_TRANSACT ION': {
-      const transactions = state.tran sactions.map(t => t.id === action.tx.id ? act ion.tx : t)
-      storage.set('tx', transacti ons)
+    case 'UPDATE_TRANSACTION': {
+      const transactions = state.transactions.map(t => t.id === action.tx.id ? action.tx : t)
+      storage.set('tx', transactions)
       return { ...state, transactions }
-     }
-    case 'ADD_ORDER_TICKET': {
-      co nst orderTickets = [action.ticket, ...state.o rderTickets].slice(0, 200)
-      storage.set( 'order_tickets', orderTickets)
-      return {  ...state, orderTickets }
     }
-    case 'UPD ATE_ORDER_TICKET': {
-      const orderTickets  = state.orderTickets.map(t =>
-        t.id = == action.id ? { ...t, ...action.patch } : t
-       )
-      storage.set('order_tickets', or derTickets)
-      return { ...state, orderTic kets }
+    case 'ADD_ORDER_TICKET': {
+      const orderTickets = [action.ticket, ...state.orderTickets].slice(0, 200)
+      storage.set('order_tickets', orderTickets)
+      return { ...state, orderTickets }
+    }
+    case 'UPDATE_ORDER_TICKET': {
+      const orderTickets = state.orderTickets.map(t =>
+        t.id === action.id ? { ...t, ...action.patch } : t
+      )
+      storage.set('order_tickets', orderTickets)
+      return { ...state, orderTickets }
     }
     case 'VOID_CART_ITEM': {
-       const cart = state.cart.map(ci =>
-         ci.id === action.id
-          ? { ...ci, void ed: true, voidReason: action.reason, voidReas onText: action.reasonText, voidedBy: action.b y, voidedAt: action.at }
+      const cart = state.cart.map(ci =>
+        ci.id === action.id
+          ? { ...ci, voided: true, voidReason: action.reason, voidReasonText: action.reasonText, voidedBy: action.by, voidedAt: action.at }
           : ci
-       )
+      )
       return { ...state, cart }
     }
-     case 'VOID_TICKET_ITEM': {
-      const orderT ickets = state.orderTickets.map(t =>
-         t.id === action.ticketId
-          ? { ...t,  items: t.items.map(ci =>
-              ci.id  === action.itemId
-                ? { ...ci,  voided: true, voidReason: action.reason, void ReasonText: action.reasonText, voidedBy: acti on.by, voidedAt: action.at }
-                 : ci
+    case 'VOID_TICKET_ITEM': {
+      const orderTickets = state.orderTickets.map(t =>
+        t.id === action.ticketId
+          ? { ...t, items: t.items.map(ci =>
+              ci.id === action.itemId
+                ? { ...ci, voided: true, voidReason: action.reason, voidReasonText: action.reasonText, voidedBy: action.by, voidedAt: action.at }
+                : ci
             )}
           : t
       )
-       storage.set('order_tickets', orderTickets) 
+      storage.set('order_tickets', orderTickets)
       return { ...state, orderTickets }
-     }
+    }
     case 'ADD_VOID_LOG': {
-      const void Logs = [action.entry, ...state.voidLogs].slic e(0, 500)
-      storage.set('void_logs', void Logs)
+      const voidLogs = [action.entry, ...state.voidLogs].slice(0, 500)
+      storage.set('void_logs', voidLogs)
       return { ...state, voidLogs }
-     }
+    }
     case 'REFUND_TRANSACTION': {
-      con st transactions = state.transactions.map(t => 
+      const transactions = state.transactions.map(t =>
         t.id === action.id
-          ? { ... t, refunded: true, refundReason: action.reaso n, refundedBy: action.by, refundedAt: action. at, refundAmount: action.amount }
-          :  t
+          ? { ...t, refunded: true, refundReason: action.reason, refundedBy: action.by, refundedAt: action.at, refundAmount: action.amount }
+          : t
       )
-      storage.set('tx', transactio ns)
+      storage.set('tx', transactions)
       return { ...state, transactions }
-     }
+    }
         case 'ADD_NO_SALE_LOG': {
       const noSaleLogs = [action.entry, ...state.noSaleLogs].slice(0, 1000)
       storage.set('no_sale_logs', noSaleLogs)
       return { ...state, noSaleLogs }
     }
     case 'ADD_REFUND_LOG': {
-      const  refundLogs = [action.entry, ...state.refundL ogs].slice(0, 500)
-      storage.set('refund_ logs', refundLogs)
-      return { ...state, r efundLogs }
+      const refundLogs = [action.entry, ...state.refundLogs].slice(0, 500)
+      storage.set('refund_logs', refundLogs)
+      return { ...state, refundLogs }
     }
     case 'SET_UI_MODE':
-       return { ...state, uiMode: action.mode }
-     case 'SHOW_EOD':
-      return { ...state,  showEOD: true }
+      return { ...state, uiMode: action.mode }
+    case 'SHOW_EOD':
+      return { ...state, showEOD: true }
     case 'HIDE_EOD':
-      re turn { ...state, showEOD: false }
-    case 'C LOSE_SHIFT_FORMAL': {
-      if (!state.curren tShift) return state
-      const shifts = sta te.shifts.map(s =>
-        s.id === state.cur rentShift!.id
-          ? { ...s, end: action .closedAt, closedBy: action.closedBy, closedA t: action.closedAt,
-              openingFloa t: action.openingFloat, countedCash: action.c ountedCash,
-              cashVariance: actio n.variance, varianceNote: action.varianceNote ,
-              wasOverridden: action.wasOver ridden ?? false, isFormalClose: true }
-           : s
+      return { ...state, showEOD: false }
+    case 'CLOSE_SHIFT_FORMAL': {
+      if (!state.currentShift) return state
+      const shifts = state.shifts.map(s =>
+        s.id === state.currentShift!.id
+          ? { ...s, end: action.closedAt, closedBy: action.closedBy, closedAt: action.closedAt,
+              openingFloat: action.openingFloat, countedCash: action.countedCash,
+              cashVariance: action.variance, varianceNote: action.varianceNote,
+              wasOverridden: action.wasOverridden ?? false, isFormalClose: true }
+          : s
       )
-      storage.set('shifts', s hifts)
-      // Held orders survive shift bou ndaries - next shift inherits open tables
-       return { ...state, currentShift: null, shi fts }
+      storage.set('shifts', shifts)
+      // Held orders survive shift boundaries - next shift inherits open tables
+      return { ...state, currentShift: null, shifts }
     }
     case 'ADD_MENU_ITEM': {
-       const menuData = { ...state.menuData, [actio n.mod]: { ...state.menuData[action.mod], item s: [...state.menuData[action.mod].items, acti on.item] } }
-      storage.set('menu_data', m enuData)
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], items: [...state.menuData[action.mod].items, action.item] } }
+      storage.set('menu_data', menuData)
       return { ...state, menuData }
-     }
+    }
     case 'UPDATE_MENU_ITEM': {
-      co nst menuData = { ...state.menuData, [action.m od]: { ...state.menuData[action.mod], items:  state.menuData[action.mod].items.map(i => i.i d === action.item.id ? action.item : i) } }
-       storage.set('menu_data', menuData)
-       return { ...state, menuData }
-    }
-    case  'DELETE_MENU_ITEM': {
-      const menuData =  { ...state.menuData, [action.mod]: { ...stat e.menuData[action.mod], items: state.menuData [action.mod].items.filter(i => i.id !== actio n.id) } }
-      storage.set('menu_data', menu Data)
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], items: state.menuData[action.mod].items.map(i => i.id === action.item.id ? action.item : i) } }
+      storage.set('menu_data', menuData)
       return { ...state, menuData }
-     }
+    }
+    case 'DELETE_MENU_ITEM': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], items: state.menuData[action.mod].items.filter(i => i.id !== action.id) } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
+    }
     case 'SET_MENU_CATEGORIES': {
-      co nst menuData = { ...state.menuData, [action.m od]: { ...state.menuData[action.mod], categor ies: action.categories } }
-      storage.set( 'menu_data', menuData)
-      return { ...stat e, menuData }
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], categories: action.categories } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
     }
-    case 'RENAME_CATEGORY ': {
-      const cur = state.menuData[action. mod]
-      const menuData = { ...state.menuDa ta, [action.mod]: { ...cur,
-        categorie s: cur.categories.map(c => c === action.oldNa me ? action.newName : c),
-        items: cur. items.map(i => i.cat === action.oldName ? { . ..i, cat: action.newName } : i),
+    case 'RENAME_CATEGORY': {
+      const cur = state.menuData[action.mod]
+      const menuData = { ...state.menuData, [action.mod]: { ...cur,
+        categories: cur.categories.map(c => c === action.oldName ? action.newName : c),
+        items: cur.items.map(i => i.cat === action.oldName ? { ...i, cat: action.newName } : i),
       }}
-       storage.set('menu_data', menuData)
-      r eturn { ...state, menuData }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
     }
-    case ' ADD_MENU_ADDON': {
-      const menuData = { . ..state.menuData, [action.mod]: { ...state.me nuData[action.mod], addons: [...state.menuDat a[action.mod].addons, action.addon] } }
-       storage.set('menu_data', menuData)
-      ret urn { ...state, menuData }
+    case 'ADD_MENU_ADDON': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], addons: [...state.menuData[action.mod].addons, action.addon] } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
     }
-    case 'UP DATE_MENU_ADDON': {
-      const menuData = {  ...state.menuData, [action.mod]: { ...state.m enuData[action.mod], addons: state.menuData[a ction.mod].addons.map(a => a.id === action.ad don.id ? action.addon : a) } }
-      storage. set('menu_data', menuData)
-      return { ... state, menuData }
+    case 'UPDATE_MENU_ADDON': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], addons: state.menuData[action.mod].addons.map(a => a.id === action.addon.id ? action.addon : a) } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
     }
-    case 'DELETE_MENU _ADDON': {
-      const menuData = { ...state. menuData, [action.mod]: { ...state.menuData[a ction.mod], addons: state.menuData[action.mod ].addons.filter(a => a.id !== action.id) } }
-       storage.set('menu_data', menuData)
-       return { ...state, menuData }
+    case 'DELETE_MENU_ADDON': {
+      const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], addons: state.menuData[action.mod].addons.filter(a => a.id !== action.id) } }
+      storage.set('menu_data', menuData)
+      return { ...state, menuData }
     }
-    def ault:
+    default:
       return state
   }
 }
 
-// ── Sup abase held-order row helpers ─────� ��──────────────� ��──────────────� ��──────────────� ��────
-function heldToRow(h: HeldOrde r) {
+// ── Supabase held-order row helpers ───────────────────────────────────────────────────────
+function heldToRow(h: HeldOrder) {
   return {
-    id: h.id, label: h.label,  cart: h.cart,
-    order_type: h.orderType, m odule: h.module,
-    sel_table: h.selTable ??  null,
-    guest_count: h.guestCount, custome r_name: h.customerName,
-    disc_pct: h.discP ct, disc_flat: h.discFlat,
-    gratuity_pct:  h.gratuityPct, gratuity_override: h.gratuityO verride,
-    opened_at: h.openedAt ?? null, s aved_at: h.savedAt, saved_by: h.savedBy,
+    id: h.id, label: h.label, cart: h.cart,
+    order_type: h.orderType, module: h.module,
+    sel_table: h.selTable ?? null,
+    guest_count: h.guestCount, customer_name: h.customerName,
+    disc_pct: h.discPct, disc_flat: h.discFlat,
+    gratuity_pct: h.gratuityPct, gratuity_override: h.gratuityOverride,
+    opened_at: h.openedAt ?? null, saved_at: h.savedAt, saved_by: h.savedBy,
   }
- }
-function rowToHeld(r: Record<string, unknow n>): HeldOrder {
+}
+function rowToHeld(r: Record<string, unknown>): HeldOrder {
   return {
-    id: r.id as s tring,
+    id: r.id as string,
     label: r.label as string,
-    cart : (r.cart as CartItem[]) ?? [],
-    orderType : (r.order_type ?? 'dine-in') as OrderType,
-     module: (r.module ?? 'restaurant') as Modu leKey,
-    selTable: (r.sel_table as string |  null) ?? null,
-    guestCount: Number(r.gues t_count ?? 0),
-    customerName: String(r.cus tomer_name ?? ''),
-    discPct: Number(r.disc _pct ?? 0),
-    discFlat: Number(r.disc_flat  ?? 0),
-    gratuityPct: Number(r.gratuity_pct  ?? 0),
-    gratuityOverride: Boolean(r.gratu ity_override),
-    openedAt: r.opened_at as s tring | undefined,
-    savedAt: String(r.save d_at ?? ''),
-    savedBy: String(r.saved_by ? ? ''),
+    cart: (r.cart as CartItem[]) ?? [],
+    orderType: (r.order_type ?? 'dine-in') as OrderType,
+    module: (r.module ?? 'restaurant') as ModuleKey,
+    selTable: (r.sel_table as string | null) ?? null,
+    guestCount: Number(r.guest_count ?? 0),
+    customerName: String(r.customer_name ?? ''),
+    discPct: Number(r.disc_pct ?? 0),
+    discFlat: Number(r.disc_flat ?? 0),
+    gratuityPct: Number(r.gratuity_pct ?? 0),
+    gratuityOverride: Boolean(r.gratuity_override),
+    openedAt: r.opened_at as string | undefined,
+    savedAt: String(r.saved_at ?? ''),
+    savedBy: String(r.saved_by ?? ''),
   }
 }
 
-// ── Context ────� ��──────────────� ��──────────────� ��──────────────� ��──────────────� ��──────────────
- interface AppContextValue {
-  state: AppState 
+// ── Context ───────────────────────────────────────────────────────────────────────────────
+interface AppContextValue {
+  state: AppState
   dispatch: React.Dispatch<Action>
-  // Help ers
-  toast: (msg: string, type?: string) =>  void
-  audit: (action: string, detail: string , type?: AuditEntry['type']) => void
-  module Data: typeof MODULE_DATA
+  // Helpers
+  toast: (msg: string, type?: string) => void
+  audit: (action: string, detail: string, type?: AuditEntry['type']) => void
+  moduleData: typeof MODULE_DATA
 }
 
-const AppContext  = createContext<AppContextValue | null>(null) 
+const AppContext = createContext<AppContextValue | null>(null)
 
-export function AppProvider({ children }: {  children: React.ReactNode }) {
-  const [stat e, rawDispatch] = useReducer(reducer, undefin ed, initState)
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [state, rawDispatch] = useReducer(reducer, undefined, initState)
 
-  // Refs for deduplicating r ealtime echoes
-  const pendingWrites  = useRe f<Set<string>>(new Set())
-  const pendingDele tes = useRef<Set<string>>(new Set())
+  // Refs for deduplicating realtime echoes
+  const pendingWrites  = useRef<Set<string>>(new Set())
+  const pendingDeletes = useRef<Set<string>>(new Set())
 
-  // Su pabase-aware dispatch: syncs HOLD_ORDER / REM OVE_HELD_ORDER to Supabase
-  const dispatch =  useCallback((action: Action): void => {
-     rawDispatch(action)
-    if (action.type === ' HOLD_ORDER') {
-      const oid = action.order .id
+  // Supabase-aware dispatch: syncs HOLD_ORDER / REMOVE_HELD_ORDER to Supabase
+  const dispatch = useCallback((action: Action): void => {
+    rawDispatch(action)
+    if (action.type === 'HOLD_ORDER') {
+      const oid = action.order.id
       pendingWrites.current.add(oid)
-       ;(async () => {
-        try { await supabas e.from('held_orders').upsert(heldToRow(action .order)) } catch {}
-        setTimeout(() =>  pendingWrites.current.delete(oid), 3000)
-       })()
-    }
-    if (action.type === 'REMOVE_ HELD_ORDER') {
-      const oid = action.id
-       pendingDeletes.current.add(oid)
-      ;(a sync () => {
-        try { await supabase.fro m('held_orders').delete().eq('id', oid) } cat ch {}
-        setTimeout(() => pendingDeletes .current.delete(oid), 3000)
+      ;(async () => {
+        try { await supabase.from('held_orders').upsert(heldToRow(action.order)) } catch {}
+        setTimeout(() => pendingWrites.current.delete(oid), 3000)
       })()
     }
-   }, [])
+    if (action.type === 'REMOVE_HELD_ORDER') {
+      const oid = action.id
+      pendingDeletes.current.add(oid)
+      ;(async () => {
+        try { await supabase.from('held_orders').delete().eq('id', oid) } catch {}
+        setTimeout(() => pendingDeletes.current.delete(oid), 3000)
+      })()
+    }
+  }, [])
 
-  // Refresh staff from Supabase (i nitial load + realtime trigger)
-  const refre shStaff = useCallback(() => {
-    fetch(STAFF _API)
-      .then(r => r.ok ? r.json() : null )
+  // Refresh staff from Supabase (initial load + realtime trigger)
+  const refreshStaff = useCallback(() => {
+    fetch(STAFF_API)
+      .then(r => r.ok ? r.json() : null)
       .then((rows: unknown) => {
-        if  (!Array.isArray(rows) || rows.length === 0)  return
-        const fromSupabase = (rows as  DbStaffRow[]).map(dbStaffToUser)
-        rawD ispatch({ type: 'SET_USERS', users: fromSupab ase })
-        storage.set('users', fromSupab ase)
+        if (!Array.isArray(rows) || rows.length === 0) return
+        const fromSupabase = (rows as DbStaffRow[]).map(dbStaffToUser)
+        rawDispatch({ type: 'SET_USERS', users: fromSupabase })
+        storage.set('users', fromSupabase)
       })
       .catch(() => {})
-  }, []) 
+  }, [])
 
   const staffFetched = useRef(false)
-  useE ffect(() => {
-    if (staffFetched.current) r eturn
+  useEffect(() => {
+    if (staffFetched.current) return
     staffFetched.current = true
-    ref reshStaff()
+    refreshStaff()
   }, [refreshStaff])
 
-  // Realti me staff sync — re-fetch whenever any staff  row changes on any device
-  useEffect(() =>  {
+  // Realtime staff sync — re-fetch whenever any staff row changes on any device
+  useEffect(() => {
     const ch = supabase
-      .channel('sta ff-sync')
-      .on('postgres_changes', { eve nt: '*', schema: 'public', table: 'staff' },  refreshStaff)
+      .channel('staff-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'staff' }, refreshStaff)
       .subscribe()
-    return ( ) => { supabase.removeChannel(ch) }
-  }, [ref reshStaff])
+    return () => { supabase.removeChannel(ch) }
+  }, [refreshStaff])
 
   // Online/offline detection
-   useEffect(() => {
-    const on  = () => rawDi spatch({ type: 'SET_ONLINE', online: true })
-     const off = () => rawDispatch({ type: 'SE T_ONLINE', online: false })
-    window.addEve ntListener('online',  on)
-    window.addEvent Listener('offline', off)
-    return () => { w indow.removeEventListener('online', on); wind ow.removeEventListener('offline', off) }
-  },  [])
+  useEffect(() => {
+    const on  = () => rawDispatch({ type: 'SET_ONLINE', online: true })
+    const off = () => rawDispatch({ type: 'SET_ONLINE', online: false })
+    window.addEventListener('online',  on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
 
-  // Sync held orders with Supabase –  initial load + realtime subscription
-  const  heldFetched = useRef(false)
-  useEffect(() = > {
+  // Sync held orders with Supabase – initial load + realtime subscription
+  const heldFetched = useRef(false)
+  useEffect(() => {
     if (heldFetched.current) return
-    h eldFetched.current = true
+    heldFetched.current = true
 
-    ;(async () =>  {
+    ;(async () => {
       try {
-        const { data } = await  supabase.from('held_orders').select('*')
-         if (!data) return
-        const supaOrder s = data.map(row => rowToHeld(row as Record<s tring, unknown>))
-        const supaIds = new  Set(supaOrders.map(h => h.id))
-        const  local = storage.get<HeldOrder[]>('held_order s') ?? []
-        const localOnly = local.fil ter(h => !supaIds.has(h.id))
-        // Uploa d any orders created offline
-        if (loca lOnly.length > 0) {
-          try { await sup abase.from('held_orders').upsert(localOnly.ma p(heldToRow)) } catch {}
+        const { data } = await supabase.from('held_orders').select('*')
+        if (!data) return
+        const supaOrders = data.map(row => rowToHeld(row as Record<string, unknown>))
+        const supaIds = new Set(supaOrders.map(h => h.id))
+        const local = storage.get<HeldOrder[]>('held_orders') ?? []
+        const localOnly = local.filter(h => !supaIds.has(h.id))
+        // Upload any orders created offline
+        if (localOnly.length > 0) {
+          try { await supabase.from('held_orders').upsert(localOnly.map(heldToRow)) } catch {}
         }
-        ra wDispatch({ type: 'SYNC_HELD_ORDERS', orders:  [...supaOrders, ...localOnly] })
-      } cat ch {}
+        rawDispatch({ type: 'SYNC_HELD_ORDERS', orders: [...supaOrders, ...localOnly] })
+      } catch {}
     })()
 
     const ch = supabase
-       .channel('held-orders')
-      .on('postgres_ changes', { event: 'INSERT', schema: 'public' , table: 'held_orders' }, ({ new: row }) => { 
-        if (pendingWrites.current.has((row a s { id: string }).id)) return
-        rawDisp atch({ type: 'UPSERT_HELD_ORDER', order: rowT oHeld(row as Record<string, unknown>) })
-       })
-      .on('postgres_changes', { event: ' UPDATE', schema: 'public', table: 'held_order s' }, ({ new: row }) => {
-        if (pending Writes.current.has((row as { id: string }).id )) return
-        rawDispatch({ type: 'UPSERT _HELD_ORDER', order: rowToHeld(row as Record< string, unknown>) })
+      .channel('held-orders')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'held_orders' }, ({ new: row }) => {
+        if (pendingWrites.current.has((row as { id: string }).id)) return
+        rawDispatch({ type: 'UPSERT_HELD_ORDER', order: rowToHeld(row as Record<string, unknown>) })
       })
-      .on('post gres_changes', { event: 'DELETE', schema: 'pu blic', table: 'held_orders' }, ({ old: row })  => {
-        if (pendingDeletes.current.has( (row as { id: string }).id)) return
-        r awDispatch({ type: 'REMOVE_HELD_ORDER', id: ( row as { id: string }).id })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'held_orders' }, ({ new: row }) => {
+        if (pendingWrites.current.has((row as { id: string }).id)) return
+        rawDispatch({ type: 'UPSERT_HELD_ORDER', order: rowToHeld(row as Record<string, unknown>) })
       })
-      . subscribe()
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'held_orders' }, ({ old: row }) => {
+        if (pendingDeletes.current.has((row as { id: string }).id)) return
+        rawDispatch({ type: 'REMOVE_HELD_ORDER', id: (row as { id: string }).id })
+      })
+      .subscribe()
 
-    return () => { supabase.remo veChannel(ch) }
+    return () => { supabase.removeChannel(ch) }
   }, [])
 
-  const toast = use Callback((msg: string, type = 'info') => {
-     const id = Date.now()
-    rawDispatch({ typ e: 'ADD_TOAST', msg, toastType: type, id })
-     setTimeout(() => rawDispatch({ type: 'REMO VE_TOAST', id }), 3000)
+  const toast = useCallback((msg: string, type = 'info') => {
+    const id = Date.now()
+    rawDispatch({ type: 'ADD_TOAST', msg, toastType: type, id })
+    setTimeout(() => rawDispatch({ type: 'REMOVE_TOAST', id }), 3000)
   }, [])
 
-  const aud itFn = useCallback((action: string, detail: s tring, type: AuditEntry['type'] = 'info') =>  {
+  const auditFn = useCallback((action: string, detail: string, type: AuditEntry['type'] = 'info') => {
     rawDispatch({
       type: 'ADD_AUDIT',
-       entry: {
-        id: crypto.randomUUID( ), ts: new Date().toLocaleString(),
-        u ser: state.currentUser?.name ?? 'System',
-         userId: state.currentUser?.id ?? null,
-         action, detail, type,
-        mod: sta te.activeModule,
+      entry: {
+        id: crypto.randomUUID(), ts: new Date().toLocaleString(),
+        user: state.currentUser?.name ?? 'System',
+        userId: state.currentUser?.id ?? null,
+        action, detail, type,
+        mod: state.activeModule,
       },
     })
-  }, [state. currentUser, state.activeModule])
+  }, [state.currentUser, state.activeModule])
 
-  return ( 
-    <AppContext.Provider value={{ state, dis patch, toast, audit: auditFn, moduleData: {
-       restaurant: { ...MODULE_DATA.restaurant,  ...state.menuData.restaurant },
-      bar:         { ...MODULE_DATA.bar,        ...state.m enuData.bar        },
-      carwash:    { ... MODULE_DATA.carwash,    ...state.menuData.car wash    },
+  return (
+    <AppContext.Provider value={{ state, dispatch, toast, audit: auditFn, moduleData: {
+      restaurant: { ...MODULE_DATA.restaurant, ...state.menuData.restaurant },
+      bar:        { ...MODULE_DATA.bar,        ...state.menuData.bar        },
+      carwash:    { ...MODULE_DATA.carwash,    ...state.menuData.carwash    },
     } as typeof MODULE_DATA }}>
-       {children}
+      {children}
     </AppContext.Provider>
-  ) 
+  )
 }
 
 export function useApp() {
-  const ctx =  useContext(AppContext)
-  if (!ctx) throw new  Error('useApp must be used inside AppProvider ')
+  const ctx = useContext(AppContext)
+  if (!ctx) throw new Error('useApp must be used inside AppProvider')
   return ctx
 }
 
- 

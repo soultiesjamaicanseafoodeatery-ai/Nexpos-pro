@@ -65,6 +65,8 @@ export default function AuthScreen() {
   const [pinState, setPinState] = useState<'idle' | 'error' | 'success'>('idle')
   const [showWeakPinWarning, setShowWeakPinWarning] = useState(false)
   const [lockoutInfo, setLockoutInfo] = useState<{ locked: boolean; remaining: number }>({ locked: false, remaining: 0 })
+  const [screenLocked, setScreenLocked] = useState(true)
+  const [clockTime, setClockTime] = useState(() => new Date())
 
   const activeUsers = state.users.filter(u => u.active)
 
@@ -128,6 +130,7 @@ export default function AuthScreen() {
               revenue: 0,
             }
             clearFailedAttempts(selectedUser.id)
+            setScreenLocked(true)
             dispatch({ type: 'LOGIN', user: selectedUser, shift })
             if (WEAK_PINS.includes(newPin)) setShowWeakPinWarning(true)
           }, 280)
@@ -171,6 +174,41 @@ export default function AuthScreen() {
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [pressKey, delKey, resetAuth])
+
+  // Live clock for lock screen
+  useEffect(() => {
+    const t = setInterval(() => setClockTime(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const bizName = state.biz?.name || 'NexPOS Pro'
+
+  if (screenLocked) return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'var(--bg)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000, gap: 0,
+    }}>
+      <div style={{ textAlign: 'center', marginBottom: 48 }}>
+        <div style={{ fontSize: 42, fontWeight: 900, color: 'var(--txt)', letterSpacing: '-1px', marginBottom: 8 }}>{bizName}</div>
+        <div style={{ fontSize: 56, fontWeight: 300, color: 'var(--txt)', fontFamily: 'var(--mono)', letterSpacing: '2px', marginBottom: 4 }}>
+          {clockTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+        </div>
+        <div style={{ fontSize: 14, color: 'var(--txt3)', fontWeight: 500 }}>
+          {clockTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+        </div>
+      </div>
+      <button
+        onClick={() => setScreenLocked(false)}
+        style={{
+          padding: '16px 48px', borderRadius: 'var(--r)', fontSize: 16, fontWeight: 800,
+          background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer',
+          letterSpacing: '.3px', boxShadow: '0 8px 24px rgba(0,0,0,.3)',
+        }}
+      >Login</button>
+      <div style={{ marginTop: 16, fontSize: 11, color: 'var(--txt3)', opacity: .5 }}>NexPOS Pro · Multi-module POS System</div>
+    </div>
+  )
 
   return (
     <div style={{

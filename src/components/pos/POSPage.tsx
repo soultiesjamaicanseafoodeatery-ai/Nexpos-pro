@@ -1622,12 +1622,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                   </button>
                 </div>
 
-                {canUseOpenItem && (
-                  <button onClick={() => setShowOpenItem(true)}
-                    style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--ora)', border: '1px solid rgba(249,115,22,.3)', cursor: 'pointer', letterSpacing: '.2px' }}>
-                    &#43; Open Item
-                  </button>
-                )}
+                <button onClick={() => setShowOpenItem(true)}
+                  style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--ora)', border: '1px solid rgba(249,115,22,.3)', cursor: 'pointer', letterSpacing: '.2px' }}>
+                  &#43; Open Item
+                </button>
                 <button onClick={() => setShowNoSale(true)}
                 style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1px dashed var(--bdr)', cursor: 'pointer', letterSpacing: '.3px' }}>
                 No Sale &#8212; Open Drawer

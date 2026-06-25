@@ -108,23 +108,17 @@ export default function SettingsPage() {
 
   useEffect(() => { if (tab === 'printers') checkQZ() }, [tab, checkQZ])
 
-  const testPrint = async (label: string, content: string, printerName?: string, printWidth?: 58 | 80) => {
-    const w = printWidth ?? (form.printers?.width ?? 80) as 58 | 80
+  const testPrint = async (label: string, content: string, printerName?: string) => {
+    const w = (form.printers?.width ?? 80) as 58 | 80
     if (!printerName?.trim()) {
       setPrinterError('No printer name set — type the printer name in the field above first.')
       return
     }
     if (qzStatus === 'connected') {
       setPrinterError('')
-      if (w === 58) {
-        const { qzPrintRaw } = await import('@/lib/utils/qzTray')
-        const ok = await qzPrintRaw(printerName.trim(), content)
-        if (ok) return
-      } else {
-        const { qzPrint } = await import('@/lib/utils/qzTray')
-        const ok = await qzPrint(printerName.trim(), `<pre>${content}</pre>`, w)
-        if (ok) return
-      }
+      const { qzPrint } = await import('@/lib/utils/qzTray')
+      const ok = await qzPrint(printerName.trim(), `<pre>${content}</pre>`, w)
+      if (ok) return
       setPrinterError(`QZ Tray could not send to "${printerName.trim()}". Check Console (F12) for the exact error — common causes: wrong printer name, or certificate not yet trusted in QZ Tray Advanced.`)
     }
     // Fallback: browser print dialog
@@ -479,7 +473,7 @@ export default function SettingsPage() {
                 padding: '12px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 12, cursor: 'pointer',
                 border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
               }}>Test Receipt Printer</button>
-              <button onClick={() => testPrint('Kitchen Test', `*** KITCHEN TICKET ***\n\n   TEST PRINT OK\n   ${new Date().toLocaleTimeString()}\n\n**********************`, form.printers?.kitchen)} style={{
+              <button onClick={() => testPrint('Kitchen Test', `*** KITCHEN TICKET ***\n\n   TEST PRINT OK\n   ${new Date().toLocaleTimeString()}\n\n**********************`, form.printers?.kitchen, 58)} style={{
                 padding: '12px 0', borderRadius: 'var(--r)', fontWeight: 700, fontSize: 12, cursor: 'pointer',
                 border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)',
               }}>Test Kitchen Printer</button>

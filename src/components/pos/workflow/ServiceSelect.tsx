@@ -1,5 +1,4 @@
 'use client'
-import { useApp } from '@/lib/hooks/useAppStore'
 import type { OrderType } from '@/types'
 
 interface Props {
@@ -13,71 +12,11 @@ const SERVICES: { type: OrderType; icon: string; label: string; sub: string; col
 ]
 
 export default function ServiceSelect({ onSelect }: Props) {
-  const { state, dispatch } = useApp()
-  const { currentUser, biz, activeModule } = state
-
-  const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-
-  const allowedMods = currentUser?.allowedModules ?? []
-
   return (
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)',
       overflow: 'hidden',
     }}>
-
-      {/* Top bar */}
-      <div style={{
-        padding: '14px 24px', background: 'var(--bg2)', borderBottom: '1px solid var(--bdr)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
-      }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>
-            {biz.name || 'NexPOS Pro'}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2 }}>{today} · {now}</div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Module tabs */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            {(['restaurant', 'bar', 'carwash'] as const)
-              .filter(m => allowedMods.includes(m))
-              .map(m => {
-                const labels = { restaurant: '🍴 Restaurant', bar: '🍸 Bar', carwash: '🚿 Car Wash' }
-                const isActive = activeModule === m
-                return (
-                  <button key={m} onClick={() => dispatch({ type: 'SET_MODULE', mod: m })} style={{
-                    padding: '7px 14px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700,
-                    cursor: 'pointer', border: `1.5px solid ${isActive ? 'var(--blue)' : 'var(--bdr)'}`,
-                    background: isActive ? 'var(--blue-bg)' : 'var(--surf)',
-                    color: isActive ? 'var(--blue)' : 'var(--txt3)',
-                  }}>{labels[m]}</button>
-                )
-              })}
-          </div>
-          {/* User chip */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: 'var(--surf)', border: '1px solid var(--bdr)',
-            borderRadius: 'var(--r)', padding: '7px 12px',
-          }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: '50%', fontSize: 11, fontWeight: 800,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: `${currentUser?.color ?? '#3b82f6'}22`, color: currentUser?.color ?? 'var(--blue)',
-            }}>{currentUser?.ini}</div>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--txt)' }}>{currentUser?.name?.split(' ')[0]}</div>
-              <div style={{ fontSize: 10, color: 'var(--txt3)', textTransform: 'capitalize' }}>{currentUser?.role}</div>
-            </div>
-          </div>
-          <button onClick={() => dispatch({ type: 'SET_PAGE', page: 'pos' })} style={{
-            padding: '7px 14px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700,
-            border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt3)', cursor: 'pointer',
-          }}>Admin</button>
-        </div>
-      </div>
 
       {/* Hero text */}
       <div style={{ textAlign: 'center', padding: '40px 20px 24px', flexShrink: 0 }}>

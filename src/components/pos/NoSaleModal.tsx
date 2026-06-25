@@ -167,26 +167,32 @@ export default function NoSaleModal({ isOpen, onClose }: Props) {
           </>
         )}
 
-        {/* PIN entry */}
+        {/* PIN entry — custom pad avoids browser save-password dialog */}
         {step === 'pin' && (
           <>
-            <div style={{ padding: '20px 18px' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 12 }}>Manager PIN Required</div>
-              <div style={{ fontSize: 13, color: 'var(--txt2)', marginBottom: 16, lineHeight: 1.5 }}>Enter a manager or admin PIN to open the cash drawer.</div>
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <input
-                  type="password" inputMode="numeric" maxLength={4} autoComplete="new-password"
-                  value={pin}
-                  onChange={e => { setPin(e.target.value.replace(/\D/g, '')); setPinError('') }}
-                  onKeyDown={e => { if (e.key === 'Enter' && pin.length >= 4) onPinSubmit() }}
-                  autoFocus
-                  style={{ width: 140, padding: '14px 16px', fontSize: 28, textAlign: 'center', letterSpacing: 12, borderRadius: 'var(--r2)', border: `2px solid ${pinError ? '#ef4444' : 'var(--blue)'}`, background: 'var(--surf)', color: 'var(--txt)', fontWeight: 700 }}
-                  placeholder="&#8226;&#8226;&#8226;&#8226;"
-                />
+            <div style={{ padding: '16px 18px 8px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 10 }}>Manager PIN Required</div>
+              {/* Dot indicators */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginBottom: 10 }}>
+                {[0,1,2,3].map(i => (
+                  <div key={i} style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${pinError ? '#ef4444' : 'var(--blue)'}`, background: pin.length > i ? (pinError ? '#ef4444' : 'var(--blue)') : 'transparent', transition: 'background .15s' }} />
+                ))}
               </div>
-              {pinError && <div style={{ marginTop: 10, fontSize: 12, color: '#ef4444', textAlign: 'center' }}>{pinError}</div>}
+              {pinError && <div style={{ fontSize: 12, color: '#ef4444', textAlign: 'center', marginBottom: 8 }}>{pinError}</div>}
+              {/* PIN pad */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((k, idx) => (
+                  k === '' ? <div key={idx} /> :
+                  <button key={idx} onClick={() => {
+                    if (k === '⌫') { setPin(p => p.slice(0,-1)); setPinError(''); }
+                    else if (pin.length < 4) { const next = pin + k; setPin(next); setPinError(''); if (next.length === 4) setTimeout(() => {}, 0); }
+                  }} style={{ padding: '14px 0', fontSize: k === '⌫' ? 18 : 20, fontWeight: 700, borderRadius: 'var(--r2)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', cursor: 'pointer', userSelect: 'none' }}>
+                    {k}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div style={{ padding: '0 18px 16px', display: 'flex', gap: 8 }}>
+            <div style={{ padding: '8px 18px 16px', display: 'flex', gap: 8 }}>
               <button onClick={() => { setStep('reason'); setPin(''); setPinError('') }} style={{ flex: 1, padding: '10px 0', borderRadius: 'var(--r2)', background: 'transparent', color: 'var(--txt2)', border: '1.5px solid var(--bdr)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Back</button>
               <button onClick={onPinSubmit} disabled={pin.length < 4} style={{ flex: 2, padding: '10px 0', borderRadius: 'var(--r2)', background: pin.length < 4 ? 'var(--surf3)' : 'var(--blue)', color: pin.length < 4 ? 'var(--txt3)' : '#fff', border: 'none', fontWeight: 800, fontSize: 13, cursor: pin.length < 4 ? 'not-allowed' : 'pointer' }}>
                 Confirm

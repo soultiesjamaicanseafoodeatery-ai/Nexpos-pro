@@ -1,4 +1,4 @@
-// ── Users & Auth ──────────────────────────────────────────────
+﻿// ── Users & Auth ──────────────────────────────────────────────
 export type UserRole = 'admin' | 'manager' | 'staff'
 
 export interface User {
@@ -183,6 +183,7 @@ export interface CartItem {
   voidReasonText?: string
   voidedBy?: string
   voidedAt?: string
+  openItem?: boolean
 }
 
 // ── Transactions ──────────────────────────────────────────────
@@ -344,6 +345,7 @@ export interface BusinessConfig {
   noSaleMode?: 'manager_only' | 'require_pin'  // default: require_pin
   }
   autoLogoutMinutes?: number
+  staffOpenItemAllowed?: boolean
 }
 
 // ── POS State ─────────────────────────────────────────────────
@@ -533,3 +535,5 @@ export interface NoSaleLog {
   shiftId: string
   mod: ModuleKey
 }
+
+

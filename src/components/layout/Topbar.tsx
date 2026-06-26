@@ -121,7 +121,7 @@ export default function Topbar() {
   }
 
   useEffect(() => {
-    const tick = () => setClock(new Date().toLocaleTimeString())
+    const tick = () => setClock(new Date().toLocaleTimeString('en-US', { timeZone: 'America/Jamaica', hour: '2-digit', minute: '2-digit', second: '2-digit' }))
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)

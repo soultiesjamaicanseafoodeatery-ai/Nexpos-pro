@@ -123,7 +123,7 @@ export default function Topbar() {
   useEffect(() => {
     const tick = () => {
       const now = new Date()
-      const utcMs = now.getTime() + now.getTimezoneOffset() * 60000
+      const utcMs = now.getTime()
       const jm = new Date(utcMs - 5 * 3600000)
       const h = jm.getUTCHours()
       const m = String(jm.getUTCMinutes()).padStart(2, '0')

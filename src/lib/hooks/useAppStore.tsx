@@ -226,10 +226,38 @@ function reducer(state: AppState, action: Action): AppState {
       const now = new Date().toISOString()
       if (state.currentUser) {
         try {
-          // Save grace period record so the same employee can resume within 40 min
           const clockinAt = localStorage.getItem(`personal_clockin_${state.currentUser.id}`) ?? (state.currentShift?.start ?? now)
           localStorage.setItem(`clockout_${state.currentUser.id}`, JSON.stringify({ clockinAt, at: now }))
           localStorage.removeItem(`personal_clockin_${state.currentUser.id}`)
+
+          // Auto-create payroll time entry when a profile exists for this employee
+          type PProfile = { staffId: string; payrollType: 'hourly' | 'salary'; active: boolean }
+          type TEntry   = { id: string; staffId: string; staffName: string; date: string; clockIn: string; clockOut: string | null; breakMinutes: number; notes: string }
+          const profiles: PProfile[] = JSON.parse(localStorage.getItem('payroll_profiles') ?? '[]')
+          const profile = profiles.find(p => p.staffId === state.currentUser!.id && p.active)
+          if (profile) {
+            // 30-min auto deduction for hourly; 0 for salary (attendance tracking only)
+            const breakMinutes = profile.payrollType === 'hourly' ? 30 : 0
+            const todayDate    = now.slice(0, 10)
+            const toHHMM       = (iso: string) => new Date(iso).toTimeString().slice(0, 5)
+            const clockInHHMM  = toHHMM(clockinAt)
+            const clockOutHHMM = toHHMM(now)
+            const entries: TEntry[] = JSON.parse(localStorage.getItem('payroll_time_entries') ?? '[]')
+            // Close an open entry for today if found, else create a new completed entry
+            const openIdx = entries.findIndex(e => e.staffId === state.currentUser!.id && e.clockOut === null && e.date === todayDate)
+            if (openIdx >= 0) {
+              entries[openIdx] = { ...entries[openIdx], clockOut: clockOutHHMM, breakMinutes }
+            } else {
+              const dup = entries.some(e => e.staffId === state.currentUser!.id && e.date === todayDate && e.clockIn === clockInHHMM)
+              if (!dup) {
+                const note = profile.payrollType === 'hourly'
+                  ? 'auto · 30m break deducted'
+                  : 'auto · salary (attendance only)'
+                entries.unshift({ id: `TE-AUTO-${Date.now()}`, staffId: state.currentUser!.id, staffName: state.currentUser!.name, date: todayDate, clockIn: clockInHHMM, clockOut: clockOutHHMM, breakMinutes, notes: note })
+              }
+            }
+            localStorage.setItem('payroll_time_entries', JSON.stringify(entries))
+          }
         } catch {}
       }
       storage.set('current_user', null)
@@ -692,3 +720,4 @@ export function useApp() {
   if (!ctx) throw new Error('useApp must be used inside AppProvider')
   return ctx
 }
+

@@ -114,6 +114,7 @@ export default function FleetPage() {
         creditLimit:    parseFloat(form.creditLimit) || 0,
         currentBalance: 0,
         billingCycle:   form.billingCycle,
+        invoiceDay:     1,
         paymentTerms:   form.paymentTerms,
         status:         'active',
         created:        new Date().toISOString(),
@@ -223,7 +224,7 @@ export default function FleetPage() {
                 <div style={{ fontSize: 12, color: 'var(--txt3)' }}>{selected.phone}</div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => openEditModal(selected)} style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer' }}>Edit</button>
+                <button onClick={() => openEditModal(selected!)}  style={{ padding: '5px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', border: '1px solid var(--bdr)', color: 'var(--txt)', cursor: 'pointer' }}>Edit</button>
                 <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--txt3)', fontSize: 18, lineHeight: 1 }}>×</button>
               </div>
             </div>

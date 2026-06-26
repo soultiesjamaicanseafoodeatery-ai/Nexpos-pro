@@ -13,15 +13,15 @@ export interface CwAddon {
 
 export default function CarWashFlow() {
   const [step, setStep] = useState<'services' | 'payment'>('services')
-  const [service, setService] = useState<CwService | null>(null)
+  const [services, setServices] = useState<CwService[]>([])
   const [addons, setAddons] = useState<CwAddon[]>([])
 
-  const reset = () => { setService(null); setAddons([]); setStep('services') }
+  const reset = () => { setServices([]); setAddons([]); setStep('services') }
 
-  if (step === 'payment' && service) {
+  if (step === 'payment' && services.length > 0) {
     return (
       <CarWashPayment
-        service={service}
+        services={services}
         addons={addons}
         onBack={() => setStep('services')}
         onComplete={reset}
@@ -31,7 +31,7 @@ export default function CarWashFlow() {
 
   return (
     <CarWashPackageSelect
-      onSelect={(svc, adds) => { setService(svc); setAddons(adds); setStep('payment') }}
+      onSelect={(svcs, adds) => { setServices(svcs); setAddons(adds); setStep('payment') }}
     />
   )
 }

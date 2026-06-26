@@ -6,11 +6,11 @@ import { hashPin } from '@/lib/utils/hash'
 import type { User } from '@/types'
 import { supabase } from '@/lib/supabase'
 
-type WStep = 'auth' | 'validate' | 'cash' | 'payments' | 'gratuity' | 'sales' | 'employees' | 'print' | 'confirm' | 'done'
-const STEPS: WStep[] = ['auth','validate','cash','payments','gratuity','sales','employees','print','confirm','done']
+type WStep = 'auth' | 'validate' | 'cash' | 'payments' | 'gratuity' | 'sales' | 'exceptions' | 'employees' | 'print' | 'confirm' | 'done'
+const STEPS: WStep[] = ['auth','validate','cash','payments','gratuity','sales','exceptions','employees','print','confirm','done']
 const STEP_LABELS: Record<WStep,string> = {
   auth:'Authorization', validate:'System Check', cash:'Cash Count', payments:'Payments',
-  gratuity:'Gratuity', sales:'Sales', employees:'Employees', print:'Print', confirm:'Confirm', done:'Done',
+  gratuity:'Gratuity', sales:'Sales', exceptions:'Exceptions', employees:'Employees', print:'Print', confirm:'Confirm', done:'Done',
 }
 
 const fmtJ = (n: number) => 'J$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
@@ -696,6 +696,139 @@ export default function CloseShiftWizard() {
         </CardBody>
         <CardFoot>
           <Back to="gratuity" />
+          <Next to="exceptions" />
+        </CardFoot>
+      </Card>
+    )
+  }
+
+  const renderExceptions = () => {
+    const allInWindow = transactions.filter(tx => {
+      try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false }
+    })
+    const voidedTxs   = allInWindow.filter(tx => tx.voided)
+    const refundedTxs = shiftTxs.filter(tx => tx.refunded)
+    const discTxs     = shiftTxs.filter(tx => (tx.disc ?? 0) > 0)
+    const voidTotal   = voidedTxs.reduce((s, tx) => s + tx.total, 0)
+    const refundTotal = refundedTxs.reduce((s, tx) => s + (tx.refundAmount ?? tx.total), 0)
+    const discTotal   = discTxs.reduce((s, tx) => s + (tx.disc ?? 0), 0)
+    const hasExceptions = voidedTxs.length > 0 || refundedTxs.length > 0 || discTxs.length > 0 || data.override
+
+    const tile = (label: string, count: number, amt: number | null, color: string) => (
+      <div style={{ background:'var(--surf)', border:`1px solid var(--bdr)`, borderRadius:'var(--r2)', padding:'12px 14px' }}>
+        <div style={{ fontSize:10, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:6 }}>{label}</div>
+        <div style={{ fontSize:18, fontWeight:900, color, fontFamily:'var(--mono)' }}>{count}</div>
+        {amt !== null && amt > 0 && <div style={{ fontSize:11, color:'var(--txt3)', marginTop:2 }}>{fmtJ(amt)}</div>}
+      </div>
+    )
+
+    return (
+      <Card>
+        <CardHead
+          title="Exception Summary"
+          sub={hasExceptions ? 'Review all voids, refunds, discounts and overrides before closing' : 'No exceptions recorded this shift'}
+          warn={voidedTxs.length > 0 || refundedTxs.length > 0}
+        />
+        <CardBody>
+          {!hasExceptions ? (
+            <div style={{ textAlign:'center', padding:'32px 0' }}>
+              <div style={{ fontSize:40, marginBottom:10 }}>✅</div>
+              <div style={{ fontSize:15, fontWeight:800, color:'var(--grn)' }}>Clean Shift</div>
+              <div style={{ fontSize:12, color:'var(--txt3)', marginTop:5 }}>No voids, refunds, discounts, or overrides recorded</div>
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+              {/* Summary tiles */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8 }}>
+                {tile('Voids',     voidedTxs.length,   voidTotal,   voidedTxs.length   > 0 ? 'var(--red)'  : 'var(--txt3)')}
+                {tile('Refunds',   refundedTxs.length, refundTotal, refundedTxs.length > 0 ? 'var(--ora)'  : 'var(--txt3)')}
+                {tile('Discounts', discTxs.length,     discTotal,   discTxs.length     > 0 ? 'var(--blue)' : 'var(--txt3)')}
+                {tile('Overrides', data.override ? 1 : 0, null,     data.override       ? 'var(--ora)'  : 'var(--txt3)')}
+              </div>
+
+              {/* Voided transactions detail */}
+              {voidedTxs.length > 0 && (
+                <div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--red)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:6 }}>Voided Transactions ({voidedTxs.length})</div>
+                  <div style={{ background:'var(--surf)', border:'1px solid var(--bdr)', borderRadius:'var(--r2)', overflow:'hidden' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                      <thead>
+                        <tr style={{ borderBottom:'1px solid var(--bdr)' }}>
+                          {['Time','Cashier','Amount','Reason','Voided By'].map(h => (
+                            <th key={h} style={{ padding:'7px 10px', textAlign:'left', fontWeight:700, color:'var(--txt3)', whiteSpace:'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {voidedTxs.map(tx => (
+                          <tr key={tx.id} style={{ borderBottom:'1px solid var(--bdr2)' }}>
+                            <td style={{ padding:'8px 10px', color:'var(--txt3)', fontFamily:'var(--mono)', whiteSpace:'nowrap' }}>{new Date(tx.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</td>
+                            <td style={{ padding:'8px 10px', color:'var(--txt)' }}>{tx.cashier}</td>
+                            <td style={{ padding:'8px 10px', fontFamily:'var(--mono)', fontWeight:700, color:'var(--red)' }}>{fmtJ(tx.total)}</td>
+                            <td style={{ padding:'8px 10px', color:'var(--txt3)', fontSize:11 }}>{tx.voidReason || '—'}</td>
+                            <td style={{ padding:'8px 10px', color:'var(--txt3)' }}>{tx.voidedBy || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Refunded transactions detail */}
+              {refundedTxs.length > 0 && (
+                <div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--ora)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:6 }}>Refunds ({refundedTxs.length})</div>
+                  <div style={{ background:'var(--surf)', border:'1px solid var(--bdr)', borderRadius:'var(--r2)', overflow:'hidden' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                      <thead>
+                        <tr style={{ borderBottom:'1px solid var(--bdr)' }}>
+                          {['Time','Cashier','Refund Amt','Reason','Refunded By'].map(h => (
+                            <th key={h} style={{ padding:'7px 10px', textAlign:'left', fontWeight:700, color:'var(--txt3)', whiteSpace:'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {refundedTxs.map(tx => (
+                          <tr key={tx.id} style={{ borderBottom:'1px solid var(--bdr2)' }}>
+                            <td style={{ padding:'8px 10px', color:'var(--txt3)', fontFamily:'var(--mono)', whiteSpace:'nowrap' }}>{new Date(tx.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</td>
+                            <td style={{ padding:'8px 10px', color:'var(--txt)' }}>{tx.cashier}</td>
+                            <td style={{ padding:'8px 10px', fontFamily:'var(--mono)', fontWeight:700, color:'var(--ora)' }}>{fmtJ(tx.refundAmount ?? tx.total)}</td>
+                            <td style={{ padding:'8px 10px', color:'var(--txt3)', fontSize:11 }}>{tx.refundReason || '—'}</td>
+                            <td style={{ padding:'8px 10px', color:'var(--txt3)' }}>{tx.refundedBy || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Discounts summary */}
+              {discTxs.length > 0 && (
+                <div style={{ padding:'12px 14px', background:'var(--surf)', border:'1px solid var(--bdr)', borderRadius:'var(--r2)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:700, color:'var(--blue)', textTransform:'uppercase', letterSpacing:'.5px' }}>Discounts Applied</div>
+                    <div style={{ fontSize:12, color:'var(--txt3)', marginTop:2 }}>{discTxs.length} transaction{discTxs.length !== 1 ? 's' : ''} received a discount</div>
+                  </div>
+                  <div style={{ fontFamily:'var(--mono)', fontWeight:800, color:'var(--blue)', fontSize:15 }}>−{fmtJ(discTotal)}</div>
+                </div>
+              )}
+
+              {/* Manager override */}
+              {data.override && (
+                <div style={{ padding:'12px 14px', background:'rgba(251,146,60,.08)', border:'1px solid rgba(251,146,60,.3)', borderRadius:'var(--r2)' }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--ora)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:2 }}>Manager Override Active</div>
+                  <div style={{ fontSize:12, color:'var(--txt3)' }}>Shift was authorized to close with unresolved items. Authorized by {data.authorizedUser?.name ?? 'Manager'}.</div>
+                </div>
+              )}
+
+            </div>
+          )}
+        </CardBody>
+        <CardFoot>
+          <Back to="sales" />
           <Next to="employees" />
         </CardFoot>
       </Card>
@@ -827,7 +960,7 @@ export default function CloseShiftWizard() {
           )}
         </CardBody>
         <CardFoot>
-          <Back to="sales" />
+          <Back to="exceptions" />
           <Btn primary onClick={applyOverridesAndAdvance}>Save &amp; Continue →</Btn>
         </CardFoot>
       </Card>
@@ -859,7 +992,7 @@ export default function CloseShiftWizard() {
     const grandConfirm = netSales + cwTotal
     return (
       <Card>
-        <CardHead title="⚠️  Confirm Shift Close" sub="Review the summary below before finalizing. This cannot be undone." warn />
+        <CardHead title="⚠️  Confirm End of Day Close" sub="Review the summary below before finalizing. This cannot be undone." warn />
         <CardBody>
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
@@ -898,7 +1031,7 @@ export default function CloseShiftWizard() {
         <CardFoot>
           <Back to="print" />
           <Btn danger onClick={doClose} disabled={closing} style={{ padding:'10px 28px', fontSize:14 }}>
-            {closing ? 'Closing…' : '🔒 Close Shift'}
+            {closing ? 'Closing…' : '🔒 End of Day Close'}
           </Btn>
         </CardFoot>
       </Card>
@@ -913,7 +1046,7 @@ export default function CloseShiftWizard() {
       <Card>
         <div style={{ padding:'36px 24px 20px', textAlign:'center', borderBottom:'1px solid var(--bdr)' }}>
           <div style={{ fontSize:52, marginBottom:12 }}>✅</div>
-          <div style={{ fontSize:20, fontWeight:800, color:'var(--txt)' }}>Shift Closed Successfully</div>
+          <div style={{ fontSize:20, fontWeight:800, color:'var(--txt)' }}>End of Day Close Complete</div>
           <div style={{ fontSize:13, color:'var(--txt3)', marginTop:6 }}>All data has been locked and saved</div>
         </div>
         <CardBody>
@@ -954,8 +1087,9 @@ export default function CloseShiftWizard() {
     cash:      renderCash,
     payments:  renderPayments,
     gratuity:  renderGratuity,
-    sales:     renderSales,
-    employees: renderEmployees,
+    sales:      renderSales,
+    exceptions: renderExceptions,
+    employees:  renderEmployees,
     print:     renderPrint,
     confirm:   renderConfirm,
     done:      renderDone,
@@ -980,7 +1114,7 @@ export default function CloseShiftWizard() {
             <div style={{ fontSize:10, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.6px' }}>
               Step {si + 1} of {progressSteps.length} · {STEP_LABELS[step]}
             </div>
-            <div style={{ fontSize:10, color:'var(--txt3)' }}>Close Shift Wizard</div>
+            <div style={{ fontSize:10, color:'var(--txt3)' }}>End of Day Close</div>
           </div>
         </div>
       )}

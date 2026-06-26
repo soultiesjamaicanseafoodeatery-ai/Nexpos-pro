@@ -13,7 +13,6 @@ interface Props {
 export default function CarWashPackageSelect({ onSelect }: Props) {
   const [services,  setServices]  = useState<CwService[]>([])
   const [addons,    setAddons]    = useState<CwAddon[]>([])
-  const [selected,  setSelected]  = useState<CwService | null>(null)
   const [selAddons, setSelAddons] = useState<CwAddon[]>([])
   const [loading,   setLoading]   = useState(true)
 
@@ -31,7 +30,6 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
     setSelAddons(prev => prev.some(x => x.id === a.id) ? prev.filter(x => x.id !== a.id) : [...prev, a])
 
   const addonTotal = selAddons.reduce((s, a) => s + a.price, 0)
-  const total      = (selected?.price ?? 0) + addonTotal
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
@@ -152,37 +150,15 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
       </div>
 
       {/* Footer */}
-      <div style={{ padding: '14px 24px', borderTop: '1px solid var(--bdr)', background: 'var(--bg2)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
-        <div style={{ flex: 1 }}>
-          {selected ? (
-            <div style={{ fontSize: 13 }}>
-              <span style={{ fontWeight: 800, color: 'var(--txt)' }}>{selected.name}</span>
-              {selAddons.length > 0 && (
-                <span style={{ color: 'var(--txt3)' }}>
-                  {' '}+ {selAddons.length} add-on{selAddons.length !== 1 ? 's' : ''}
-                </span>
-              )}
-              <span style={{ marginLeft: 10, fontFamily: 'var(--mono)', fontWeight: 900, color: 'var(--blue)', fontSize: 18 }}>
-                {fmtJ(total)}
-              </span>
-            </div>
-          ) : (
-            <div style={{ fontSize: 13, color: 'var(--txt3)' }}>Select a service to get started</div>
-          )}
-        </div>
-        <button
-          onClick={() => selected && onSelect(selected, selAddons)}
-          disabled={!selected}
-          style={{
-            padding: '13px 36px', borderRadius: 'var(--r2)', fontSize: 15, fontWeight: 800,
-            background: selected ? 'var(--blue)' : 'var(--surf2)',
-            color:      selected ? '#fff'        : 'var(--txt3)',
-            border: 'none', cursor: selected ? 'pointer' : 'not-allowed',
-            opacity: selected ? 1 : .55, transition: 'all .12s',
-          }}
-        >
-          Continue →
-        </button>
+      <div style={{ padding: '12px 24px', borderTop: '1px solid var(--bdr)', background: 'var(--bg2)', flexShrink: 0 }}>
+        {selAddons.length > 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--txt3)' }}>
+            <span style={{ fontWeight: 800, color: 'var(--blue)' }}>{selAddons.length} add-on{selAddons.length !== 1 ? 's' : ''} selected</span>
+            {' '}(+{fmtJ(addonTotal)}) · Tap a service above to proceed
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: 'var(--txt3)' }}>Tap a service to begin · Optional add-ons above</div>
+        )}
       </div>
     </div>
   )

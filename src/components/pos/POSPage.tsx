@@ -47,6 +47,7 @@ export interface OrderContext {
   customerName?: string
   phone?: string
   address?: string
+  heldOrder?: HeldOrder
 }
 
 interface POSPageProps {
@@ -951,6 +952,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setShowHeld(false)
     audit('RESUME_ORDER', `Resumed: ${held.label}`, 'info')
   }
+
+  // Auto-resume when navigated here from a held order tap in TakeoutDashboard/DeliveryDashboard
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (orderContext?.heldOrder) resumeOrder(orderContext.heldOrder) }, [])
 
   // Auto-set gratuity: 15% for dine-in restaurant, 0 otherwise
   const hasRestaurantItems = cart.some(ci => ci.module === 'restaurant')

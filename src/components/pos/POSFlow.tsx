@@ -62,7 +62,8 @@ export default function POSFlow() {
         setTkName(''); setTkPhone('')
         setPrevStep('takeout'); setStep('takeout-form')
       }}
-      onOpenOrder={() => { setPrevStep('takeout'); goToOrder({ orderType: 'takeout' }) }}
+      onOpenOrder={_ticketId => { setPrevStep('takeout'); goToOrder({ orderType: 'takeout' }, 'takeout') }}
+    onResumeHeld={held => { setPrevStep('takeout'); goToOrder({ orderType: held.orderType, customerName: held.customerName, heldOrder: held }, 'takeout') }}
     />
   )
 

@@ -85,6 +85,7 @@ export default function CloseShiftWizard() {
   const [closing,  setClosing]  = useState(false)
   const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
   const [savedShiftStart, setSavedShiftStart] = useState<string | null>(null)
+  const [savedShiftId,    setSavedShiftId]    = useState<string | null>(null)
   const [countedSubmitted, setCountedSubmitted] = useState(false)
 
   // ── Shift transactions ────────────────────────────────────────
@@ -218,8 +219,9 @@ export default function CloseShiftWizard() {
   const doClose = async () => {
     setClosing(true)
     const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
-    // Capture shift start before dispatch nulls out currentShift
+    // Capture shift data before dispatch nulls out currentShift
     setSavedShiftStart(currentShift?.start ?? new Date(0).toISOString())
+    setSavedShiftId(currentShift?.id ?? null)
     dispatch({ type: 'CLOSE_SHIFT_FORMAL', closedBy: by, closedAt: new Date().toISOString(),
       openingFloat: floatNum, countedCash: countedNum, variance: variance ?? 0,
       varianceNote: data.varianceNote, wasOverridden: data.override })
@@ -915,7 +917,7 @@ export default function CloseShiftWizard() {
           <div style={{ fontSize:13, color:'var(--txt3)', marginTop:6 }}>All data has been locked and saved</div>
         </div>
         <CardBody>
-          <SummaryRow label="Shift ID"         value={currentShift?.id ?? '—'} />
+          <SummaryRow label="Shift ID"         value={savedShiftId ?? currentShift?.id ?? '—'} />
           <SummaryRow label="Close Time"        value={new Date().toLocaleString()} />
           <SummaryRow label="Closed By"         value={by} />
           <SummaryRow label="Restaurant Sales"  value={fmtJ(modMap['restaurant']?.total ?? 0)} color="var(--ora)" />

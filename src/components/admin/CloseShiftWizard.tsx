@@ -72,6 +72,8 @@ export default function CloseShiftWizard() {
   const [step,    setStep]    = useState<WStep>('auth')
   const [data,    setData]    = useState<CWData>({ authorizedUser:null, openingFloat:'', countedCash:'', varianceNote:'', override:false })
   const [val,     setVal]     = useState<Validation|null>(null)
+  // Break overrides: keyed by payroll_time_entry id → approved break minutes
+  const [breakOverrides, setBreakOverrides] = useState<Record<string, 0|15|30|45|60>>({})
   const [valLoading, setVL]   = useState(false)
   const [pinUser, setPinUser] = useState<User|null>(null)
   const [pin,     setPin]     = useState('')
@@ -700,14 +702,50 @@ export default function CloseShiftWizard() {
 
   const renderEmployees = () => {
     const empList = Object.entries(empMap).sort((a,b) => b[1].total - a[1].total)
+    const canOverride = ['admin','manager'].includes(data.authorizedUser?.role ?? '')
+    const todayDate = new Date().toISOString().slice(0, 10)
+
+    // Read today's completed payroll time entries from localStorage
+    type TEntry = { id: string; staffId: string; staffName: string; date: string; clockIn: string; clockOut: string | null; breakMinutes: number; notes: string }
+    let todayEntries: TEntry[] = []
+    try { todayEntries = (JSON.parse(localStorage.getItem('payroll_time_entries') ?? '[]') as TEntry[]).filter(e => e.date === todayDate && e.clockOut !== null) } catch {}
+
+    const fmtMins = (mins: number) => {
+      const h = Math.floor(mins / 60), m = mins % 60
+      return m === 0 ? `${h}h` : `${h}h ${m}m`
+    }
+    const netMins = (e: TEntry) => {
+      const [ih, im] = e.clockIn.split(':').map(Number)
+      const [oh, om] = (e.clockOut ?? '00:00').split(':').map(Number)
+      let d = (oh * 60 + om) - (ih * 60 + im); if (d < 0) d += 1440
+      const brk = (breakOverrides[e.id] !== undefined ? breakOverrides[e.id] : e.breakMinutes)
+      return Math.max(0, d - brk)
+    }
+
+    // Apply overrides to localStorage on step advance
+    const applyOverridesAndAdvance = () => {
+      if (Object.keys(breakOverrides).length > 0) {
+        try {
+          const all: TEntry[] = JSON.parse(localStorage.getItem('payroll_time_entries') ?? '[]')
+          const updated = all.map(e => breakOverrides[e.id] !== undefined
+            ? { ...e, breakMinutes: breakOverrides[e.id], notes: e.notes.replace('auto ·', 'approved ·') }
+            : e
+          )
+          localStorage.setItem('payroll_time_entries', JSON.stringify(updated))
+        } catch {}
+      }
+      setStep('print')
+    }
+
     return (
       <Card>
         <CardHead title="Employee Performance" sub={`${empList.length} staff with activity this shift`} />
         <CardBody>
+          {/* Sales performance table */}
           {empList.length === 0 ? (
             <div style={{ textAlign:'center', color:'var(--txt3)', padding:'20px 0', fontSize:13 }}>No transactions recorded this shift</div>
           ) : (
-            <div style={{ overflowX:'auto' }}>
+            <div style={{ overflowX:'auto', marginBottom:20 }}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead>
                   <tr style={{ borderBottom:'1px solid var(--bdr)' }}>
@@ -730,10 +768,65 @@ export default function CloseShiftWizard() {
               </table>
             </div>
           )}
+
+          {/* Break deduction approval */}
+          {todayEntries.length > 0 && (
+            <div style={{ borderTop:'1px solid var(--bdr)', paddingTop:16 }}>
+              <div style={{ fontSize:12, fontWeight:800, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:12 }}>
+                Break Deductions — Today's Shifts
+              </div>
+              {!canOverride && (
+                <div style={{ fontSize:11, color:'var(--txt3)', marginBottom:10, fontStyle:'italic' }}>
+                  View only. Managers and Admins can override.
+                </div>
+              )}
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {todayEntries.map(e => {
+                  const approved = breakOverrides[e.id] !== undefined ? breakOverrides[e.id] : e.breakMinutes as 0|15|30|45|60
+                  const isSalary = e.notes.includes('salary')
+                  const net = netMins(e)
+                  return (
+                    <div key={e.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background:'var(--surf)', borderRadius:'var(--r2)', border:'1px solid var(--bdr)', flexWrap:'wrap' }}>
+                      <div style={{ flex:1, minWidth:120 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:'var(--txt)' }}>{e.staffName}</div>
+                        <div style={{ fontSize:11, color:'var(--txt3)', marginTop:1 }}>
+                          {e.clockIn} – {e.clockOut}
+                          {isSalary && <span style={{ marginLeft:6, color:'var(--blue)', fontWeight:700 }}>salary</span>}
+                        </div>
+                      </div>
+                      <div style={{ fontSize:12, color:'var(--txt2)', minWidth:60, textAlign:'right' }}>
+                        Net: <strong style={{ color:'var(--grn)' }}>{fmtMins(net)}</strong>
+                      </div>
+                      {canOverride && !isSalary ? (
+                        <div>
+                          <div style={{ fontSize:10, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', marginBottom:3 }}>Break</div>
+                          <select
+                            value={approved}
+                            onChange={e2 => setBreakOverrides(prev => ({ ...prev, [e.id]: Number(e2.target.value) as 0|15|30|45|60 }))}
+                            style={{ padding:'5px 8px', borderRadius:'var(--r)', border:'1px solid var(--bdr2)', background:'var(--bg2)', color:'var(--txt)', fontSize:12, fontWeight:700, cursor:'pointer' }}
+                          >
+                            {[0,15,30,45,60].map(m => <option key={m} value={m}>{m}m</option>)}
+                          </select>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize:12, color: isSalary ? 'var(--txt3)' : 'var(--txt2)', minWidth:40, textAlign:'center' }}>
+                          {isSalary ? '—' : `${approved}m`}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize:11, color:'var(--txt3)', marginTop:10, lineHeight:1.6 }}>
+                Hourly staff: 30m auto-deducted. Override before closing to adjust payroll.
+                Salary staff: hours tracked for attendance only.
+              </div>
+            </div>
+          )}
         </CardBody>
         <CardFoot>
           <Back to="sales" />
-          <Next to="print" />
+          <Btn primary onClick={applyOverridesAndAdvance}>Save &amp; Continue →</Btn>
         </CardFoot>
       </Card>
     )
@@ -897,6 +990,7 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
+
 
 
 

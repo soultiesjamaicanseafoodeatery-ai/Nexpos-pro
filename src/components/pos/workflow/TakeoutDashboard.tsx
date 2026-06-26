@@ -2,10 +2,12 @@
 import { useState, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { fmt } from '@/lib/utils/tax'
+import type { HeldOrder } from '@/types'
 
 interface Props {
   onNewOrder: () => void
   onOpenOrder: (ticketId: string) => void
+  onResumeHeld: (held: HeldOrder) => void
   onBack: () => void
 }
 
@@ -26,9 +28,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 type FilterMode = 'active' | 'ready' | 'all'
 
-export default function TakeoutDashboard({ onNewOrder, onOpenOrder, onBack }: Props) {
+export default function TakeoutDashboard({ onNewOrder, onOpenOrder, onResumeHeld, onBack }: Props) {
   const { state } = useApp()
-  const { orderTickets, biz } = state
+  const { orderTickets, heldOrders, biz } = state
   const sym = biz.currencySymbol ?? 'J$'
   const [filter, setFilter] = useState<FilterMode>('active')
   const [search, setSearch] = useState('')
@@ -36,6 +38,11 @@ export default function TakeoutDashboard({ onNewOrder, onOpenOrder, onBack }: Pr
   const takeoutTickets = useMemo(() =>
     orderTickets.filter(t => t.orderType === 'takeout'),
     [orderTickets]
+  )
+
+  const heldTakeout = useMemo(() =>
+    heldOrders.filter(h => h.orderType === 'takeout'),
+    [heldOrders]
   )
 
   const filtered = useMemo(() => {
@@ -119,6 +126,40 @@ export default function TakeoutDashboard({ onNewOrder, onOpenOrder, onBack }: Pr
 
       {/* Order list */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+
+        {/* Paused / Held Orders */}
+        {heldTakeout.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--ora)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8, padding: '0 4px' }}>
+              Paused Orders ({heldTakeout.length})
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: 8 }}>
+              {heldTakeout.map(h => (
+                <button key={h.id} onClick={() => onResumeHeld(h)} style={{
+                  display: 'flex', flexDirection: 'column', padding: '14px 16px',
+                  background: 'var(--bg2)', border: '2px solid rgba(251,146,60,.5)',
+                  borderRadius: 'var(--r3)', cursor: 'pointer', textAlign: 'left',
+                  transition: 'border-color .12s',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--ora)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(251,146,60,.5)' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.label || 'Takeout Order'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 1 }}>Saved {h.savedAt} by {h.savedBy}</div>
+                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 20, background: 'rgba(251,146,60,.2)', color: 'var(--ora)', textTransform: 'uppercase', letterSpacing: '.4px', flexShrink: 0, marginLeft: 8 }}>Held</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--ora)', fontWeight: 700, marginTop: 4 }}>
+                    {h.cart.length} item{h.cart.length !== 1 ? 's' : ''} · Tap to Resume →
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--txt3)' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🥡</div>

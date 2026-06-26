@@ -77,13 +77,6 @@ export default function Topbar() {
     })
   }
 
-  // ── Logout — lock screen, shift stays alive ───────────────────
-  function handleLogout() {
-    saveCart()
-    addAudit('LOCK_SCREEN', `${currentUser?.name ?? 'Staff'} locked the screen`)
-    dispatch({ type: 'LOGOUT' })
-  }
-
   // ── Open session report, resolving personal clock-in time ─────
   function openSessionReport() {
     const userId = currentUser?.id ?? ''
@@ -214,16 +207,8 @@ export default function Topbar() {
           </button>
         )}
 
-        {/* Clock Out — end personal session */}
-        <button onClick={handleClockOut} style={{
-          padding: '8px 14px', borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 800, cursor: 'pointer',
-          border: '1px solid rgba(251,146,60,.4)', background: 'rgba(251,146,60,.12)', color: 'var(--ora)',
-        }}>
-          Clock Out
-        </button>
-
-        {/* Logout — lock screen, shift stays active */}
-        <button className="btn btn-gh btn-sm" onClick={handleLogout}>
+        {/* Logout — clock out and end personal session */}
+        <button onClick={handleClockOut} className="btn btn-gh btn-sm">
           Logout
         </button>
       </div>

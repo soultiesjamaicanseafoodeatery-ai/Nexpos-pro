@@ -35,6 +35,7 @@ export default function Topbar() {
   const [showShiftEnd, setShowShiftEnd]         = useState(false)
   const [showSessionReport, setShowSessionReport] = useState(false)
   const [sessionClockinAt, setSessionClockinAt] = useState<string>('')
+  const [showLogoutPrompt, setShowLogoutPrompt] = useState(false)
 
   // ── Save any open cart to held orders ────────────────────────
   function saveCart() {
@@ -95,6 +96,13 @@ export default function Topbar() {
     setShowSessionReport(false)
     addAudit('CLOCK_OUT', `${currentUser?.name ?? 'Staff'} clocked out`)
     dispatch({ type: 'CLOCK_OUT' })
+  }
+
+  // ── Switch User — lock screen, shift stays alive ─────────────
+  function handleSwitchUser() {
+    saveCart()
+    addAudit('LOCK_SCREEN', `${currentUser?.name ?? 'Staff'} locked screen for next user`)
+    dispatch({ type: 'LOGOUT' })
   }
 
   // ── Clock Out — end of shift flow ────────────────────────────
@@ -207,8 +215,8 @@ export default function Topbar() {
           </button>
         )}
 
-        {/* Logout — clock out and end personal session */}
-        <button onClick={handleClockOut} className="btn btn-gh btn-sm">
+        {/* Logout — opens prompt to switch user or clock out */}
+        <button onClick={() => setShowLogoutPrompt(true)} className="btn btn-gh btn-sm">
           Logout
         </button>
       </div>
@@ -226,6 +234,43 @@ export default function Topbar() {
           onClockOut={doClockOut}
           onCancel={() => setShowSessionReport(false)}
         />
+      )}
+
+      {showLogoutPrompt && (
+        <div
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:900, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={() => setShowLogoutPrompt(false)}
+        >
+          <div
+            style={{ background:'var(--bg2)', border:'1px solid var(--bdr)', borderRadius:'var(--r4)', padding:'24px', width:300, boxShadow:'0 20px 60px rgba(0,0,0,.7)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ fontSize:14, fontWeight:800, color:'var(--txt)', marginBottom:4 }}>Logging out?</div>
+            <div style={{ fontSize:12, color:'var(--txt3)', marginBottom:18 }}>Choose how you want to exit.</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <button
+                onClick={() => { setShowLogoutPrompt(false); handleSwitchUser() }}
+                style={{ padding:'10px 14px', borderRadius:'var(--r2)', fontSize:12, fontWeight:700, cursor:'pointer', border:'1px solid var(--bdr)', background:'var(--surf)', color:'var(--txt)', textAlign:'left' }}
+              >
+                <div style={{ fontWeight:800 }}>Switch User</div>
+                <div style={{ fontSize:11, color:'var(--txt3)', marginTop:2 }}>Lock screen — next staff can log in</div>
+              </button>
+              <button
+                onClick={() => { setShowLogoutPrompt(false); handleClockOut() }}
+                style={{ padding:'10px 14px', borderRadius:'var(--r2)', fontSize:12, fontWeight:700, cursor:'pointer', border:'1px solid rgba(251,146,60,.4)', background:'rgba(251,146,60,.08)', color:'var(--ora)', textAlign:'left' }}
+              >
+                <div style={{ fontWeight:800 }}>Clock Out</div>
+                <div style={{ fontSize:11, color:'var(--txt3)', marginTop:2 }}>End my shift + create payroll entry</div>
+              </button>
+              <button
+                onClick={() => setShowLogoutPrompt(false)}
+                style={{ padding:'8px 14px', borderRadius:'var(--r2)', fontSize:11, fontWeight:700, cursor:'pointer', border:'1px solid var(--bdr)', background:'transparent', color:'var(--txt3)', marginTop:2 }}
+              >
+                Cancel — Stay Logged In
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

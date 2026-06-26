@@ -62,14 +62,13 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 14, marginBottom: 32 }}>
               {services.map(s => {
-                const on = selected?.id === s.id
-                return (
+
                   <div
                     key={s.id}
-                    onClick={() => setSelected(on ? null : s)}
+                    onClick={() => onSelect(s, selAddons)}
                     style={{
                       position: 'relative',
-                      background: on ? 'var(--blue-bg)' : 'var(--surf)',
+                      background: 'var(--surf)',
                       border: `2.5px solid ${on ? 'var(--blue)' : 'var(--bdr)'}`,
                       borderRadius: 'var(--r3)',
                       padding: '20px 18px',
@@ -81,29 +80,24 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
                       justifyContent: 'space-between',
                     }}
                   >
-                    {on && (
-                      <div style={{ position: 'absolute', top: 10, right: 10, width: 24, height: 24, borderRadius: '50%', background: 'var(--blue)', color: '#fff', fontSize: 14, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        ✓
-                      </div>
-                    )}
+                    
                     <div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: on ? 'var(--blue)' : 'var(--txt)', marginBottom: 4, paddingRight: on ? 28 : 0 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)', marginBottom: 4 }}>
                         {s.name}
                       </div>
                       {s.description && (
                         <div style={{ fontSize: 12, color: 'var(--txt3)', lineHeight: 1.4 }}>{s.description}</div>
                       )}
                       {s.vehicle_type && s.vehicle_type !== 'All' && (
-                        <div style={{ marginTop: 6, fontSize: 10, fontWeight: 700, color: on ? 'var(--blue)' : 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                        <div style={{ marginTop: 6, fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.4px' }}>
                           {s.vehicle_type}
                         </div>
                       )}
                     </div>
-                    <div style={{ marginTop: 14, fontSize: 24, fontWeight: 900, color: on ? 'var(--blue)' : 'var(--txt)', fontFamily: 'var(--mono)' }}>
+                    <div style={{ marginTop: 14, fontSize: 24, fontWeight: 900, color: 'var(--txt)', fontFamily: 'var(--mono)' }}>
                       {fmtJ(s.price)}
                     </div>
                   </div>
-                )
               })}
             </div>
 

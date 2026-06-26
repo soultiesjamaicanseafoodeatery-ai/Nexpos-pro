@@ -146,6 +146,9 @@ type Action =
   | { type: 'SYNC_HELD_ORDERS';    orders: HeldOrder[] }
   | { type: 'TRANSFER_ORDER'; ticketId: string; toUserName: string }
   | { type: 'UPSERT_HELD_ORDER';   order:  HeldOrder  }
+  | { type: 'ADD_FLEET_ACCOUNT';    account: FleetAccount }
+  | { type: 'UPDATE_FLEET_ACCOUNT'; account: FleetAccount }
+  | { type: 'DELETE_FLEET_ACCOUNT'; id: string }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -530,6 +533,21 @@ function reducer(state: AppState, action: Action): AppState {
       const menuData = { ...state.menuData, [action.mod]: { ...state.menuData[action.mod], addons: state.menuData[action.mod].addons.filter(a => a.id !== action.id) } }
       storage.set('menu_data', menuData)
       return { ...state, menuData }
+    }
+    case 'ADD_FLEET_ACCOUNT': {
+      const fleet = [action.account, ...state.fleet]
+      storage.set('fleet', fleet)
+      return { ...state, fleet }
+    }
+    case 'UPDATE_FLEET_ACCOUNT': {
+      const fleet = state.fleet.map(a => a.id === action.account.id ? action.account : a)
+      storage.set('fleet', fleet)
+      return { ...state, fleet }
+    }
+    case 'DELETE_FLEET_ACCOUNT': {
+      const fleet = state.fleet.filter(a => a.id !== action.id)
+      storage.set('fleet', fleet)
+      return { ...state, fleet }
     }
     default:
       return state

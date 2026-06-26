@@ -204,13 +204,13 @@ export default function Topbar() {
           </div>
         )}
 
-        {/* Close Shift — managers only */}
+        {/* End of Day Close — managers only */}
         {currentShift && (currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
           <button onClick={() => dispatch({ type: 'SHOW_EOD' })} style={{
             padding: '8px 14px', borderRadius: 'var(--r2)', fontSize: 11, fontWeight: 800, cursor: 'pointer',
             border: '1px solid rgba(245,101,101,.5)', background: '#7f1d1d33', color: 'var(--red)',
           }}>
-            🔒 Close Shift
+            🔒 End of Day
           </button>
         )}
 

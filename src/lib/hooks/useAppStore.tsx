@@ -192,7 +192,7 @@ function initState(): AppState {
     shifts: storage.get<Shift[]>('shifts') ?? [],
     audit: storage.get<AuditEntry[]>('audit') ?? [],
     biz: storage.get<BusinessConfig>('biz_config') ?? DEFAULT_BIZ_CONFIG,
-    fleet: storage.get<FleetAccount[]>('fleet') ?? SEED_FLEET,
+    fleet: (() => { const f = storage.get<FleetAccount[]>('fleet') ?? SEED_FLEET; const clean = f.filter(a => a.id !== 'FL1'); if (clean.length !== f.length) storage.set('fleet', clean); return clean })(),
     loyalty: storage.get<LoyaltyMember[]>('loyalty') ?? [],
     promos: storage.get<PromoCode[]>('promos') ?? SEED_PROMOS,
     voidLogs: (() => { const v = storage.get('void_logs'); return Array.isArray(v) ? (v as VoidLog[]) : [] })(),

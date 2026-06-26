@@ -477,7 +477,9 @@ function reducer(state: AppState, action: Action): AppState {
           ? { ...s, end: action.closedAt, closedBy: action.closedBy, closedAt: action.closedAt,
               openingFloat: action.openingFloat, countedCash: action.countedCash,
               cashVariance: action.variance, varianceNote: action.varianceNote,
-              wasOverridden: action.wasOverridden ?? false, isFormalClose: true }
+              wasOverridden: action.wasOverridden ?? false, isFormalClose: true,
+              revenue: state.currentShift!.revenue,
+              txCount: state.currentShift!.txCount }
           : s
       )
       storage.set('shifts', shifts)

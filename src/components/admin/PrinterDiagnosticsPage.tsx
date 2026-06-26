@@ -67,7 +67,7 @@ function buildTestPayload() {
       name: "Jerk Chicken & Rice",
       price: 1200, module: 'restaurant',
       size: 'Large', sides: ["Rice & Peas", "Festival"],
-      addons: [{ name: "Extra Hot Sauce™", price: 150 }],
+      addons: [{ id: 'a1', name: "Extra Hot Sauce™", desc: '', price: 150, icon: '', active: true }],
     },
     {
       id: 'ti2', itemId: 'mi2', qty: 1,
@@ -92,7 +92,7 @@ function buildTestPayload() {
       name: "Rum Punch (50° Proof)",
       price: 600, module: 'bar',
       size: 'Large',
-      addons: [{ name: "Extra Ice & Lime", price: 0 }],
+      addons: [{ id: 'a2', name: "Extra Ice & Lime", desc: '', price: 0, icon: '', active: true }],
     },
     {
       id: 'tb2', itemId: 'mb2', qty: 1,
@@ -108,7 +108,7 @@ function buildTestPayload() {
       id: 'tc1', itemId: 'mc1', qty: 1,
       name: "Full Detail & Wax",
       price: 3500, module: 'carwash',
-      addons: [{ name: "Interior Shampoo & Condition", price: 1500 }],
+      addons: [{ id: 'a3', name: "Interior Shampoo & Condition", desc: '', price: 1500, icon: '', active: true }],
     },
     {
       id: 'tc2', itemId: 'mc2', qty: 1,

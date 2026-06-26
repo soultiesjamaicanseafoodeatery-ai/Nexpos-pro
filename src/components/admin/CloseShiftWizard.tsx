@@ -718,7 +718,7 @@ export default function CloseShiftWizard() {
       const [ih, im] = e.clockIn.split(':').map(Number)
       const [oh, om] = (e.clockOut ?? '00:00').split(':').map(Number)
       let d = (oh * 60 + om) - (ih * 60 + im); if (d < 0) d += 1440
-      const brk = (breakOverrides[e.id] !== undefined ? breakOverrides[e.id] : e.breakMinutes)
+      const brk = (e.id in breakOverrides ? breakOverrides[e.id] : e.breakMinutes)
       return Math.max(0, d - brk)
     }
 
@@ -782,7 +782,7 @@ export default function CloseShiftWizard() {
               )}
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 {todayEntries.map(e => {
-                  const approved = breakOverrides[e.id] !== undefined ? breakOverrides[e.id] : e.breakMinutes as 0|15|30|45|60
+                  const approved = (e.id in breakOverrides ? breakOverrides[e.id] : e.breakMinutes) as 0|15|30|45|60
                   const isSalary = e.notes.includes('salary')
                   const net = netMins(e)
                   return (

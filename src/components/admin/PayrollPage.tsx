@@ -312,13 +312,14 @@ function ClockInModal({ users, onSave, onClose }: {
 }
 
 // ── Clock Out Modal ──────────────────────────────────────────────
-function ClockOutModal({ entry, onSave, onClose }: {
+function ClockOutModal({ entry, defaultBreakMins, onSave, onClose }: {
   entry: TimeEntry
+  defaultBreakMins: number
   onSave: (clockOut: string, breakMinutes: number) => void
   onClose: () => void
 }) {
   const [time,      setTime]      = useState(nowHHMM())
-  const [breakMins, setBreakMins] = useState(entry.breakMinutes)
+  const [breakMins, setBreakMins] = useState(defaultBreakMins)
   const netMins = useMemo(() => {
     const gross = minutesBetween(entry.clockIn, time)
     return Math.max(0, gross - breakMins)
@@ -781,12 +782,20 @@ export default function PayrollPage() {
                         <td style={{ fontWeight: 700, color: 'var(--txt)' }}>{e.staffName}</td>
                         <td style={{ fontFamily: 'var(--mono)' }}>{e.clockIn}</td>
                         <td style={{ fontFamily: 'var(--mono)' }}>{e.clockOut}</td>
-                        <td>{e.breakMinutes > 0 ? `${e.breakMinutes}m` : '—'}</td>
+                        <td>
+                          {e.notes.startsWith('auto · salary')
+                            ? <span style={{ fontSize: 11, color: 'var(--txt3)', fontStyle: 'italic' }}>Attendance</span>
+                            : e.breakMinutes > 0 ? `${e.breakMinutes}m` : '—'}
+                        </td>
                         <td>
                           <span style={{ fontWeight: 700, color: 'var(--grn)', fontFamily: 'var(--mono)' }}>{fmtHrs(net)}</span>
                           <span style={{ fontSize: 11, color: 'var(--txt3)', marginLeft: 5 }}>({(net / 60).toFixed(2)}h)</span>
                         </td>
-                        <td style={{ fontSize: 12, color: 'var(--txt3)' }}>{e.notes || '—'}</td>
+                        <td style={{ fontSize: 12, color: 'var(--txt3)' }}>
+                          {e.notes.startsWith('auto ·')
+                            ? <><span style={{ display: 'inline-block', fontSize: 10, padding: '1px 5px', borderRadius: 8, background: 'var(--blue-bg)', color: 'var(--blue)', fontWeight: 800, marginRight: 5 }}>auto</span>{e.notes.replace(/^auto · /, '')}</>
+                            : e.notes || '—'}
+                        </td>
                         <td>
                           <div style={{ display: 'flex', gap: 5 }}>
                             <button className="btn btn-gh btn-xs" onClick={() => { setEditEntry(e); setShowEntryModal(true) }}>Edit</button>
@@ -1028,6 +1037,10 @@ export default function PayrollPage() {
       {clockOutEntry && (
         <ClockOutModal
           entry={clockOutEntry}
+          defaultBreakMins={(() => {
+            const prof = profiles.find(p => p.staffId === clockOutEntry.staffId && p.active)
+            return prof?.payrollType === 'hourly' ? 30 : 0
+          })()}
           onSave={(co, bm) => doClockOut(clockOutEntry.id, co, bm)}
           onClose={() => setClockOutEntry(null)}
         />
@@ -1064,3 +1077,4 @@ export default function PayrollPage() {
     </div>
   )
 }
+

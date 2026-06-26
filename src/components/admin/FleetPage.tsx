@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { FleetAccount, Vehicle } from '@/types'
 
@@ -154,8 +154,8 @@ export default function FleetPage() {
     setSelected(updated)
   }
 
-  const f = (k: keyof AccountFormData, v: string) => setForm(prev => ({ ...prev, [k]: v }))
-  const vf = (k: keyof VehicleFormData, v: string) => setVehicleForm(prev => ({ ...prev, [k]: v }))
+  const f = (k: keyof AccountFormData, v: string) => setForm(prev => ({ ...prev, [k]: v } as AccountFormData))
+  const vf = (k: keyof VehicleFormData, v: string) => setVehicleForm(prev => ({ ...prev, [k]: v } as VehicleFormData))
 
   return (
     <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>

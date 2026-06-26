@@ -2,10 +2,27 @@ import type { Transaction, CartItem, BusinessConfig } from '@/types'
 
 export type PrintWidth = 58 | 80
 
-// Approximate characters per line for each paper width
 const COLS: Record<PrintWidth, number> = { 58: 32, 80: 42 }
 
-// ── Text layout helpers ───────────────────────────────────────
+// Decode HTML entities and map unsupported Unicode to printable ASCII.
+// All thermal print builders use this so output is clean on any ESC/POS printer.
+function sanitize(s: string): string {
+  if (!s) return ''
+  return s
+    .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"').replace(/&#39;/gi, "'").replace(/&apos;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/™/g, ' | ').replace(/®/g, '(R)').replace(/©/g, '(C)')
+    .replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+    .replace(/[–—]/g, '-').replace(/…/g, '...')
+    .replace(/°/g, ' deg').replace(/½/g, '1/2')
+    .replace(/¼/g, '1/4').replace(/¾/g, '3/4')
+    .replace(/ /g, ' ')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/\s+/g, ' ').trim()
+}
+
+// HTML-escape used only in printTicket() window title — never for thermal output.
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
@@ -40,12 +57,29 @@ function wrap(text: string, indent: number, w: number): string[] {
   return lines
 }
 
-// ── Smart print — tries QZ Tray first, falls back to browser ─
-// silentOnly: when true, skips browser fallback — use for auto-prints triggered by system events.
-// Leave false (default) for user-initiated prints so they always get a fallback dialog.
-//
-// Always uses qzPrintRaw (ESC/POS plain text) regardless of paper width.
-// The old HTML pixel path (qzPrint) rendered blank pages on most thermal printer drivers.
+// Word-wrap an item name with an indented prefix (e.g. "  2x " or "   ").
+function itemWrap(prefix: string, name: string, w: number): string[] {
+  const indent = ' '.repeat(prefix.length)
+  const words = name.split(' ')
+  const lines: string[] = []
+  let cur = prefix
+  for (const word of words) {
+    if (cur === prefix) {
+      cur += word
+    } else if (cur.length + 1 + word.length <= w) {
+      cur += ' ' + word
+    } else {
+      lines.push(cur)
+      cur = indent + word
+    }
+  }
+  if (cur.trim()) lines.push(cur)
+  return lines
+}
+
+// ── Smart print — tries QZ Tray first, falls back to browser ─────────────────
+// silentOnly: when true, skips browser fallback (for auto-prints triggered by events).
+// buzz: fires buzzer AFTER paper cut via qzPrintRaw.
 export async function smartPrint(
   html: string,
   title: string,
@@ -57,9 +91,7 @@ export async function smartPrint(
   if (!html) return
   if (printerName?.trim()) {
     const { qzPrintRaw } = await import('./qzTray')
-    const text = html
-      .replace(/<\/?pre>/g, '')
-      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    const text = html.replace(/<\/?pre>/g, '')
     const ok = await qzPrintRaw(printerName.trim(), text, buzz)
     if (ok) return
   }
@@ -68,7 +100,7 @@ export async function smartPrint(
   }
 }
 
-// ── Print helper — opens new window and prints ────────────────
+// ── Print helper — opens browser window and triggers print dialog ─────────────
 export function printTicket(html: string, title = 'Ticket'): void {
   const win = window.open('', '_blank', 'width=440,height=720,menubar=no,toolbar=no')
   if (!win) return
@@ -85,7 +117,7 @@ export function printTicket(html: string, title = 'Ticket'): void {
   win.document.close()
 }
 
-// ── Customer Receipt ──────────────────────────────────────────
+// ── Customer Receipt ──────────────────────────────────────────────────────────
 export function buildCustomerReceipt(
   tx: Transaction,
   biz: BusinessConfig,
@@ -97,79 +129,83 @@ export function buildCustomerReceipt(
     sym + (n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const L: string[] = []
 
-  // ── Header
+  // Header
   L.push(div('=', w))
-  L.push(center(esc(biz.name.toUpperCase()), w))
-  if (biz.tagline)  L.push(center(esc(biz.tagline), w))
-  if (biz.address)  L.push(center(esc(biz.address), w))
-  if (biz.phone)    L.push(center(`Tel: ${esc(biz.phone)}`, w))
-  if (biz.website)  L.push(center(esc(biz.website), w))
+  L.push(center(sanitize(biz.name).toUpperCase(), w))
+  if (biz.tagline) L.push(center(sanitize(biz.tagline), w))
+  if (biz.address) L.push(center(sanitize(biz.address), w))
+  if (biz.phone)   L.push(center('Tel: ' + sanitize(biz.phone), w))
+  if (biz.website) L.push(center(sanitize(biz.website), w))
   L.push(div('=', w))
 
-  // ── Order info
+  // Order info
   const orderNum = String(tx.id).slice(-4).padStart(4, '0')
   L.push(row('Receipt #:', orderNum, w))
-  L.push(row('Date/Time:', esc(tx.ts), w))
-  L.push(row('Cashier:', esc(tx.cashier), w))
-  if (tx.tableNum)                              L.push(row('Table:', esc(tx.tableNum), w))
-  if (tx.guestCount && tx.guestCount > 1)       L.push(row('Guests:', String(tx.guestCount), w))
-  if (tx.customerName)                          L.push(row('Customer:', esc(tx.customerName), w))
-  if (tx.orderType)                             L.push(row('Order:', tx.orderType.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase()), w))
+  L.push(row('Date/Time:', sanitize(tx.ts), w))
+  L.push(row('Cashier:', sanitize(tx.cashier), w))
+  if (tx.tableNum)                         L.push(row('Table:', sanitize(tx.tableNum), w))
+  if (tx.guestCount && tx.guestCount > 1)  L.push(row('Guests:', String(tx.guestCount), w))
+  if (tx.customerName)                     L.push(row('Customer:', sanitize(tx.customerName), w))
+  if (tx.orderType)                        L.push(row('Order:', tx.orderType.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase()), w))
   L.push(div('-', w))
 
-  // ── Items
+  // Items
   L.push('ITEMS')
   L.push(div('-', w))
   if (tx.items && tx.items.length > 0) {
     for (const ci of tx.items) {
       const lineTotal = (ci.price + ci.addons.reduce((s, a) => s + a.price, 0)) * ci.qty
-      L.push(row(` ${ci.qty > 1 ? `${ci.qty}x ` : '   '}${esc(ci.name)}`, fmtN(lineTotal), w))
-      if (ci.size)                              L.push(`       SIZE: ${esc(ci.size)}`)
-      if (ci.flavour)                           L.push(`       FLAVOUR: ${esc(ci.flavour)}`)
-      if (ci.sides?.length)                     L.push(`       SIDES: ${esc(ci.sides.join(', '))}`)
-      for (const a of ci.addons)                L.push(row(`       + ${esc(a.name)}`, `+${fmtN(a.price)}`, w))
-      if (ci.note)                              L.push(`       NOTE: ${esc(ci.note)}`)
+      const prefix = ci.qty > 1 ? ` ${ci.qty}x ` : '    '
+      itemWrap(prefix, sanitize(ci.name), w - fmtN(lineTotal).length - 1).forEach((l, i) => {
+        L.push(i === 0 ? row(l, fmtN(lineTotal), w) : l)
+      })
+      if (ci.size)              L.push('     SIZE: ' + sanitize(ci.size))
+      if (ci.flavour)           L.push('     FLAVOUR: ' + sanitize(ci.flavour))
+      if (ci.sides?.length)     L.push('     SIDES: ' + ci.sides.map(sanitize).join(', '))
+      for (const a of ci.addons)
+        L.push(row('     + ' + sanitize(a.name), '+' + fmtN(a.price), w))
+      if (ci.note)              L.push('     NOTE: ' + sanitize(ci.note))
     }
   } else {
-    L.push(' ' + esc(tx.item))
+    L.push(' ' + sanitize(tx.item))
   }
   L.push(div('=', w))
 
-  // ── Totals
+  // Totals
   L.push(row('Subtotal:', fmtN(tx.sub), w))
-  if (tx.disc > 0)                              L.push(row('Discount:', '-' + fmtN(tx.disc), w))
-  if ((tx.gct ?? 0) > 0)                        L.push(row(`GCT (15%):`, fmtN(tx.gct!), w))
-  if ((tx.serviceCharge ?? 0) > 0)              L.push(row('Service (10%):', fmtN(tx.serviceCharge!), w))
-  if ((tx.gratuity ?? 0) > 0)                   L.push(row(`Gratuity (${tx.gratuityPct ?? 15}%):`, fmtN(tx.gratuity!), w))
-  if ((tx.surchargeTotal ?? 0) > 0)             L.push(row('Surcharges:', fmtN(tx.surchargeTotal!), w))
+  if (tx.disc > 0)                         L.push(row('Discount:', '-' + fmtN(tx.disc), w))
+  if ((tx.gct ?? 0) > 0)                   L.push(row('GCT (15%):', fmtN(tx.gct!), w))
+  if ((tx.serviceCharge ?? 0) > 0)         L.push(row('Service (10%):', fmtN(tx.serviceCharge!), w))
+  if ((tx.gratuity ?? 0) > 0)              L.push(row(`Gratuity (${tx.gratuityPct ?? 15}%):`, fmtN(tx.gratuity!), w))
+  if ((tx.surchargeTotal ?? 0) > 0)        L.push(row('Surcharges:', fmtN(tx.surchargeTotal!), w))
   L.push(div('=', w))
   L.push(row('TOTAL:', fmtN(tx.total), w))
   L.push(div('=', w))
 
-  // ── Payment
+  // Payment
   const payLabel = tx.pay === 'gift_card' ? 'Gift Card'
     : tx.pay === 'tab' ? 'House Account'
     : tx.pay.charAt(0).toUpperCase() + tx.pay.slice(1)
   L.push(row('Payment:', payLabel, w))
   if (tx.payments && tx.payments.length > 1) {
     for (const p of tx.payments)
-      L.push(row(`  ${p.method.charAt(0).toUpperCase() + p.method.slice(1)}:`, fmtN(p.amount), w))
+      L.push(row('  ' + p.method.charAt(0).toUpperCase() + p.method.slice(1) + ':', fmtN(p.amount), w))
   }
-  if (tx.tender   != null)                      L.push(row('Tendered:', fmtN(tx.tender), w))
-  if (tx.changeDue != null)                     L.push(row('Change:', fmtN(tx.changeDue), w))
+  if (tx.tender    != null) L.push(row('Tendered:', fmtN(tx.tender), w))
+  if (tx.changeDue != null) L.push(row('Change:', fmtN(tx.changeDue), w))
   L.push(div('=', w))
 
-  // ── Footer
+  // Footer
   const footer = biz.footer?.message ?? 'Thank you for dining with us!'
-  wrap(footer, 0, w).forEach(l => L.push(center(l.trim(), w)))
-  if (biz.footer?.social?.instagram)            L.push(center(`IG: @${esc(biz.footer.social.instagram)}`, w))
-  if (biz.footer?.social?.facebook)             L.push(center(`FB: ${esc(biz.footer.social.facebook)}`, w))
+  wrap(sanitize(footer), 0, w).forEach(l => L.push(center(l.trim(), w)))
+  if (biz.footer?.social?.instagram) L.push(center('IG: @' + sanitize(biz.footer.social.instagram), w))
+  if (biz.footer?.social?.facebook)  L.push(center('FB: ' + sanitize(biz.footer.social.facebook), w))
   L.push(div('=', w))
 
   return `<pre>${L.join('\n')}</pre>`
 }
 
-// ── Kitchen Order Ticket (KOT) ────────────────────────────────
+// ── Kitchen Order Ticket (KOT) ────────────────────────────────────────────────
 export interface KOTData {
   orderNum: string
   table?: string
@@ -188,60 +224,78 @@ export function buildKitchenTicket(data: KOTData, opts: { width?: PrintWidth } =
   if (foodItems.length === 0) return ''
 
   const L: string[] = []
+
+  // Header
   L.push(div('*', w))
-  L.push(center('** KITCHEN TICKET **', w))
+  L.push(center('KITCHEN TICKET', w))
   L.push(div('*', w))
+
+  // Order identity — each on its own line so 58mm can fit it
   L.push('')
-  L.push(row(`ORDER #${data.orderNum}`, data.table ? `TABLE: ${data.table}` : 'TAKEOUT', w))
-  L.push(row(`Date: ${data.date}`, `Time: ${data.time}`, w))
-  L.push(row(`Server: ${esc(data.server)}`, data.guestCount && data.guestCount > 1 ? `Guests: ${data.guestCount}` : '', w))
-  L.push(row('Type:', data.orderType.replace('-', ' ').toUpperCase(), w))
+  L.push(center('ORDER #' + data.orderNum, w))
+  L.push('')
+  L.push(div('=', w))
+  L.push('TYPE:   ' + data.orderType.replace('-', ' ').toUpperCase())
+  if (data.table)
+    L.push('TABLE:  ' + sanitize(data.table))
+  else
+    L.push('TABLE:  TAKEOUT')
+  L.push('SERVER: ' + sanitize(data.server))
+  if (data.guestCount && data.guestCount > 1)
+    L.push('GUESTS: ' + data.guestCount)
+  L.push('TIME:   ' + sanitize(data.time))
+  L.push('DATE:   ' + sanitize(data.date))
   L.push(div('=', w))
 
+  // Items
   for (const ci of foodItems) {
     L.push('')
-    L.push(` ${ci.qty > 1 ? `${ci.qty}x ` : '   '}${esc(ci.name).toUpperCase()}`)
-    if (ci.size)                  L.push(`       SIZE: ${esc(ci.size)}`)
-    if (ci.flavour)               L.push(`       FLAVOUR: ${esc(ci.flavour)}`)
+    const prefix = ci.qty > 1 ? `  ${ci.qty}x ` : '     '
+    itemWrap(prefix, sanitize(ci.name).toUpperCase(), w).forEach(l => L.push(l))
+    if (ci.size)    L.push('     SIZE: ' + sanitize(ci.size))
+    if (ci.flavour) L.push('     FLAVOUR: ' + sanitize(ci.flavour))
     if (ci.sides?.length) {
-      L.push(`       SIDE${ci.sides.length > 1 ? 'S' : ''}:`)
-      ci.sides.forEach(s => L.push(`         - ${esc(s)}`))
+      L.push('     SIDE' + (ci.sides.length > 1 ? 'S' : '') + ':')
+      ci.sides.forEach(s => L.push('       - ' + sanitize(s)))
     }
     if (ci.addons.length > 0) {
-      L.push(`       ADD-ONS:`)
-      ci.addons.forEach(a => L.push(`         - ${esc(a.name)}`))
+      L.push('     ADD-ONS:')
+      ci.addons.forEach(a => L.push('       - ' + sanitize(a.name)))
     }
     if (ci.note) {
       L.push('')
-      L.push(`       *** NOTE: ${esc(ci.note).toUpperCase()} ***`)
+      wrap('*** NOTE: ' + sanitize(ci.note).toUpperCase() + ' ***', 5, w)
+        .forEach(l => L.push(l))
     }
+    L.push('')
     L.push(div('-', w))
   }
 
+  // Special instructions
   if (data.orderNote?.trim()) {
     L.push('')
     L.push(div('!', w))
-    L.push(center('SPECIAL INSTRUCTIONS', w))
-    L.push(div('!', w))
-    data.orderNote.trim().split('\n').forEach(line =>
-      L.push(center(esc(line).toUpperCase(), w))
-    )
+    L.push(center('ORDER NOTE', w))
+    wrap(sanitize(data.orderNote).toUpperCase(), 0, w)
+      .forEach(l => L.push(center(l.trim(), w)))
     L.push(div('!', w))
   }
 
+  // Status checkboxes
   L.push('')
   L.push(div('=', w))
-  L.push(center('KITCHEN STATUS', w))
+  L.push(center('STATUS', w))
   L.push('')
   L.push(center('[ ] PREPARING', w))
   L.push(center('[ ] READY', w))
   L.push(center('[ ] SERVED', w))
+  L.push('')
   L.push(div('*', w))
 
   return `<pre>${L.join('\n')}</pre>`
 }
 
-// ── Bar Order Ticket (BOT) ────────────────────────────────────
+// ── Bar Order Ticket (BOT) ────────────────────────────────────────────────────
 export interface BOTData {
   orderNum: string
   table?: string
@@ -256,37 +310,51 @@ export function buildBarTicket(data: BOTData, opts: { width?: PrintWidth } = {})
   if (barItems.length === 0) return ''
 
   const L: string[] = []
+
   L.push(div('#', w))
-  L.push(center('** BAR TICKET **', w))
+  L.push(center('BAR TICKET', w))
   L.push(div('#', w))
   L.push('')
-  L.push(row(`ORDER #${data.orderNum}`, data.table ? `TABLE: ${data.table}` : 'BAR', w))
-  L.push(row(`Time: ${data.time}`, `Server: ${esc(data.server)}`, w))
+  L.push(center('ORDER #' + data.orderNum, w))
+  L.push('')
+  L.push(div('=', w))
+  L.push('TABLE:  ' + (data.table ? sanitize(data.table) : 'BAR'))
+  L.push('SERVER: ' + sanitize(data.server))
+  L.push('TIME:   ' + sanitize(data.time))
   L.push(div('=', w))
 
   for (const ci of barItems) {
     L.push('')
-    L.push(` ${ci.qty > 1 ? `${ci.qty}x ` : '   '}${esc(ci.name).toUpperCase()}`)
-    if (ci.size)    L.push(`       SIZE: ${esc(ci.size)}`)
-    if (ci.flavour) L.push(`       FLAVOUR: ${esc(ci.flavour)}`)
-    if (ci.addons.length > 0)
-      L.push(`       ADD-ONS: ${ci.addons.map(a => esc(a.name)).join(', ')}`)
-    if (ci.note)    L.push(`       *** ${esc(ci.note).toUpperCase()} ***`)
+    const prefix = ci.qty > 1 ? `  ${ci.qty}x ` : '     '
+    itemWrap(prefix, sanitize(ci.name).toUpperCase(), w).forEach(l => L.push(l))
+    if (ci.size)    L.push('     SIZE: ' + sanitize(ci.size))
+    if (ci.flavour) L.push('     FLAVOUR: ' + sanitize(ci.flavour))
+    if (ci.addons.length > 0) {
+      L.push('     ADD-ONS:')
+      ci.addons.forEach(a => L.push('       - ' + sanitize(a.name)))
+    }
+    if (ci.note) {
+      L.push('')
+      wrap('*** ' + sanitize(ci.note).toUpperCase() + ' ***', 5, w)
+        .forEach(l => L.push(l))
+    }
+    L.push('')
     L.push(div('-', w))
   }
 
   L.push('')
   L.push(div('=', w))
-  L.push(center('BAR STATUS', w))
+  L.push(center('STATUS', w))
   L.push('')
   L.push(center('[ ] PREPARING', w))
   L.push(center('[ ] READY', w))
+  L.push('')
   L.push(div('#', w))
 
   return `<pre>${L.join('\n')}</pre>`
 }
 
-// ── Car Wash Work Order ───────────────────────────────────────
+// ── Car Wash Work Order ───────────────────────────────────────────────────────
 export interface CWOData {
   orderNum: string
   plate?: string
@@ -302,24 +370,26 @@ export function buildCarwashWorkOrder(data: CWOData, opts: { width?: PrintWidth 
   if (cwItems.length === 0) return ''
 
   const L: string[] = []
+
   L.push(div('=', w))
   L.push(center('CAR WASH WORK ORDER', w))
   L.push(div('=', w))
   L.push('')
-  L.push(row(`Order #: CW-${data.orderNum}`, `Time: ${data.time}`, w))
-  L.push(row(`Date: ${data.date}`, '', w))
+  L.push(row('Order #: CW-' + data.orderNum, 'Time: ' + sanitize(data.time), w))
+  L.push(row('Date: ' + sanitize(data.date), '', w))
   L.push(div('-', w))
-  if (data.customerName)  L.push(row('Customer:', esc(data.customerName), w))
-  if (data.plate)         L.push(row('Plate:', esc(data.plate).toUpperCase(), w))
+  if (data.customerName) L.push(row('Customer:', sanitize(data.customerName), w))
+  if (data.plate)        L.push(row('Plate:', sanitize(data.plate).toUpperCase(), w))
   L.push(div('=', w))
   L.push('SERVICES:')
   L.push(div('-', w))
 
   for (const ci of cwItems) {
-    L.push(` ${ci.qty > 1 ? `${ci.qty}x ` : '   '}${esc(ci.name)}`)
+    const prefix = ci.qty > 1 ? `  ${ci.qty}x ` : '     '
+    itemWrap(prefix, sanitize(ci.name), w).forEach(l => L.push(l))
     if (ci.addons.length > 0)
-      ci.addons.forEach(a => L.push(`       + ${esc(a.name)}`))
-    if (ci.note) L.push(`       Note: ${esc(ci.note)}`)
+      ci.addons.forEach(a => L.push('       + ' + sanitize(a.name)))
+    if (ci.note) L.push('       Note: ' + sanitize(ci.note))
   }
 
   L.push('')
@@ -334,7 +404,7 @@ export function buildCarwashWorkOrder(data: CWOData, opts: { width?: PrintWidth 
   return `<pre>${L.join('\n')}</pre>`
 }
 
-// ── Void Ticket ───────────────────────────────────────────────
+// ── Void Ticket ───────────────────────────────────────────────────────────────
 export function buildVoidTicket(
   orderNum: string,
   itemName: string,
@@ -344,22 +414,25 @@ export function buildVoidTicket(
 ): string {
   const w = COLS[opts.width ?? 80]
   const L: string[] = []
+
   L.push(div('!', w))
   L.push(center('*** VOID ITEM ***', w))
   L.push(div('!', w))
   L.push('')
-  L.push(row('Order #:', orderNum, w))
-  L.push(row('VOID:', `${opts.qty && opts.qty > 1 ? `${opts.qty}x ` : ''}${esc(itemName)}`, w))
-  if (opts.reason) L.push(row('Reason:', esc(opts.reason), w))
-  L.push(row('Voided by:', esc(staffName), w))
-  L.push(row('Time:', time, w))
+  L.push(row('Order #:', sanitize(orderNum), w))
+  const voidLabel = (opts.qty && opts.qty > 1 ? `${opts.qty}x ` : '') + sanitize(itemName)
+  wrap('VOID: ' + voidLabel, 0, w).forEach(l => L.push(l))
+  if (opts.reason) wrap('Reason: ' + sanitize(opts.reason), 0, w).forEach(l => L.push(l))
+  L.push(row('Voided by:', sanitize(staffName), w))
+  L.push(row('Time:', sanitize(time), w))
   L.push('')
   L.push(center('*** REMOVE FROM ORDER ***', w))
   L.push(div('!', w))
+
   return `<pre>${L.join('\n')}</pre>`
 }
 
-// -- Z-Report (End of Day Summary) -----------------------------------------------
+// ── Z-Report (End of Day Summary) ────────────────────────────────────────────
 export interface ZReportData {
   date: string
   closedBy: string
@@ -400,18 +473,21 @@ export function buildZReport(data: ZReportData, opts: { width?: PrintWidth } = {
   const fmtN = (n: number) =>
     sym + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const L: string[] = []
+
   const varianceLabel =
     data.variance === 0 ? 'BALANCED'
     : data.variance > 0 ? ('OVER +' + fmtN(data.variance))
     : ('SHORT -' + fmtN(Math.abs(data.variance)))
+
   L.push(div('=', w))
   L.push(center('Z-REPORT -- END OF DAY', w))
   L.push(div('=', w))
-  L.push(row('Date:', data.date, w))
-  L.push(row('Closed by:', esc(data.closedBy), w))
-  if (data.gctRegNo) L.push(row('GCT Reg:', esc(data.gctRegNo), w))
-  if (data.trn)      L.push(row('TRN:', esc(data.trn), w))
+  L.push(row('Date:', sanitize(data.date), w))
+  L.push(row('Closed by:', sanitize(data.closedBy), w))
+  if (data.gctRegNo) L.push(row('GCT Reg:', sanitize(data.gctRegNo), w))
+  if (data.trn)      L.push(row('TRN:', sanitize(data.trn), w))
   L.push(div('=', w))
+
   L.push(center('SALES BY MODULE', w))
   L.push(div('-', w))
   if (data.restaurantCount > 0) L.push(row('Restaurant (' + data.restaurantCount + ' tx)', fmtN(data.restaurantSales), w))
@@ -420,6 +496,7 @@ export function buildZReport(data: ZReportData, opts: { width?: PrintWidth } = {
   L.push(div('-', w))
   L.push(row('TOTAL (' + data.totalCount + ' transactions)', fmtN(data.totalSales), w))
   L.push(div('=', w))
+
   L.push(center('PAYMENT METHODS', w))
   L.push(div('-', w))
   if (data.cashSales > 0)     L.push(row('Cash:', fmtN(data.cashSales), w))
@@ -428,18 +505,21 @@ export function buildZReport(data: ZReportData, opts: { width?: PrintWidth } = {
   if (data.tabSales > 0)      L.push(row('House Account/Tab:', fmtN(data.tabSales), w))
   if (data.otherSales > 0)    L.push(row('Other:', fmtN(data.otherSales), w))
   L.push(div('=', w))
+
   L.push(center('ADJUSTMENTS', w))
   L.push(div('-', w))
   L.push(row('Discounts:', data.totalDiscounts > 0 ? ('-' + fmtN(data.totalDiscounts)) : fmtN(0), w))
   L.push(row('Voids (' + data.voidCount + '):', data.totalVoids > 0 ? ('-' + fmtN(data.totalVoids)) : fmtN(0), w))
   L.push(row('Refunds (' + data.refundCount + '):', data.totalRefunds > 0 ? ('-' + fmtN(data.totalRefunds)) : fmtN(0), w))
   L.push(div('=', w))
+
   L.push(center('TAX SUMMARY', w))
   L.push(div('-', w))
   L.push(row('GCT Collected (15%):', fmtN(data.totalGCT), w))
   if (data.totalServiceCharge > 0) L.push(row('Service Charge (10%):', fmtN(data.totalServiceCharge), w))
   if (data.totalGratuity > 0)      L.push(row('Gratuity:', fmtN(data.totalGratuity), w))
   L.push(div('=', w))
+
   L.push(center('CASH RECONCILIATION', w))
   L.push(div('-', w))
   L.push(row('Opening Float:', fmtN(data.openingFloat), w))
@@ -450,6 +530,7 @@ export function buildZReport(data: ZReportData, opts: { width?: PrintWidth } = {
   L.push(div('=', w))
   L.push(row('VARIANCE:', varianceLabel, w))
   L.push(div('=', w))
+
   if (data.denominations && data.denominations.some(d => d.qty > 0)) {
     L.push(center('DENOMINATION BREAKDOWN', w))
     L.push(div('-', w))
@@ -460,6 +541,7 @@ export function buildZReport(data: ZReportData, opts: { width?: PrintWidth } = {
     L.push(row('TOTAL COUNTED:', fmtN(data.actualCash), w))
     L.push(div('=', w))
   }
+
   L.push('')
   L.push(row('Manager:', '_'.repeat(Math.floor(w * 0.55)), w))
   L.push('')
@@ -469,5 +551,6 @@ export function buildZReport(data: ZReportData, opts: { width?: PrintWidth } = {
   L.push(div('=', w))
   L.push(center('*** END OF DAY CLOSED ***', w))
   L.push(div('=', w))
+
   return '<pre>' + L.join('\n') + '</pre>'
 }

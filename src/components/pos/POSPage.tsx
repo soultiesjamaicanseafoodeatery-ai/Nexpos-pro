@@ -92,8 +92,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [showOpenItem,  setShowOpenItem]  = useState(false)
   const [confirmClear,      setConfirmClear]      = useState(false)
   const [confirmDeleteHeld, setConfirmDeleteHeld] = useState<string | null>(null)
-  const [pendingBarAdd,    setPendingBarAdd]    = useState<'modal' | 'direct' | null>(null)
-  const [pendingDirectItem, setPendingDirectItem] = useState<MenuItem | null>(null)
+
   const [lastTx,        setLastTx]        = useState<Transaction | null>(null)
   const [lastTicket,    setLastTicket]    = useState<OrderTicket | null>(null)
   const [orderNote,     setOrderNote]     = useState('')
@@ -437,10 +436,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const sideName = modalSideIds.map(id => liveSides.find(s => s.id === id)?.name).filter(Boolean) as string[]
     const sizeName  = liveSizesDefs.find(s => s.id === modalSizeId)?.name
 
-    if (activeModule === 'bar' || modalItem?.module === 'bar') {
-      const hasBarItems = cart.some(ci => ci.module === 'bar')
-      if (!hasBarItems) { setPendingBarAdd('modal'); return }
-    }
     const cartItem: CartItem = {
       id: crypto.randomUUID(),
       itemId: modalItem.id,
@@ -461,10 +456,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
   // Add to cart directly (item with no active add-ons)
   const addToCartDirect = (item: MenuItem) => {
-    if (activeModule === 'bar' || item.module === 'bar') {
-      const hasBarItems = cart.some(ci => ci.module === 'bar')
-      if (!hasBarItems) { setPendingDirectItem(item); setPendingBarAdd('direct'); return }
-    }
     const cartItem: CartItem = {
       id: crypto.randomUUID(),
       itemId: item.id,
@@ -477,32 +468,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     }
     dispatch({ type: 'ADD_TO_CART', item: cartItem })
   }
-
-  const confirmAge = () => {
-    if (pendingBarAdd === 'modal' && modalItem) {
-      const effectivePrice = modalSizeId ? modalSizePrice : modalItem.price
-      const flavourName = liveFlavours.find(f => f.id === modalFlavourId)?.name
-      const sideName = modalSideIds.map(id => liveSides.find(s => s.id === id)?.name).filter(Boolean) as string[]
-      const sizeName = liveSizesDefs.find(s => s.id === modalSizeId)?.name
-      dispatch({ type: 'ADD_TO_CART', item: {
-        id: crypto.randomUUID(), itemId: modalItem.id, name: modalItem.name, price: effectivePrice,
-        qty: modalQty, addons: [...modalAddons], module: activeModule, note: modalNote || undefined,
-        plate: activeModule === 'carwash' ? (ps.plate || undefined) : undefined,
-        flavour: flavourName, size: sizeName, sides: sideName.length > 0 ? sideName : undefined,
-      }})
-      closeModal()
-    } else if (pendingBarAdd === 'direct' && pendingDirectItem) {
-      dispatch({ type: 'ADD_TO_CART', item: {
-        id: crypto.randomUUID(), itemId: pendingDirectItem.id, name: pendingDirectItem.name,
-        price: pendingDirectItem.price, qty: 1, addons: [], module: activeModule,
-        plate: activeModule === 'carwash' ? (ps.plate || undefined) : undefined,
-      }})
-    }
-    setPendingBarAdd(null)
-    setPendingDirectItem(null)
-  }
-
-  const cancelAge = () => { setPendingBarAdd(null); setPendingDirectItem(null) }
 
   // Handle item click — open modal only if the item has assigned add-ons/flavours/sizes/sides
   const handleItemClick = (item: MenuItem) => {
@@ -2077,28 +2042,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         </div>
       )}
 
-      {/* Age Verification overlay */}
-      {pendingBarAdd && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 420, padding: 28, textAlign: 'center' }}>
-            <div style={{ fontSize: 44, marginBottom: 12 }}>🍺</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)', marginBottom: 10 }}>Age Verification Required</div>
-            <div style={{ fontSize: 13, color: 'var(--txt2)', lineHeight: 1.7, marginBottom: 28 }}>
-              Confirm that the customer has presented valid ID and is <strong>18 years of age or older</strong>.<br />
-              Serving alcohol to a minor is a criminal offence under the Jamaica Licences Act.
-            </div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={cancelAge} style={{ flex: 1, padding: 14, borderRadius: 'var(--r)', background: 'transparent', border: '1.5px solid var(--bdr)', color: 'var(--txt3)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                ✕ Under 18 — Decline
-              </button>
-              <button onClick={confirmAge} style={{ flex: 1, padding: 14, borderRadius: 'var(--r)', background: 'var(--grn)', border: 'none', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
-                ✓ Confirmed 18+
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
+
 

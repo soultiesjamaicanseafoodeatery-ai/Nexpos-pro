@@ -121,7 +121,17 @@ export default function Topbar() {
   }
 
   useEffect(() => {
-    const tick = () => setClock(new Date().toLocaleTimeString('en-US', { timeZone: 'America/Jamaica', hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+    const tick = () => {
+      const now = new Date()
+      const utcMs = now.getTime() + now.getTimezoneOffset() * 60000
+      const jm = new Date(utcMs - 5 * 3600000)
+      const h = jm.getUTCHours()
+      const m = String(jm.getUTCMinutes()).padStart(2, '0')
+      const s = String(jm.getUTCSeconds()).padStart(2, '0')
+      const ampm = h >= 12 ? 'PM' : 'AM'
+      const h12 = String(h % 12 || 12).padStart(2, '0')
+      setClock(`${h12}:${m}:${s} ${ampm}`)
+    }
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)

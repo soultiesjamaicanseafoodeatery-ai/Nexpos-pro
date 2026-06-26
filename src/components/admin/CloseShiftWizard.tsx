@@ -908,7 +908,7 @@ export default function CloseShiftWizard() {
           {todayEntries.length > 0 && (
             <div style={{ borderTop:'1px solid var(--bdr)', paddingTop:16 }}>
               <div style={{ fontSize:12, fontWeight:800, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:12 }}>
-                Break Deductions — Today's Shifts
+                Break Deductions — Today&apos;s Shifts
               </div>
               {!canOverride && (
                 <div style={{ fontSize:11, color:'var(--txt3)', marginBottom:10, fontStyle:'italic' }}>

@@ -727,7 +727,7 @@ export default function CloseShiftWizard() {
       if (Object.keys(breakOverrides).length > 0) {
         try {
           const all: TEntry[] = JSON.parse(localStorage.getItem('payroll_time_entries') ?? '[]')
-          const updated = all.map(e => breakOverrides[e.id] !== undefined
+          const updated = all.map(e => e.id in breakOverrides
             ? { ...e, breakMinutes: breakOverrides[e.id], notes: e.notes.replace('auto ·', 'approved ·') }
             : e
           )

@@ -262,24 +262,7 @@ export const SEED_TRANSACTIONS: Transaction[] = [
 ]
 
 // ── Fleet Accounts ────────────────────────────────────────────
-export const SEED_FLEET: FleetAccount[] = [
-  {
-    id:'FL1', companyName:'Miami Metro Taxis', contactName:'James Rivera', email:'james@miamimetro.com',
-    phone:'(305) 555-1001', address:'450 Biscayne Blvd, Miami FL',
-    accountType:'commercial', discount:25, creditLimit:2000, currentBalance:0,
-    billingCycle:'monthly', invoiceDay:1, paymentTerms:'Net 30',
-    status:'active', created:'2024-01-10', accountManager:'Alex Rivera',
-    notes:'30-vehicle fleet. Priority bay access.',
-    vehicles:[
-      { id:'fv1', plate:'MTX-001', make:'Toyota',  model:'Camry', year:2022, color:'Yellow', type:'Sedan', washes:12 },
-      { id:'fv2', plate:'MTX-002', make:'Toyota',  model:'Camry', year:2022, color:'Yellow', type:'Sedan', washes:10 },
-    ],
-    invoices:[
-      { id:'INV-001', date:'2025-05-01', dueDate:'2025-05-31', amount:480.00, status:'paid',   items:38 },
-      { id:'INV-002', date:'2025-04-01', dueDate:'2025-04-30', amount:420.00, status:'paid',   items:33 },
-    ],
-  },
-]
+export const SEED_FLEET: FleetAccount[] = []
 
 // ── Promo Codes ───────────────────────────────────────────────
 export const SEED_PROMOS: PromoCode[] = [

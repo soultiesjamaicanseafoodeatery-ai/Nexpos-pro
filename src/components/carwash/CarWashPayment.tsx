@@ -39,7 +39,7 @@ export default function CarWashPayment({ service, addons, onBack, onComplete }: 
 
   const addonTotal = addons.reduce((s, a) => s + a.price, 0)
   const subtotal   = service.price + addonTotal
-  const taxRate    = 0.15
+  const taxRate    = 0
   const taxAmount  = Math.round(subtotal * taxRate * 100) / 100
   const total      = subtotal + taxAmount
 
@@ -127,7 +127,7 @@ ${rows ? '<div class="d"></div>' : ''}
 ${addons.map(a => `<div class="row"><span>+ ${a.name}</span><span>${fmtJ(a.price)}</span></div>`).join('')}
 <div class="d"></div>
 <div class="row"><span>Subtotal</span><span>${fmtJ(subtotal)}</span></div>
-<div class="row"><span>GCT (15%)</span><span>${fmtJ(taxAmount)}</span></div>
+${taxAmount > 0 ? `<div class="row"><span>GCT (15%)</span><span>${fmtJ(taxAmount)}</span></div>` : ""}
 <div class="row total"><span>TOTAL</span><span>${fmtJ(total)}</span></div>
 <div class="row"><span>Payment</span><span class="cap">${payMethod}</span></div>
 ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.name}</span></div>` : ''}

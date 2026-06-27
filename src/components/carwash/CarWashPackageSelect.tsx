@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState, useCallback } from 'react'
 import type { CwService, CwAddon } from './CarWashFlow'
@@ -13,8 +13,8 @@ const fmtJ = (n: number) =>
 export default function CarWashPackageSelect({ onSelect }: Props) {
   const [services, setServices] = useState<CwService[]>([])
   const [addons, setAddons] = useState<CwAddon[]>([])
-  const [selServices, setSelServices] = useState<CwService[]>([])
   const [selAddons, setSelAddons] = useState<CwAddon[]>([])
+  const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -29,9 +29,26 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
   }, [])
 
   const toggleService = useCallback((s: CwService) => {
-    setSelServices(prev =>
-      prev.some(x => x.id === s.id) ? prev.filter(x => x.id !== s.id) : [...prev, s]
-    )
+    setQuantities(prev => {
+      if (prev[s.id]) {
+        const next = { ...prev }
+        delete next[s.id]
+        return next
+      }
+      return { ...prev, [s.id]: 1 }
+    })
+  }, [])
+
+  const adjustQty = useCallback((id: string, delta: number) => {
+    setQuantities(prev => {
+      const next = (prev[id] ?? 0) + delta
+      if (next <= 0) {
+        const updated = { ...prev }
+        delete updated[id]
+        return updated
+      }
+      return { ...prev, [id]: next }
+    })
   }, [])
 
   const toggleAddon = useCallback((a: CwAddon) => {
@@ -40,9 +57,11 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
     )
   }, [])
 
-  const servicesTotal = selServices.reduce((acc, s) => acc + s.price, 0)
+  const selServices = services.filter(s => quantities[s.id])
+  const servicesTotal = selServices.reduce((acc, s) => acc + s.price * (quantities[s.id] ?? 1), 0)
   const addonsTotal = selAddons.reduce((acc, a) => acc + a.price, 0)
   const total = servicesTotal + addonsTotal
+  const anySelected = selServices.length > 0
 
   if (loading) {
     return (
@@ -67,45 +86,71 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
         <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
           Services
         </div>
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
           {services.map(s => {
-            const checked = selServices.some(x => x.id === s.id)
+            const checked = !!quantities[s.id]
+            const qty = quantities[s.id] ?? 1
             return (
               <button
                 key={s.id}
                 onClick={() => toggleService(s)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
+                  display: 'flex', flexDirection: 'column',
                   padding: '14px 16px',
                   border: checked ? '2.5px solid var(--blue)' : '2px solid var(--bdr)',
                   background: checked ? 'rgba(59,130,246,.08)' : 'var(--surf)',
                   borderRadius: 'var(--r3)', cursor: 'pointer',
                   textAlign: 'left', transition: 'border .1s, background .1s',
+                  width: '100%',
                 }}
               >
-                <div style={{
-                  width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-                  border: checked ? '2px solid var(--blue)' : '2px solid var(--bdr)',
-                  background: checked ? 'var(--blue)' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontSize: 13, fontWeight: 900, transition: 'all .1s',
-                }}>
-                  {checked ? '✓' : ''}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{
+                    width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                    border: checked ? '2px solid var(--blue)' : '2px solid var(--bdr)',
+                    background: checked ? 'var(--blue)' : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontSize: 13, fontWeight: 900, transition: 'all .1s',
+                  }}>
+                    {checked ? '✓' : ''}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{s.name}</div>
+                    {s.description && (
+                      <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2 }}>{s.description}</div>
+                    )}
+                    {s.vehicle_type && (
+                      <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>{s.vehicle_type}</div>
+                    )}
+                  </div>
+                  <div style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 15, color: 'var(--txt)', flexShrink: 0 }}>
+                    {fmtJ(s.price)}
+                  </div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{s.name}</div>
-                  {s.description && (
-                    <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2 }}>{s.description}</div>
-                  )}
-                  {s.vehicle_type && (
-                    <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>
-                      {s.vehicle_type}
-                    </div>
-                  )}
-                </div>
-                <div style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 15, color: 'var(--txt)', flexShrink: 0 }}>
-                  {fmtJ(s.price)}
-                </div>
+
+                {checked && (
+                  <div
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(79,142,247,.25)', justifyContent: 'flex-end' }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <span style={{ fontSize: 12, color: 'var(--txt3)' }}>Qty:</span>
+                    <button
+                      onClick={e => { e.stopPropagation(); adjustQty(s.id, -1) }}
+                      style={{ width: 30, height: 30, borderRadius: 6, border: '1.5px solid var(--blue)', background: 'transparent', color: 'var(--blue)', fontWeight: 900, fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >−</button>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 16, color: 'var(--txt)', minWidth: 24, textAlign: 'center' }}>{qty}</span>
+                    <button
+                      onClick={e => { e.stopPropagation(); adjustQty(s.id, 1) }}
+                      style={{ width: 30, height: 30, borderRadius: 6, border: '1.5px solid var(--blue)', background: 'var(--blue)', color: '#fff', fontWeight: 900, fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >+</button>
+                    {qty > 1 && (
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--blue)', marginLeft: 4 }}>
+                        = {fmtJ(s.price * qty)}
+                      </span>
+                    )}
+                  </div>
+                )}
               </button>
             )
           })}
@@ -161,25 +206,28 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
 
       {/* Footer */}
       <div style={{ borderTop: '1px solid var(--bdr)', padding: '16px 24px', flexShrink: 0, background: 'var(--surf)' }}>
-        {selServices.length > 0 && (
+        {anySelected && (
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, fontSize: 13, color: 'var(--txt3)' }}>
-            <span>{selServices.length} service{selServices.length !== 1 ? 's' : ''}{selAddons.length > 0 ? ` + ${selAddons.length} add-on${selAddons.length !== 1 ? 's' : ''}` : ''}</span>
+            <span>
+              {selServices.length} service{selServices.length !== 1 ? 's' : ''}
+              {selAddons.length > 0 ? ` + ${selAddons.length} add-on${selAddons.length !== 1 ? 's' : ''}` : ''}
+            </span>
             <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 15, color: 'var(--txt)' }}>{fmtJ(total)}</span>
           </div>
         )}
         <button
-          disabled={selServices.length === 0}
-          onClick={() => onSelect(selServices, selAddons)}
+          disabled={!anySelected}
+          onClick={() => onSelect(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons)}
           style={{
             width: '100%', padding: '15px 0',
-            background: selServices.length > 0 ? 'var(--blue)' : 'var(--bdr)',
-            color: selServices.length > 0 ? '#fff' : 'var(--txt3)',
+            background: anySelected ? 'var(--blue)' : 'var(--bdr)',
+            color: anySelected ? '#fff' : 'var(--txt3)',
             border: 'none', borderRadius: 'var(--r3)',
-            fontSize: 16, fontWeight: 900, cursor: selServices.length > 0 ? 'pointer' : 'not-allowed',
+            fontSize: 16, fontWeight: 900, cursor: anySelected ? 'pointer' : 'not-allowed',
             transition: 'background .15s',
           }}
         >
-          {selServices.length === 0 ? 'Select at least one service' : 'Proceed to Payment →'}
+          {!anySelected ? 'Select at least one service' : 'Proceed to Payment →'}
         </button>
       </div>
     </div>

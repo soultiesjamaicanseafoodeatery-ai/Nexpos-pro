@@ -63,6 +63,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const sym  = biz.currencySymbol ?? 'J$'
 
   const [cwTab,        setCwTab]        = useState<'pos' | 'orders'>('pos')
+  const [showCwPanel,  setShowCwPanel]  = useState(false)
+  const [cwPosPlate,   setCwPosPlate]   = useState('')
   const [pendingCount, setPendingCount] = useState(0)
   const [showDetails,  setShowDetails]  = useState(false)
   const [discPct,      setDiscPct]      = useState(0)
@@ -1215,7 +1217,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             <div style={{ borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
               <div style={{ padding: '8px 12px 0', display: 'flex', gap: 6, overflowX: 'auto' }}>
                 {cats.map((cat: string) => (
-                  <button key={cat} onClick={() => { setPOS({ cat }); setSearchQuery('') }} style={{
+                  <button key={cat} onClick={() => { setPOS({ cat }); setSearchQuery(''); setShowCwPanel(false) }} style={{
                     padding: '8px 18px', borderRadius: '20px 20px 0 0', fontSize: 13, fontWeight: 700,
                     cursor: 'pointer', border: `1.5px solid ${ps.cat === cat ? mod.color : 'var(--bdr)'}`,
                     borderBottom: ps.cat === cat ? `2px solid ${mod.color}` : '1.5px solid var(--bdr)',
@@ -1225,6 +1227,22 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                 ))}
               </div>
               <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {activeModule !== 'carwash' && (
+                <button
+                  onClick={() => { setShowCwPanel(p => !p); setSearchQuery('') }}
+                  style={{
+                    padding: '8px 18px', borderRadius: '20px 20px 0 0', fontSize: 13, fontWeight: 700,
+                    cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 40, flexShrink: 0,
+                    border: showCwPanel ? '1.5px solid var(--blue)' : '1.5px solid var(--bdr)',
+                    borderBottom: showCwPanel ? '2px solid var(--blue)' : '1.5px solid var(--bdr)',
+                    color: showCwPanel ? 'var(--blue)' : 'var(--txt2)',
+                    background: showCwPanel ? 'var(--blue-bg)' : 'transparent',
+                    transition: 'all .12s',
+                  }}
+                >
+                  Car Wash
+                </button>
+              )}
                 <div style={{ flex: 1, position: 'relative' }}>
                   <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--txt3)', pointerEvents: 'none' }}>🔍</span>
                   <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search menu..."
@@ -1239,6 +1257,37 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             {/* Menu content */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
 
+
+              {/* Car Wash services panel */}
+              {showCwPanel ? (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Car Wash Services</span>
+                    <input value={cwPosPlate} onChange={e => setCwPosPlate(e.target.value.toUpperCase())} placeholder='Plate (optional)' maxLength={10}
+                      style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--mono)', letterSpacing: 1, width: 140 }} />
+                  </div>
+                  {!liveCarwashItems || liveCarwashItems.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--txt3)', fontSize: 13 }}>Loading car wash services</div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                      {liveCarwashItems.map(cwItem => {
+                        const cartItem: CartItem = { id: crypto.randomUUID(), itemId: cwItem.id, name: cwItem.name, price: cwItem.price, qty: 1, addons: [], module: 'carwash', plate: cwPosPlate || undefined }
+                        return (
+                          <div key={cwItem.id} onClick={() => dispatch({ type: 'ADD_TO_CART', item: cartItem })}
+                            style={{ background: (cwItem as any).gradient ?? 'var(--surf)', border: '2px solid var(--bdr)', borderRadius: 'var(--r3)', cursor: 'pointer', display: 'flex', flexDirection: 'column', minHeight: 100, transition: 'all .15s' }}>
+                            {(cwItem as any).duration && <div style={{ padding: '3px 8px', background: 'rgba(0,0,0,.3)', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,.8)' }}>{(cwItem as any).duration}</div>}
+                            <div style={{ padding: '11px 12px 12px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: (cwItem as any).gradient ? '#fff' : 'var(--txt)', lineHeight: 1.25 }}>{cwItem.name}</div>
+                              <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--mono)', color: (cwItem as any).accent ?? 'var(--blue)', marginTop: 8 }}>{fmt(cwItem.price, sym)}</div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
               {/* Quick Picks */}
               {quickPicks.length > 0 && !searchQuery && (
                 <div style={{ marginBottom: 14 }}>
@@ -1304,6 +1353,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     )
                   })}
                 </div>
+              )}
+              </>
               )}
             </div>
           </div>

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -37,15 +37,17 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
   const [error,        setError]        = useState('')
   const [ticket,       setTicket]       = useState<string | null>(null)
 
-  const servicesTotal = services.reduce((s, svc) => s + svc.price, 0)
+  const servicesTotal = services.reduce((s, svc) => s + svc.price * (svc.qty ?? 1), 0)
   const addonTotal    = addons.reduce((s, a) => s + a.price, 0)
   const subtotal      = servicesTotal + addonTotal
   const taxRate       = 0
   const taxAmount     = Math.round(subtotal * taxRate * 100) / 100
   const total         = subtotal + taxAmount
-  const serviceNames  = services.map(s => s.name).join(', ')
+  const serviceNames  = services
+    .map(s => (s.qty ?? 1) > 1 ? `${s.name} ×${s.qty}` : s.name)
+    .join(', ')
 
-  // ── Complete payment ─────────────────────────────────────────
+  // ── Complete payment ──────────────────────────────────────
   const complete = async () => {
     setSaving(true); setError('')
     try {
@@ -55,12 +57,12 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
         body: JSON.stringify({
           customerName, phone, vehicleType,
           plate: plate.trim().toUpperCase(),
-          services: services.map(s => ({ id: s.id, name: s.name, price: s.price })),
+          services: services.map(s => ({ id: s.id, name: s.name, price: s.price, qty: s.qty ?? 1 })),
           addons: addons.map(a => ({ id: a.id, name: a.name, price: a.price })),
-          addonsTotal:  addonTotal,
+          addonsTotal:   addonTotal,
           paymentMethod: payMethod,
           total,
-          employeeName: currentUser?.name ?? '',
+          employeeName:  currentUser?.name ?? '',
         }),
       })
       if (!res.ok) {
@@ -71,24 +73,24 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
       setTicket(order.ticket_no)
       const nowTs = new Date()
       const cwTx: Transaction = {
-        id: Date.now() + Math.floor(Math.random() * 1000),
-        ts: nowTs.toISOString(),
-        mod: 'carwash',
-        cashier: currentUser?.name ?? 'Staff',
-        userId: currentUser?.id ?? '',
-        customer: customerName || plate || 'Walk-in',
-        item: serviceNames,
-        addons: addons.map(a => a.name),
-        sub: subtotal,
-        disc: 0,
-        tax: taxAmount,
+        id:          Date.now() + Math.floor(Math.random() * 1000),
+        ts:          nowTs.toISOString(),
+        mod:         'carwash',
+        cashier:     currentUser?.name ?? 'Staff',
+        userId:      currentUser?.id ?? '',
+        customer:    customerName || plate || 'Walk-in',
+        item:        serviceNames,
+        addons:      addons.map(a => a.name),
+        sub:         subtotal,
+        disc:        0,
+        tax:         taxAmount,
         total,
-        pay: payMethod,
-        orderType: 'walk-in',
-        gct: taxAmount,
+        pay:         payMethod,
+        orderType:   'walk-in',
+        gct:         taxAmount,
         serviceCharge: 0,
-        gratuity: 0,
-        items: [],
+        gratuity:    0,
+        items:       [],
       }
       dispatch({ type: 'ADD_TRANSACTION', tx: cwTx })
     } catch (e) {
@@ -98,9 +100,10 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
     }
   }
 
-  // ── Print receipt ────────────────────────────────────────────
+  // ── Print receipt (iframe — avoids popup blocker / about:blank) ──
   const printReceipt = () => {
     const bizName = biz?.name ?? 'Car Wash'
+
     const infoRows = [
       plate        ? `<div class="row"><span>Plate</span><span>${plate}</span></div>` : '',
       vehicleType  ? `<div class="row"><span>Vehicle</span><span>${vehicleType}</span></div>` : '',
@@ -109,7 +112,11 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
     ].filter(Boolean).join('')
 
     const serviceRows = services
-      .map(s => `<div class="row"><span>${s.name}</span><span>${fmtJ(s.price)}</span></div>`)
+      .map(s => {
+        const qty = s.qty ?? 1
+        const label = qty > 1 ? `${s.name} &times;${qty}` : s.name
+        return `<div class="row"><span>${label}</span><span>${fmtJ(s.price * qty)}</span></div>`
+      })
       .join('')
 
     const addonRows = addons
@@ -135,7 +142,7 @@ ${serviceRows}
 ${addonRows}
 <div class="d"></div>
 <div class="row"><span>Subtotal</span><span>${fmtJ(subtotal)}</span></div>
-${taxAmount > 0 ? `<div class="row"><span>GCT (15%)</span><span>${fmtJ(taxAmount)}</span></div>` : ""}
+${taxAmount > 0 ? `<div class="row"><span>GCT (15%)</span><span>${fmtJ(taxAmount)}</span></div>` : ''}
 <div class="row total"><span>TOTAL</span><span>${fmtJ(total)}</span></div>
 <div class="row"><span>Payment</span><span class="cap">${payMethod}</span></div>
 ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.name}</span></div>` : ''}
@@ -143,15 +150,19 @@ ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.na
 <div class="c" style="margin-top:8px">Thank you!</div>
 </body></html>`
 
-    const w = window.open('', '_blank', 'width=340,height=520')
-    if (!w) return
-    w.document.write(html)
-    w.document.close()
-    w.focus()
-    setTimeout(() => w.print(), 280)
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:340px;height:600px;visibility:hidden'
+    document.body.appendChild(iframe)
+    const doc = iframe.contentDocument ?? iframe.contentWindow?.document
+    if (!doc) { document.body.removeChild(iframe); return }
+    doc.open(); doc.write(html); doc.close()
+    setTimeout(() => {
+      iframe.contentWindow?.print()
+      setTimeout(() => { try { document.body.removeChild(iframe) } catch { /* already removed */ } }, 1000)
+    }, 300)
   }
 
-  // ── Success / receipt screen ─────────────────────────────────
+  // ── Success / receipt screen ──────────────────────────────
   if (ticket) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 20, padding: 40, background: 'var(--bg)', textAlign: 'center' }}>
@@ -162,12 +173,17 @@ ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.na
           {ticket}
         </div>
 
+        <div style={{ fontSize: 13, color: 'var(--txt3)' }}>Order added to Wash Queue as <strong>Waiting</strong></div>
+
         <div style={{ width: '100%', maxWidth: 420, background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', textAlign: 'left' }}>
           {[
-            ...(plate        ? [{ l: 'Plate',    v: plate }]        : []),
-            ...(vehicleType  ? [{ l: 'Vehicle',  v: vehicleType }]  : []),
-            ...(customerName ? [{ l: 'Customer', v: customerName }] : []),
-            ...services.map(s => ({ l: s.name, v: fmtJ(s.price) })),
+            ...(plate       ? [{ l: 'Plate',    v: plate }]       : []),
+            ...(vehicleType ? [{ l: 'Vehicle',  v: vehicleType }] : []),
+            ...(customerName? [{ l: 'Customer', v: customerName }] : []),
+            ...services.map(s => ({
+              l: (s.qty ?? 1) > 1 ? `${s.name} ×${s.qty}` : s.name,
+              v: fmtJ(s.price * (s.qty ?? 1)),
+            })),
             ...addons.map(a => ({ l: `+ ${a.name}`, v: fmtJ(a.price) })),
             { l: 'Total',   v: fmtJ(total),   bold: true },
             { l: 'Payment', v: payMethod[0].toUpperCase() + payMethod.slice(1) },
@@ -198,7 +214,7 @@ ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.na
     )
   }
 
-  // ── Payment screen ───────────────────────────────────────────
+  // ── Payment screen ────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
 
@@ -224,18 +240,22 @@ ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.na
           <div style={{ padding: '10px 16px', background: 'var(--bg2)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid var(--bdr)' }}>
             Order Summary
           </div>
-          {services.map((s, i) => (
+          {services.map(s => (
             <div key={s.id} style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--bdr)' }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--txt)' }}>{s.name}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--txt)' }}>
+                  {(s.qty ?? 1) > 1 ? `${s.name} ×${s.qty}` : s.name}
+                </div>
                 {s.vehicle_type && s.vehicle_type !== 'All' && (
                   <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>{s.vehicle_type}</div>
                 )}
               </div>
-              <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'var(--mono)', color: 'var(--txt)' }}>{fmtJ(s.price)}</div>
+              <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'var(--mono)', color: 'var(--txt)' }}>
+                {fmtJ(s.price * (s.qty ?? 1))}
+              </div>
             </div>
           ))}
-          {addons.map((a) => (
+          {addons.map(a => (
             <div key={a.id} style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--bdr)' }}>
               <div style={{ fontSize: 13, color: 'var(--txt2)' }}>+ {a.name}</div>
               <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--txt2)' }}>{fmtJ(a.price)}</div>
@@ -274,8 +294,8 @@ ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.na
                   </button>
                 ))}
               </div>
-              <input type="text"  value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer Name"  style={inp} />
-              <input type="tel"   value={phone}        onChange={e => setPhone(e.target.value)}        placeholder="Phone Number"   style={inp} />
+              <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer Name" style={inp} />
+              <input type="tel"  value={phone}        onChange={e => setPhone(e.target.value)}        placeholder="Phone Number"   style={inp} />
             </div>
           </div>
 

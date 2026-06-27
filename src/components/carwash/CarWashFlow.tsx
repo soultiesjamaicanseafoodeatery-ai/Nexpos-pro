@@ -1,11 +1,12 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import CarWashPackageSelect from './CarWashPackageSelect'
 import CarWashPayment from './CarWashPayment'
 
 export interface CwService {
-  id: string; name: string; description: string; price: number; vehicle_type: string; is_available: boolean
+  id: string; name: string; description: string; price: number; vehicle_type: string; is_available: boolean;
+  qty?: number
 }
 export interface CwAddon {
   id: string; name: string; description: string; price: number; is_available: boolean

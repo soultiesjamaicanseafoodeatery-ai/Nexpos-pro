@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 
 const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^﻿/, '')
 const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').replace(/^﻿/, '')
@@ -11,7 +11,6 @@ const SB = () => ({
 })
 
 export async function GET() {
-  // Return today's orders (midnight local time to now)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const from = today.toISOString()
@@ -28,7 +27,6 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json()
 
-  // Sequential ticket number — resets to CW-0001 each day automatically
   const dayStart = new Date()
   dayStart.setHours(0, 0, 0, 0)
   const lastRes = await fetch(
@@ -43,6 +41,13 @@ export async function POST(req: NextRequest) {
   }
   const ticket_no = `CW-${String(nextNum).padStart(4, '0')}`
 
+  const svcs: Array<{ id?: string; name: string; price: number; qty?: number }> =
+    Array.isArray(body.services) ? body.services : []
+  const serviceNames = svcs
+    .map(s => ((s.qty ?? 1) > 1 ? `${s.name} ×${s.qty}` : s.name))
+    .join(', ')
+  const servicePrice = svcs.reduce((sum, s) => sum + Number(s.price) * (s.qty ?? 1), 0)
+
   const row = {
     id:            `CWO-${Date.now()}`,
     ticket_no,
@@ -50,14 +55,14 @@ export async function POST(req: NextRequest) {
     phone:         body.phone ?? '',
     vehicle_type:  body.vehicleType ?? 'Car',
     plate:         body.plate ?? '',
-    service_id:    body.serviceId ?? '',
-    service_name:  body.serviceName ?? '',
-    service_price: Number(body.servicePrice ?? 0),
+    service_id:    svcs[0]?.id ?? '',
+    service_name:  serviceNames,
+    service_price: servicePrice,
     addons:        body.addons ?? [],
     addons_total:  Number(body.addonsTotal ?? 0),
     notes:         body.notes ?? '',
-    status:        'completed',
-    payment_method:body.paymentMethod ?? 'cash',
+    status:        'waiting',
+    payment_method: body.paymentMethod ?? 'cash',
     total:         Number(body.total ?? 0),
     employee_name: body.employeeName ?? '',
   }
@@ -78,9 +83,8 @@ export async function PUT(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const patch: Record<string, unknown> = { ...rest }
-  if (rest.status === 'completed') {
-    patch.completed_at = new Date().toISOString()
-  }
+  if (rest.status === 'completed') patch.completed_at = new Date().toISOString()
+  if (rest.status === 'voided')    patch.voided_at    = new Date().toISOString()
 
   const res = await fetch(
     `${SUPA_URL}/rest/v1/carwash_orders?id=eq.${encodeURIComponent(id)}`,

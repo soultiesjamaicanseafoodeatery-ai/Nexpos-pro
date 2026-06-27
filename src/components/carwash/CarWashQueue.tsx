@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 
@@ -27,10 +27,11 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; bo
   in_progress: { label: 'In Progress', color: '#4f8ef7', bg: 'rgba(79,142,247,.1)',   border: 'rgba(79,142,247,.3)' },
   ready:       { label: 'Ready',       color: '#3ecf8e', bg: 'rgba(62,207,142,.1)',   border: 'rgba(62,207,142,.3)' },
   completed:   { label: 'Completed',   color: '#6b7280', bg: 'rgba(107,114,128,.07)', border: 'rgba(107,114,128,.2)' },
+  voided:      { label: 'Voided',      color: '#ef4444', bg: 'rgba(239,68,68,.07)',   border: 'rgba(239,68,68,.2)' },
 }
 
 const NEXT_STATUS: Record<string, string | null> = {
-  waiting: 'in_progress', in_progress: 'ready', ready: 'completed', completed: null
+  waiting: 'in_progress', in_progress: 'ready', ready: 'completed', completed: null, voided: null
 }
 const NEXT_LABEL: Record<string, string> = {
   waiting: '▶ Start Wash', in_progress: '✓ Mark Ready', ready: '✅ Complete'
@@ -55,6 +56,7 @@ export default function CarWashQueue() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filter>('active')
+  const [voidConfirm, setVoidConfirm] = useState<Record<string, boolean>>({})
 
   const load = useCallback(async () => {
     try {
@@ -80,8 +82,18 @@ export default function CarWashQueue() {
     load()
   }
 
+  const voidOrder = async (id: string) => {
+    await fetch('/api/carwash-orders', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status: 'voided' }),
+    })
+    setVoidConfirm(prev => { const n = { ...prev }; delete n[id]; return n })
+    load()
+  }
+
   const displayed = orders.filter(o => {
-    if (filter === 'active') return o.status !== 'completed'
+    if (filter === 'active') return o.status !== 'completed' && o.status !== 'voided'
     if (filter === 'completed') return o.status === 'completed'
     return true
   })
@@ -133,6 +145,7 @@ export default function CarWashQueue() {
           displayed.map(o => {
             const meta = STATUS_META[o.status] ?? STATUS_META.waiting
             const next = NEXT_STATUS[o.status]
+            const canVoid = o.status !== 'completed' && o.status !== 'voided'
             return (
               <div key={o.id} style={{ background: 'var(--surf)', border: `1.5px solid ${meta.border}`, borderRadius: 'var(--r3)', overflow: 'hidden' }}>
 
@@ -176,12 +189,43 @@ export default function CarWashQueue() {
                       {NEXT_LABEL[o.status]}
                     </button>
                   )}
+                  {canVoid && (
+                    <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      {voidConfirm[o.id] ? (
+                        <>
+                          <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 700 }}>Void order?</span>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button
+                              onClick={() => setVoidConfirm(p => { const n = { ...p }; delete n[o.id]; return n })}
+                              style={{ padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, background: 'var(--surf2)', color: 'var(--txt3)', border: '1px solid var(--bdr)', cursor: 'pointer' }}
+                            >No</button>
+                            <button
+                              onClick={() => voidOrder(o.id)}
+                              style={{ padding: '5px 10px', borderRadius: 'var(--r)', fontSize: 11, fontWeight: 700, background: 'rgba(239,68,68,.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,.3)', cursor: 'pointer' }}
+                            >Yes, Void</button>
+                          </div>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setVoidConfirm(p => ({ ...p, [o.id]: true }))}
+                          style={{ padding: '9px 14px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'var(--surf2)', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        >
+                          Void
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Completed footer */}
+                {/* Completed / voided footer */}
                 {o.status === 'completed' && o.completed_at && (
                   <div style={{ padding: '6px 16px', background: 'rgba(107,114,128,.05)', borderTop: '1px solid var(--bdr)', fontSize: 11, color: 'var(--txt3)' }}>
                     Completed at {fmtTime(o.completed_at)}
+                  </div>
+                )}
+                {o.status === 'voided' && (
+                  <div style={{ padding: '6px 16px', background: 'rgba(239,68,68,.05)', borderTop: '1px solid var(--bdr)', fontSize: 11, color: '#ef4444', fontWeight: 600 }}>
+                    Voided
                   </div>
                 )}
               </div>

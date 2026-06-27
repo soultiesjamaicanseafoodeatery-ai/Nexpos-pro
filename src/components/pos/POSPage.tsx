@@ -65,6 +65,9 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [cwTab,        setCwTab]        = useState<'pos' | 'orders'>('pos')
   const [showCwPanel,  setShowCwPanel]  = useState(false)
   const [cwPosPlate,   setCwPosPlate]   = useState('')
+  const [cwFetched,    setCwFetched]    = useState(false)
+  const [cwServices,   setCwServices]   = useState<any[]>([])
+  const [cwAddons,     setCwAddons]     = useState<any[]>([])
   const [pendingCount, setPendingCount] = useState(0)
   const [showDetails,  setShowDetails]  = useState(false)
   const [discPct,      setDiscPct]      = useState(0)
@@ -336,6 +339,18 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     syncFromSupabase()
   }, [])
 
+
+  useEffect(() => {
+    if (!showCwPanel || cwFetched) return
+    Promise.all([
+      fetch('/api/carwash-services').then(r => r.json()),
+      fetch('/api/carwash-addons').then(r => r.json()),
+    ]).then(([svcs, adds]) => {
+      setCwServices((svcs as any[]).filter(s => s.is_available))
+      setCwAddons((adds as any[]).filter(a => a.is_available))
+      setCwFetched(true)
+    }).catch(() => setCwFetched(true))
+  }, [showCwPanel, cwFetched])
   // Build the effective module data.
   // Seed items are only used when Supabase is not configured at all (no URL/key).
   // If Supabase IS configured, show live data (or empty) — never show demo items in production.
@@ -1260,30 +1275,54 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
               {/* Car Wash services panel */}
               {showCwPanel ? (
-                <div>
+                <div style={{ overflowY: 'auto' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Car Wash Services</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Car Wash</span>
                     <input value={cwPosPlate} onChange={e => setCwPosPlate(e.target.value.toUpperCase())} placeholder='Plate (optional)' maxLength={10}
                       style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--mono)', letterSpacing: 1, width: 140 }} />
                   </div>
-                  {!liveCarwashItems || liveCarwashItems.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--txt3)', fontSize: 13 }}>Loading car wash services</div>
+                  {!cwFetched ? (
+                    <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--txt3)', fontSize: 13 }}>Loading...</div>
                   ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                      {liveCarwashItems.map(cwItem => {
-                        const cartItem: CartItem = { id: crypto.randomUUID(), itemId: cwItem.id, name: cwItem.name, price: cwItem.price, qty: 1, addons: [], module: 'carwash', plate: cwPosPlate || undefined }
-                        return (
-                          <div key={cwItem.id} onClick={() => dispatch({ type: 'ADD_TO_CART', item: cartItem })}
-                            style={{ background: (cwItem as any).gradient ?? 'var(--surf)', border: '2px solid var(--bdr)', borderRadius: 'var(--r3)', cursor: 'pointer', display: 'flex', flexDirection: 'column', minHeight: 100, transition: 'all .15s' }}>
-                            {(cwItem as any).duration && <div style={{ padding: '3px 8px', background: 'rgba(0,0,0,.3)', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,.8)' }}>{(cwItem as any).duration}</div>}
-                            <div style={{ padding: '11px 12px 12px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                              <div style={{ fontSize: 13, fontWeight: 800, color: (cwItem as any).gradient ? '#fff' : 'var(--txt)', lineHeight: 1.25 }}>{cwItem.name}</div>
-                              <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--mono)', color: (cwItem as any).accent ?? 'var(--blue)', marginTop: 8 }}>{fmt(cwItem.price, sym)}</div>
-                            </div>
+                    <>
+                      {cwServices.length > 0 && (
+                        <>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Services</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+                            {cwServices.map((svc: any) => (
+                              <div key={svc.id}
+                                onClick={() => dispatch({ type: 'ADD_TO_CART', item: { id: crypto.randomUUID(), itemId: svc.id, name: svc.name, price: Number(svc.price), qty: 1, addons: [], module: 'carwash', plate: cwPosPlate || undefined } as CartItem })}
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', border: '2px solid var(--bdr)', borderRadius: 'var(--r3)', cursor: 'pointer', background: 'var(--surf)', transition: 'all .12s' }}>
+                                <div>
+                                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>{svc.name}</div>
+                                  {svc.description && <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2 }}>{svc.description}</div>}
+                                  {svc.vehicle_type && <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{svc.vehicle_type}</div>}
+                                </div>
+                                <div style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 15, color: 'var(--txt)', flexShrink: 0, marginLeft: 12 }}>{fmt(svc.price, sym)}</div>
+                              </div>
+                            ))}
                           </div>
-                        )
-                      })}
-                    </div>
+                        </>
+                      )}
+                      {cwAddons.length > 0 && (
+                        <>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Add-Ons</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {cwAddons.map((adn: any) => (
+                              <div key={adn.id}
+                                onClick={() => dispatch({ type: 'ADD_TO_CART', item: { id: crypto.randomUUID(), itemId: adn.id, name: adn.name, price: Number(adn.price), qty: 1, addons: [], module: 'carwash' } as CartItem })}
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', border: '2px solid var(--bdr)', borderRadius: 'var(--r3)', cursor: 'pointer', background: 'var(--surf)', transition: 'all .12s' }}>
+                                <div>
+                                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--txt)' }}>{adn.name}</div>
+                                  {adn.description && <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2 }}>{adn.description}</div>}
+                                </div>
+                                <div style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 14, color: 'var(--grn)', flexShrink: 0, marginLeft: 12 }}>{fmt(adn.price, sym)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </>
                   )}
                 </div>
               ) : (

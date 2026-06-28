@@ -230,6 +230,7 @@ export interface Transaction {
   refundAmount?: number
   note?: string
   items?: CartItem[]
+  orderNum?: string
 }
 
 export interface HeldOrder {

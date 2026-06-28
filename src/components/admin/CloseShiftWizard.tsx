@@ -1,4 +1,4 @@
-se client'
+e client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -91,11 +91,13 @@ export default function CloseShiftWizard() {
 
   // ── Shift transactions ────────────────────────────────────────
   const shiftStart = savedShiftStart ?? currentShift?.start ?? new Date(0).toISOString()
+  // EOD always shows today's full business day (midnight → now), not just from shift login time
+  const todayMidnight = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString() })()
   const shiftTxs = transactions.filter(tx => {
     if (tx.voided) return false
     const d = new Date(tx.ts)
     if (isNaN(d.getTime())) return true // legacy non-ISO timestamps — include rather than silently drop
-    try { return d >= new Date(shiftStart) } catch { return false }
+    try { return d >= new Date(todayMidnight) } catch { return false }
   })
 
   // ── Payment breakdown ─────────────────────────────────────────
@@ -1161,6 +1163,7 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
+
 
 
 

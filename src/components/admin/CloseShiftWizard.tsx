@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -23,7 +23,7 @@ interface CWData {
   override: boolean
 }
 interface Validation { heldOrders: number; openTickets: number; activeWashes: number; openTables: number }
-interface CwOrder { service_price: number; addons_total: number; total: number; payment_method: string }
+interface CwOrder { id: string; ticket_no: string; customer_name: string; plate: string; service_name: string; service_price: number; addons_total: number; total: number; payment_method: string; status: string }
 
 const SummaryRow = ({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) => (
   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid var(--bdr2)'}}>
@@ -84,6 +84,7 @@ export default function CloseShiftWizard() {
   const [countedHasValue, setCountedHasValue] = useState(false)
   const [closing,  setClosing]  = useState(false)
   const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
+  const [cwActioning, setCwActioning] = useState<string | null>(null)
   const [savedShiftStart, setSavedShiftStart] = useState<string | null>(null)
   const [savedShiftId,    setSavedShiftId]    = useState<string | null>(null)
   const [countedSubmitted, setCountedSubmitted] = useState(false)
@@ -233,6 +234,18 @@ export default function CloseShiftWizard() {
   // ── Close from anywhere ───────────────────────────────────────
   const cancel = () => dispatch({ type: 'HIDE_EOD' })
 
+  // ── Car wash ticket actions ───────────────────────────────────
+  const cwAction = async (id: string, newStatus: 'completed' | 'voided') => {
+    setCwActioning(id)
+    try {
+      await fetch('/api/carwash-orders', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status: newStatus }) })
+      setCwOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o))
+      setVal(v => v ? { ...v, activeWashes: v.activeWashes - 1 } : v)
+    } catch { /* ignore */ } finally {
+      setCwActioning(null)
+    }
+  }
+
   // ── PIN pad ───────────────────────────────────────────────────
   const PAD = [['1','2','3'],['4','5','6'],['7','8','9'],['←','0','—']] as const
 
@@ -348,6 +361,31 @@ export default function CloseShiftWizard() {
                 <div style={{ padding:'12px 14px', borderRadius:'var(--r2)', fontSize:12, color:'var(--ora)',
                   background:'#78350f18', border:'1px solid rgba(251,146,60,.3)', marginTop:4 }}>
                   ⚠️ Open transactions detected. Resolve them or use manager override to force-close.
+                </div>
+              )}
+              {val && (val.activeWashes ?? 0) > 0 && (
+                <div style={{ padding:'12px 14px', borderRadius:'var(--r2)', marginTop:4,
+                  background:'#1e3a5f18', border:'1px solid rgba(59,130,246,.3)', display:'flex', flexDirection:'column', gap:8 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'var(--blue)' }}>Active Car Wash Tickets — complete or cancel each one:</div>
+                  {cwOrders.filter(o => ['waiting','in_progress','ready'].includes(o.status)).map(o => (
+                    <div key={o.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px',
+                      borderRadius:'var(--r)', background:'var(--surf)', border:'1px solid var(--bdr)', flexWrap:'wrap' }}>
+                      <div style={{ flex:1, minWidth:120 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:'var(--txt)' }}>{o.ticket_no} — {o.service_name}</div>
+                        {o.plate && <div style={{ fontSize:11, color:'var(--txt3)' }}>{o.plate}{o.customer_name ? ` · ${o.customer_name}` : ''}</div>}
+                      </div>
+                      <button disabled={cwActioning === o.id} onClick={() => cwAction(o.id, 'completed')}
+                        style={{ padding:'5px 12px', borderRadius:'var(--r)', fontSize:11, fontWeight:700, cursor:'pointer',
+                          background:'var(--grn)', color:'#fff', border:'none', opacity: cwActioning === o.id ? .5 : 1 }}>
+                        Complete
+                      </button>
+                      <button disabled={cwActioning === o.id} onClick={() => cwAction(o.id, 'voided')}
+                        style={{ padding:'5px 12px', borderRadius:'var(--r)', fontSize:11, fontWeight:700, cursor:'pointer',
+                          background:'var(--red)', color:'#fff', border:'none', opacity: cwActioning === o.id ? .5 : 1 }}>
+                        Cancel
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
               {val && (val.openTables ?? 0) > 0 && (
@@ -571,7 +609,9 @@ export default function CloseShiftWizard() {
       restaurant: { count:0, sub:0, disc:0, tax:0, grat:0, total:0 },
       bar:        { count:0, sub:0, disc:0, tax:0, grat:0, total:0 },
     }
-    shiftTxs.forEach(tx => {
+    // car wash transactions tracked separately — do not fold into restaurant
+    const cwShiftTxs = shiftTxs.filter(tx => tx.mod === 'carwash')
+    shiftTxs.filter(tx => tx.mod !== 'carwash').forEach(tx => {
       const m = (tx.mod === 'bar') ? 'bar' : 'restaurant'
       modStats[m].count++
       modStats[m].sub   += tx.sub   ?? tx.total
@@ -581,16 +621,14 @@ export default function CloseShiftWizard() {
       modStats[m].total += tx.total
     })
 
-    // ── Car wash from API orders ───────────────────────────────
-    const cwServiceTotal = cwOrders.reduce((s,o) => s + (o.service_price ?? 0), 0)
-    const cwAddonsTotal  = cwOrders.reduce((s,o) => s + (o.addons_total  ?? 0), 0)
-    const cwTotal        = cwOrders.reduce((s,o) => s + (o.total         ?? 0), 0)
-    const cwCount        = cwOrders.length
+    // ── Car wash from shift transactions (actual paid amounts) ─
+    const cwTotal = cwShiftTxs.reduce((s,tx) => s + tx.total, 0)
+    const cwCount = cwShiftTxs.length
 
     // ── Combined grand total ───────────────────────────────────
     const posTotal       = modStats.restaurant.total + modStats.bar.total
     const grandTotal     = posTotal + cwTotal
-    const grandOrders    = shiftTxs.length + cwCount
+    const grandOrders    = shiftTxs.filter(tx => tx.mod !== 'carwash').length + cwCount
     const grandDisc      = modStats.restaurant.disc + modStats.bar.disc
     const grandTax       = modStats.restaurant.tax  + modStats.bar.tax
     const grandGrat      = modStats.restaurant.grat + modStats.bar.grat
@@ -645,10 +683,6 @@ export default function CloseShiftWizard() {
             {/* Car Wash */}
             <ModPanel id="carwash" label="Car Wash" icon="🚗" color="var(--blue)"
               stats={cwCount > 0 ? { count:cwCount, sub:cwTotal, disc:0, tax:0, grat:0, total:cwTotal } : null}
-              note={cwCount > 0 ? <>
-                <SummaryRow label="Wash Services" value={fmtJ(cwServiceTotal)} />
-                {cwAddonsTotal > 0 && <SummaryRow label="Add-ons" value={fmtJ(cwAddonsTotal)} />}
-              </> : undefined}
             />
 
             {/* Grand Total banner */}
@@ -988,8 +1022,7 @@ export default function CloseShiftWizard() {
   const renderConfirm = () => {
     const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
     const varColor = variance === null ? 'var(--txt3)' : variance === 0 ? 'var(--grn)' : variance > 0 ? 'var(--blue)' : 'var(--red)'
-    const cwTotal      = cwOrders.reduce((s,o) => s + (o.total ?? 0), 0)
-    const grandConfirm = netSales + cwTotal
+    const grandConfirm = netSales
     return (
       <Card>
         <CardHead title="⚠️  Confirm End of Day Close" sub="Review the summary below before finalizing. This cannot be undone." warn />
@@ -998,7 +1031,7 @@ export default function CloseShiftWizard() {
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
               {[
                 { l:'Grand Total',    v:fmtJ(grandConfirm),                               c:'var(--grn)' },
-                { l:'Total Orders',   v:String(shiftTxs.length + cwOrders.length),         c:'var(--txt)' },
+                { l:'Total Orders',   v:String(shiftTxs.length),                            c:'var(--txt)' },
                 { l:'Cash Variance',  v: variance!=null ? ((variance>=0?'+':'')+fmtJ(variance)) : '—', c:varColor },
                 { l:'Closed By',      v:by.split(' ')[0],                                  c:'var(--txt)' },
               ].map(x => (
@@ -1040,8 +1073,8 @@ export default function CloseShiftWizard() {
 
   const renderDone = () => {
     const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
-    const cwTotal     = cwOrders.reduce((s,o) => s + (o.total ?? 0), 0)
-    const grandDone   = netSales + cwTotal
+    const cwTotal   = modMap['carwash']?.total ?? 0
+    const grandDone = netSales
     return (
       <Card>
         <div style={{ padding:'36px 24px 20px', textAlign:'center', borderBottom:'1px solid var(--bdr)' }}>
@@ -1058,7 +1091,7 @@ export default function CloseShiftWizard() {
           <SummaryRow label="Car Wash Sales"    value={fmtJ(cwTotal)} color="var(--blue)" />
           {openItemTotal > 0 && <SummaryRow label="Open Item Sales" value={fmtJ(openItemTotal)} color="var(--ora)" />}
           <SummaryRow label="Grand Total"       value={fmtJ(grandDone)} bold color="var(--grn)" />
-          <SummaryRow label="Total Orders"      value={String(shiftTxs.length + cwOrders.length)} />
+          <SummaryRow label="Total Orders"      value={String(shiftTxs.length)} />
           {variance !== null && (
             <SummaryRow label="Cash Variance" value={(variance>=0?'+':'')+fmtJ(variance)}
               color={variance===0?'var(--grn)':variance>0?'var(--blue)':'var(--red)'} />
@@ -1126,6 +1159,7 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
+
 
 
 

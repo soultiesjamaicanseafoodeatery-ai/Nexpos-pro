@@ -1,11 +1,10 @@
-﻿client'
+'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { hashPin } from '@/lib/utils/hash'
-import type { User, Transaction } from '@/types'
+import type { User } from '@/types'
 import { supabase } from '@/lib/supabase'
-import { storage } from '@/lib/utils/storage'
 
 type WStep = 'auth' | 'validate' | 'cash' | 'payments' | 'gratuity' | 'sales' | 'exceptions' | 'employees' | 'print' | 'confirm' | 'done'
 const STEPS: WStep[] = ['auth','validate','cash','payments','gratuity','sales','exceptions','employees','print','confirm','done']
@@ -67,7 +66,7 @@ const CardFoot = ({ children }: { children: React.ReactNode }) => (
 
 export default function CloseShiftWizard() {
   const { state, dispatch, toast, audit } = useApp()
-  const { currentUser, currentShift, users, transactions, shifts, heldOrders, orderTickets, isOnline, biz } = state
+  const { currentUser, currentShift, users, transactions, heldOrders, orderTickets, isOnline, biz } = state
   const sym = biz.currencySymbol ?? 'J$'
 
   const [step,    setStep]    = useState<WStep>('auth')
@@ -91,28 +90,11 @@ export default function CloseShiftWizard() {
   const [countedSubmitted, setCountedSubmitted] = useState(false)
 
   // ── Shift transactions ────────────────────────────────────────
-  // Merge localStorage + React state so EOD captures transactions from all browser tabs.
-  // Each tab maintains its own React state; localStorage holds only the last tab's writes.
-  // Merging both sources by id ensures every tab's transactions are counted.
-  const storedTxs = storage.get<Transaction[]>('tx') ?? []
-  const txMergeMap = new Map<number, Transaction>()
-  for (const tx of [...storedTxs, ...transactions]) txMergeMap.set(tx.id, tx)
-  const allTxs: Transaction[] = Array.from(txMergeMap.values())
   const shiftStart = savedShiftStart ?? currentShift?.start ?? new Date(0).toISOString()
-  // EOD lookback: since last formal close, or 48 hours if no prior close
-  const lastFormalClose = [...shifts]
-    .filter(s => s.isFormalClose && s.closedAt)
-    .sort((a, b) => new Date(b.closedAt!).getTime() - new Date(a.closedAt!).getTime())[0]?.closedAt
-  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
-  const eodLookback = lastFormalClose ?? fortyEightHoursAgo
-  const shiftTxs = allTxs.filter(tx => {
+  const shiftTxs = transactions.filter(tx => {
     if (tx.voided) return false
-    // Non-ISO timestamps (e.g. "06/27 06:50 PM") get parsed by V8 as year 2001, not Invalid Date,
-    // so isNaN alone doesn't catch them. Check for ISO format first.
     if (typeof tx.ts !== 'string' || !tx.ts.includes('T')) return true
-    const d = new Date(tx.ts)
-    if (isNaN(d.getTime())) return true
-    try { return d >= new Date(eodLookback) } catch { return false }
+    try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false }
   })
 
   // ── Payment breakdown ─────────────────────────────────────────
@@ -126,7 +108,7 @@ export default function CloseShiftWizard() {
   })
 
   const totalSales   = shiftTxs.reduce((s,tx)=>s+tx.total, 0)
-  const totalRefunds = allTxs
+  const totalRefunds = transactions
     .filter(tx => tx.refunded && new Date(tx.ts) >= new Date(shiftStart))
     .reduce((s,tx)=>s+(tx.refundAmount??0), 0)
   const totalDisc  = shiftTxs.reduce((s,tx)=>s+(tx.disc??0), 0)
@@ -756,7 +738,7 @@ export default function CloseShiftWizard() {
   }
 
   const renderExceptions = () => {
-    const allInWindow = allTxs.filter(tx => {
+    const allInWindow = transactions.filter(tx => {
       try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false }
     })
     const voidedTxs   = allInWindow.filter(tx => tx.voided)
@@ -1149,8 +1131,8 @@ export default function CloseShiftWizard() {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.88)', zIndex:9999,
-      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-start',
-      overflowY:'auto', padding:24, gap:16, backdropFilter:'blur(6px)' }}>
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+      padding:24, gap:16, backdropFilter:'blur(6px)' }}>
 
       {/* Progress bar */}
       {step !== 'done' && (
@@ -1178,12 +1160,6 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
-
-
-
-
-
-
 
 
 

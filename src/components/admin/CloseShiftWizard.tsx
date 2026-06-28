@@ -90,7 +90,8 @@ export default function CloseShiftWizard() {
   const [countedSubmitted, setCountedSubmitted] = useState(false)
 
   // ── Shift transactions ────────────────────────────────────────
-  const shiftStart = savedShiftStart ?? currentShift?.start ?? new Date(0).toISOString()
+  const _fallbackStart = new Date(); _fallbackStart.setHours(0, 0, 0, 0)
+  const shiftStart = savedShiftStart ?? currentShift?.start ?? _fallbackStart.toISOString()
   const shiftTxs = transactions.filter(tx => {
     if (tx.voided) return false
     if (typeof tx.ts !== 'string') return false

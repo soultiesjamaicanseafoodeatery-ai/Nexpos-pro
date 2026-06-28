@@ -94,6 +94,7 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
         serviceCharge: 0,
         gratuity:    0,
         items:       [],
+        orderNum:    order.ticket_no,
       }
       dispatch({ type: 'ADD_TRANSACTION', tx: cwTx })
     } catch (e) {

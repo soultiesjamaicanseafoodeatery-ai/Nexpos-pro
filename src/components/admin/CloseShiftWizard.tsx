@@ -91,8 +91,13 @@ export default function CloseShiftWizard() {
   const [countedSubmitted, setCountedSubmitted] = useState(false)
 
   // ── Shift transactions ────────────────────────────────────────
-  // Read fresh from localStorage so EOD captures transactions from all browser tabs (multi-tab support)
-  const allTxs: Transaction[] = storage.get<Transaction[]>('tx') ?? transactions
+  // Merge localStorage + React state so EOD captures transactions from all browser tabs.
+  // Each tab maintains its own React state; localStorage holds only the last tab's writes.
+  // Merging both sources by id ensures every tab's transactions are counted.
+  const storedTxs = storage.get<Transaction[]>('tx') ?? []
+  const txMergeMap = new Map<number, Transaction>()
+  for (const tx of [...storedTxs, ...transactions]) txMergeMap.set(tx.id, tx)
+  const allTxs: Transaction[] = Array.from(txMergeMap.values())
   const shiftStart = savedShiftStart ?? currentShift?.start ?? new Date(0).toISOString()
   // EOD lookback: since last formal close, or 48 hours if no prior close
   const lastFormalClose = [...shifts]

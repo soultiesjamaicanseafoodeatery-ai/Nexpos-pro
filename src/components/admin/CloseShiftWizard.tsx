@@ -121,8 +121,8 @@ export default function CloseShiftWizard() {
     .filter(tx => tx.refunded && new Date(tx.ts) >= new Date(shiftStart))
     .reduce((s,tx)=>s+(tx.refundAmount??0), 0)
   const totalDisc  = shiftTxs.reduce((s,tx)=>s+(tx.disc??0), 0)
-  const totalTax   = shiftTxs.reduce((s,tx)=>s+(tx.gct??tx.tax??0), 0)
-  const totalGrat  = shiftTxs.reduce((s,tx)=>s+(tx.gratuity??0), 0)
+  const totalTax   = shiftTxs.reduce((s,tx)=>s+(tx.orderType==='dine-in'?(tx.gct??tx.tax??0):0), 0)
+  const totalGrat  = shiftTxs.reduce((s,tx)=>s+(tx.orderType==='dine-in'?(tx.gratuity??0):0), 0)
   const netSales   = totalSales - totalRefunds
   const avgTicket  = shiftTxs.length ? totalSales / shiftTxs.length : 0
   const openItemTotal = shiftTxs.reduce((s, tx) => s + (tx.items?.filter(ci => ci.openItem && !ci.voided).reduce((n, ci) => n + ci.price * ci.qty, 0) ?? 0), 0)
@@ -139,7 +139,7 @@ export default function CloseShiftWizard() {
   shiftTxs.forEach(tx => {
     const n = tx.cashier ?? 'Unknown'
     if (!empMap[n]) empMap[n] = { count:0, total:0, tips:0 }
-    empMap[n].count++; empMap[n].total += tx.total; empMap[n].tips += tx.gratuity ?? 0
+    empMap[n].count++; empMap[n].total += tx.total; empMap[n].tips += tx.orderType==='dine-in'?(tx.gratuity??0):0
   })
 
   const floatNum   = parseFloat(data.openingFloat) || 0
@@ -624,10 +624,10 @@ export default function CloseShiftWizard() {
     shiftTxs.filter(tx => tx.mod !== 'carwash').forEach(tx => {
       const m = (tx.mod === 'bar') ? 'bar' : 'restaurant'
       modStats[m].count++
-      modStats[m].sub   += tx.sub   ?? tx.total
+      modStats[m].sub   += tx.orderType==='dine-in'?(tx.sub??tx.total):tx.total
       modStats[m].disc  += tx.disc  ?? 0
-      modStats[m].tax   += tx.gct   ?? tx.tax ?? 0
-      modStats[m].grat  += tx.gratuity ?? 0
+      modStats[m].tax   += tx.orderType==='dine-in'?(tx.gct??tx.tax??0):0
+      modStats[m].grat  += tx.orderType==='dine-in'?(tx.gratuity??0):0
       modStats[m].total += tx.total
     })
 

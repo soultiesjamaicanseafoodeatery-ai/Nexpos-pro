@@ -1,10 +1,11 @@
-client'
+﻿client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { hashPin } from '@/lib/utils/hash'
-import type { User } from '@/types'
+import type { User, Transaction } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { storage } from '@/lib/utils/storage'
 
 type WStep = 'auth' | 'validate' | 'cash' | 'payments' | 'gratuity' | 'sales' | 'exceptions' | 'employees' | 'print' | 'confirm' | 'done'
 const STEPS: WStep[] = ['auth','validate','cash','payments','gratuity','sales','exceptions','employees','print','confirm','done']
@@ -66,7 +67,7 @@ const CardFoot = ({ children }: { children: React.ReactNode }) => (
 
 export default function CloseShiftWizard() {
   const { state, dispatch, toast, audit } = useApp()
-  const { currentUser, currentShift, users, transactions, heldOrders, orderTickets, isOnline, biz } = state
+  const { currentUser, currentShift, users, transactions, shifts, heldOrders, orderTickets, isOnline, biz } = state
   const sym = biz.currencySymbol ?? 'J$'
 
   const [step,    setStep]    = useState<WStep>('auth')
@@ -90,6 +91,8 @@ export default function CloseShiftWizard() {
   const [countedSubmitted, setCountedSubmitted] = useState(false)
 
   // ── Shift transactions ────────────────────────────────────────
+  // Read fresh from localStorage so EOD captures transactions from all browser tabs (multi-tab support)
+  const allTxs: Transaction[] = storage.get<Transaction[]>('tx') ?? transactions
   const shiftStart = savedShiftStart ?? currentShift?.start ?? new Date(0).toISOString()
   // EOD lookback: since last formal close, or 48 hours if no prior close
   const lastFormalClose = [...shifts]
@@ -97,7 +100,7 @@ export default function CloseShiftWizard() {
     .sort((a, b) => new Date(b.closedAt!).getTime() - new Date(a.closedAt!).getTime())[0]?.closedAt
   const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
   const eodLookback = lastFormalClose ?? fortyEightHoursAgo
-  const shiftTxs = transactions.filter(tx => {
+  const shiftTxs = allTxs.filter(tx => {
     if (tx.voided) return false
     const d = new Date(tx.ts)
     if (isNaN(d.getTime())) return true // legacy non-ISO timestamps — include rather than silently drop
@@ -115,7 +118,7 @@ export default function CloseShiftWizard() {
   })
 
   const totalSales   = shiftTxs.reduce((s,tx)=>s+tx.total, 0)
-  const totalRefunds = transactions
+  const totalRefunds = allTxs
     .filter(tx => tx.refunded && new Date(tx.ts) >= new Date(shiftStart))
     .reduce((s,tx)=>s+(tx.refundAmount??0), 0)
   const totalDisc  = shiftTxs.reduce((s,tx)=>s+(tx.disc??0), 0)
@@ -745,7 +748,7 @@ export default function CloseShiftWizard() {
   }
 
   const renderExceptions = () => {
-    const allInWindow = transactions.filter(tx => {
+    const allInWindow = allTxs.filter(tx => {
       try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false }
     })
     const voidedTxs   = allInWindow.filter(tx => tx.voided)
@@ -1167,6 +1170,7 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
+
 
 
 

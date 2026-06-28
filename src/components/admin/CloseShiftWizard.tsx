@@ -1,4 +1,4 @@
-'use client'
+use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -1130,8 +1130,8 @@ export default function CloseShiftWizard() {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.88)', zIndex:9999,
-      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-      padding:24, gap:16, backdropFilter:'blur(6px)' }}>
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-start',
+      overflowY:'auto', padding:24, gap:16, backdropFilter:'blur(6px)' }}>
 
       {/* Progress bar */}
       {step !== 'done' && (
@@ -1159,6 +1159,7 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
+
 
 
 

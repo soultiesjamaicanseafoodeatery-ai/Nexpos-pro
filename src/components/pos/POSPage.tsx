@@ -147,6 +147,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       if (orderContext.customerName) setCustomerName(orderContext.customerName)
       if (orderContext.phone)        setCustomerPhone(orderContext.phone)
       if (orderContext.guests)       setGuestCount(orderContext.guests)
+      if (orderContext.orderType)    dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: orderContext.orderType })
     }
   }, [orderContext])
 

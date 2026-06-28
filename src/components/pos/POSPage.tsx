@@ -1,4 +1,4 @@
-use client'
+'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -2142,6 +2142,5 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     </div>
   )
 }
-
 
 

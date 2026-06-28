@@ -80,9 +80,9 @@ export default function TransactionsPage() {
   }
 
   const exportCSV = () => {
-    const headers = ['Receipt #', 'Date/Time', 'Module', 'Cashier', 'Customer', 'Items', 'Subtotal', 'Discount', 'GCT', 'Total', 'Payment', 'Voided']
+    const headers = ['Order #', 'Date/Time', 'Module', 'Cashier', 'Customer', 'Items', 'Subtotal', 'Discount', 'GCT', 'Total', 'Payment', 'Voided']
     const rows = filtered.map(tx => [
-      String(tx.id ?? ''),
+      tx.orderNum ?? String(tx.id ?? ''),
       tx.ts ?? '',
       tx.mod ?? '',
       tx.cashier ?? '',
@@ -130,7 +130,7 @@ export default function TransactionsPage() {
           <table className="dt">
             <thead>
               <tr>
-                <th>ID</th><th>Time</th><th>Module</th><th>Cashier</th>
+                <th>Order #</th><th>Time</th><th>Module</th><th>Cashier</th>
                 <th>Customer</th><th>Item</th><th>Total</th><th>Payment</th><th>Status</th>
                 <th>Print</th>
                 <th></th>
@@ -139,7 +139,7 @@ export default function TransactionsPage() {
             <tbody>
               {txs.map(tx => (
                 <tr key={tx.id} style={{ opacity: tx.voided ? .5 : 1 }}>
-                  <td style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--txt3)' }}>#{tx.id}</td>
+                  <td style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--txt3)' }}>{tx.orderNum ? `#${tx.orderNum}` : `#${String(tx.id).slice(-6)}`}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{tx.ts}</td>
                   <td>
                     <span style={{ color: MOD_COLOR[tx.mod], fontWeight: 700 }}>

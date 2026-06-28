@@ -557,7 +557,7 @@ export default function CloseShiftWizard() {
               {totalRefunds > 0 && <SummaryRow label="Refunds"        value={'-'+fmtJ(totalRefunds)} color="var(--red)" />}
               <SummaryRow label="Net Sales"         value={fmtJ(netSales)} bold color="var(--blue)" />
               {totalDisc > 0 && <SummaryRow label="Discounts Given" value={'-'+fmtJ(totalDisc)} color="var(--ora)" />}
-              <SummaryRow label="Tax Collected (GCT)" value={fmtJ(totalTax)} />
+              {totalTax > 0 && <SummaryRow label="Tax Collected (GCT)" value={fmtJ(totalTax)} />}
             </div>
           </div>
         </CardBody>

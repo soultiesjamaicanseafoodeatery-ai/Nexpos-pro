@@ -568,6 +568,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         changeDue: payData.changeDue,
         payments:  payData.payments,
         items: [...payingTicket.items],
+        orderNum: payingTicket.orderNum,
       }
 
       const updatedTimeline = { ...payingTicket.timeline, paid: nowTime }
@@ -620,6 +621,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       ? `${cart[0].name}${cart[0].qty > 1 ? ` ×${cart[0].qty}` : ''}`
       : `${cart.length} items (${modules.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(' + ')})`
 
+    const orderNum   = nextDailyOrderNum()
     const tx: Transaction = {
       id: Date.now() + Math.floor(Math.random() * 1000),
       ts: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' + nowTime,
@@ -647,9 +649,9 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       changeDue: payData.changeDue,
       payments:  payData.payments,
       items: cart,
+      orderNum,
     }
 
-    const orderNum   = nextDailyOrderNum()
     const hasKitchen = cart.some(ci => ci.module === 'restaurant')
     const hasBar     = cart.some(ci => ci.module === 'bar')
     const hasCarwash = cart.some(ci => ci.module === 'carwash')

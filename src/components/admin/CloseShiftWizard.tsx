@@ -93,7 +93,16 @@ export default function CloseShiftWizard() {
   const shiftStart = savedShiftStart ?? currentShift?.start ?? new Date(0).toISOString()
   const shiftTxs = transactions.filter(tx => {
     if (tx.voided) return false
-    if (typeof tx.ts !== 'string' || !tx.ts.includes('T')) return true
+    if (typeof tx.ts !== 'string') return false
+    if (!tx.ts.includes('T')) {
+      const m = tx.ts.match(/^(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+      if (!m) return true
+      const mon = parseInt(m[1]) - 1, day = parseInt(m[2])
+      let hr = parseInt(m[3]); const min = parseInt(m[4])
+      if (m[5].toUpperCase() === 'PM' && hr !== 12) hr += 12
+      if (m[5].toUpperCase() === 'AM' && hr === 12) hr = 0
+      return Date.UTC(new Date().getFullYear(), mon, day, hr + 5, min) >= new Date(shiftStart).getTime()
+    }
     try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false }
   })
 

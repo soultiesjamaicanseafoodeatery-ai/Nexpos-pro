@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react'
 import type {
@@ -280,10 +280,7 @@ function reducer(state: AppState, action: Action): AppState {
       }
     case 'ADD_TRANSACTION': {
       const transactions = [action.tx, ...state.transactions].slice(0, 50000)
-      // Merge with current localStorage to prevent other tabs from overwriting each other's transactions
-      const storedTxs = storage.get<Transaction[]>('tx') ?? state.transactions
-      const alreadyInStorage = storedTxs.some(t => t.id === action.tx.id)
-      storage.set('tx', alreadyInStorage ? storedTxs : [action.tx, ...storedTxs].slice(0, 50000))
+      storage.set('tx', transactions)
       const currentShift = state.currentShift
         ? { ...state.currentShift, txCount: state.currentShift.txCount + 1, revenue: state.currentShift.revenue + action.tx.total }
         : null
@@ -743,5 +740,4 @@ export function useApp() {
   if (!ctx) throw new Error('useApp must be used inside AppProvider')
   return ctx
 }
-
 

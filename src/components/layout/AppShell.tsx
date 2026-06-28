@@ -1,34 +1,34 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import POSFlow from '@/components/pos/POSFlow'
 import CarWashFlow from '@/components/carwash/CarWashFlow'
 import CarWashQueue from '@/components/carwash/CarWashQueue'
-import TransactionsPage from '@/components/admin/TransactionsPage'
-import ReportsPage from '@/components/admin/ReportsPage'
-import StaffPage from '@/components/admin/StaffPage'
-import MenuPage from '@/components/admin/MenuPage'
-import TablesPage from '@/components/admin/TablesPage'
-import SettingsPage from '@/components/admin/SettingsPage'
-import AuditPage from '@/components/admin/AuditPage'
-import ShiftsPage from '@/components/admin/ShiftsPage'
-import PromosPage from '@/components/admin/PromosPage'
-import LoyaltyPage from '@/components/admin/LoyaltyPage'
-import MembersPage from '@/components/admin/MembersPage'
-import FleetPage from '@/components/admin/FleetPage'
-import BookingsPage from '@/components/admin/BookingsPage'
-import InventoryPage from '@/components/admin/InventoryPage'
-import SatisfactionPage from '@/components/admin/SatisfactionPage'
-import TargetsPage from '@/components/admin/TargetsPage'
-import KitchenDisplay from '@/components/admin/KitchenDisplay'
-import VoidReport from '@/components/admin/VoidReport'
-import CarwashServicesPage from '@/components/admin/CarwashServicesPage'
-import CloseShiftWizard from '@/components/admin/CloseShiftWizard'
-import PayrollPage from '@/components/admin/PayrollPage'
-import PrinterDiagnosticsPage from '@/components/admin/PrinterDiagnosticsPage'
+const TransactionsPage = lazy(() => import('@/components/admin/TransactionsPage'))
+const ReportsPage = lazy(() => import('@/components/admin/ReportsPage'))
+const StaffPage = lazy(() => import('@/components/admin/StaffPage'))
+const MenuPage = lazy(() => import('@/components/admin/MenuPage'))
+const TablesPage = lazy(() => import('@/components/admin/TablesPage'))
+const SettingsPage = lazy(() => import('@/components/admin/SettingsPage'))
+const AuditPage = lazy(() => import('@/components/admin/AuditPage'))
+const ShiftsPage = lazy(() => import('@/components/admin/ShiftsPage'))
+const PromosPage = lazy(() => import('@/components/admin/PromosPage'))
+const LoyaltyPage = lazy(() => import('@/components/admin/LoyaltyPage'))
+const MembersPage = lazy(() => import('@/components/admin/MembersPage'))
+const FleetPage = lazy(() => import('@/components/admin/FleetPage'))
+const BookingsPage = lazy(() => import('@/components/admin/BookingsPage'))
+const InventoryPage = lazy(() => import('@/components/admin/InventoryPage'))
+const SatisfactionPage = lazy(() => import('@/components/admin/SatisfactionPage'))
+const TargetsPage = lazy(() => import('@/components/admin/TargetsPage'))
+const KitchenDisplay = lazy(() => import('@/components/admin/KitchenDisplay'))
+const VoidReport = lazy(() => import('@/components/admin/VoidReport'))
+const CarwashServicesPage = lazy(() => import('@/components/admin/CarwashServicesPage'))
+const CloseShiftWizard = lazy(() => import('@/components/admin/CloseShiftWizard'))
+const PayrollPage = lazy(() => import('@/components/admin/PayrollPage'))
+const PrinterDiagnosticsPage = lazy(() => import('@/components/admin/PrinterDiagnosticsPage'))
 
 const PAGE_ROLES: Record<string, string[]> = {
   pos:             ['admin','manager','staff'],
@@ -173,7 +173,7 @@ export default function AppShell() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
         <Topbar />
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {renderPage()}
+          <Suspense fallback={<div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--txt3)', fontSize:13 }}>Loading…</div>}>{renderPage()}</Suspense>
         </div>
       </div>
       {showEOD && <CloseShiftWizard />}

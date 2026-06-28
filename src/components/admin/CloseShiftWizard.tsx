@@ -1,4 +1,4 @@
-e client'
+ client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -607,6 +607,16 @@ export default function CloseShiftWizard() {
   }
 
   const renderSales = () => {
+    // ── Diagnostics (temporary) ───────────────────────────────
+    const allNonVoided = transactions.filter(tx => !tx.voided)
+    const diagByMod: Record<string, { count: number; total: number }> = {}
+    allNonVoided.forEach(tx => {
+      const k = String(tx.mod ?? 'undefined')
+      if (!diagByMod[k]) diagByMod[k] = { count: 0, total: 0 }
+      diagByMod[k].count++; diagByMod[k].total += tx.total
+    })
+    const diagSample = allNonVoided.slice(0, 3).map(tx => `[${String(tx.mod)} ts:${String(tx.ts).slice(0,16)}]`).join(' ')
+
     // ── Per-module aggregates from POS transactions ────────────
     type ModStats = { count:number; sub:number; disc:number; tax:number; grat:number; total:number }
     const modStats: Record<string, ModStats> = {
@@ -677,6 +687,13 @@ export default function CloseShiftWizard() {
         <CardHead title="Sales Summary" sub="Revenue breakdown by module with combined grand total" />
         <CardBody>
           <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+
+            {/* TEMP DIAGNOSTIC — remove after debugging */}
+            <div style={{ padding:'10px 12px', borderRadius:'var(--r2)', background:'#0f172a', border:'1px solid #334155', fontSize:10, color:'#94a3b8', fontFamily:'monospace', lineHeight:1.6 }}>
+              <div>ALL TX in storage: {allNonVoided.length} records | shiftTxs: {shiftTxs.length} | todayMidnight: {todayMidnight.slice(0,16)}</div>
+              <div>By mod (ALL): {Object.entries(diagByMod).map(([k,v]) => `${k}=${v.count}×${fmtJ(v.total)}`).join(' | ') || 'none'}</div>
+              <div>Sample tx: {diagSample || 'none'}</div>
+            </div>
 
             {/* Restaurant */}
             <ModPanel id="restaurant" label="Restaurant" icon="🍽" color="var(--ora)" stats={modStats.restaurant} />
@@ -1163,6 +1180,7 @@ export default function CloseShiftWizard() {
     </div>
   )
 }
+
 
 
 

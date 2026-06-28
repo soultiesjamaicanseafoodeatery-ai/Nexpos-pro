@@ -1,4 +1,4 @@
-'use client'
+use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -624,7 +624,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const orderNum   = nextDailyOrderNum()
     const tx: Transaction = {
       id: Date.now() + Math.floor(Math.random() * 1000),
-      ts: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' + nowTime,
+      ts: new Date().toISOString(),
       mod: mod2,
       cashier:  currentUser.name,
       userId:   currentUser.id,
@@ -2142,5 +2142,6 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     </div>
   )
 }
+
 
 

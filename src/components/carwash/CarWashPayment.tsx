@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
@@ -29,6 +29,7 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
   const { currentUser, biz } = state
 
   const [payMethod,    setPayMethod]    = useState<PayMethod>('cash')
+  const [cashTendered, setCashTendered] = useState('')
   const [plate,        setPlate]        = useState('')
   const [vehicleType,  setVehicleType]  = useState('Car')
   const [customerName, setCustomerName] = useState('')
@@ -43,6 +44,8 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
   const taxRate       = 0
   const taxAmount     = Math.round(subtotal * taxRate * 100) / 100
   const total         = subtotal + taxAmount
+  const tendered      = parseFloat(cashTendered || '0')
+  const change        = tendered - total
   const serviceNames  = services
     .map(s => (s.qty ?? 1) > 1 ? `${s.name} ×${s.qty}` : s.name)
     .join(', ')
@@ -100,9 +103,10 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
     }
   }
 
-  // ── Print receipt (iframe — avoids popup blocker / about:blank) ──
+  // ── Print receipt via Blob URL (avoids about:blank / CSP issues) ──
   const printReceipt = () => {
     const bizName = biz?.name ?? 'Car Wash'
+    const printChange = payMethod === 'cash' && cashTendered && tendered >= total ? change : null
 
     const infoRows = [
       plate        ? `<div class="row"><span>Plate</span><span>${plate}</span></div>` : '',
@@ -114,7 +118,7 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
     const serviceRows = services
       .map(s => {
         const qty = s.qty ?? 1
-        const label = qty > 1 ? `${s.name} &times;${qty}` : s.name
+        const label = qty > 1 ? `${s.name} ×${qty}` : s.name
         return `<div class="row"><span>${label}</span><span>${fmtJ(s.price * qty)}</span></div>`
       })
       .join('')
@@ -123,43 +127,55 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
       .map(a => `<div class="row"><span>+ ${a.name}</span><span>${fmtJ(a.price)}</span></div>`)
       .join('')
 
-    const html = `<!DOCTYPE html><html><head><title>${ticket}</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Courier New',monospace;font-size:12px;padding:16px;max-width:300px}
-  .c{text-align:center}.biz{font-size:15px;font-weight:700;margin-bottom:2px}
-  .d{border-top:1px dashed #000;margin:8px 0}.row{display:flex;justify-content:space-between;margin:3px 0}
-  .ticket{font-size:20px;font-weight:700;letter-spacing:2px;margin:8px 0}
-  .total{font-size:15px;font-weight:700}.cap{text-transform:capitalize}
-</style></head><body>
-<div class="c"><div class="biz">${bizName}</div>
-<div>${new Date().toLocaleString()}</div>
-<div class="ticket">${ticket}</div></div>
-<div class="d"></div>
-${infoRows}
-${infoRows ? '<div class="d"></div>' : ''}
-${serviceRows}
-${addonRows}
-<div class="d"></div>
-<div class="row"><span>Subtotal</span><span>${fmtJ(subtotal)}</span></div>
-${taxAmount > 0 ? `<div class="row"><span>GCT (15%)</span><span>${fmtJ(taxAmount)}</span></div>` : ''}
-<div class="row total"><span>TOTAL</span><span>${fmtJ(total)}</span></div>
-<div class="row"><span>Payment</span><span class="cap">${payMethod}</span></div>
-${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.name}</span></div>` : ''}
-<div class="d"></div>
-<div class="c" style="margin-top:8px">Thank you!</div>
-</body></html>`
+    const changeRow = printChange !== null
+      ? `<div class="row"><span>Cash Tendered</span><span>${fmtJ(tendered)}</span></div>` +
+        `<div class="row total"><span>Change</span><span>${fmtJ(printChange)}</span></div>`
+      : ''
 
+    const html = [
+      '<!DOCTYPE html><html><head>',
+      `<title>${ticket ?? ''}</title>`,
+      '<style>',
+      '*{margin:0;padding:0;box-sizing:border-box}',
+      'body{font-family:"Courier New",monospace;font-size:12px;padding:16px;max-width:300px}',
+      '.c{text-align:center}.biz{font-size:15px;font-weight:700;margin-bottom:2px}',
+      '.d{border-top:1px dashed #000;margin:8px 0}.row{display:flex;justify-content:space-between;margin:3px 0}',
+      '.ticket{font-size:20px;font-weight:700;letter-spacing:2px;margin:8px 0}',
+      '.total{font-size:15px;font-weight:700}.cap{text-transform:capitalize}',
+      '</style></head><body>',
+      `<div class="c"><div class="biz">${bizName}</div>`,
+      `<div>${new Date().toLocaleString()}</div>`,
+      `<div class="ticket">${ticket}</div></div>`,
+      '<div class="d"></div>',
+      infoRows,
+      infoRows ? '<div class="d"></div>' : '',
+      serviceRows,
+      addonRows,
+      '<div class="d"></div>',
+      `<div class="row"><span>Subtotal</span><span>${fmtJ(subtotal)}</span></div>`,
+      taxAmount > 0 ? `<div class="row"><span>GCT (15%)</span><span>${fmtJ(taxAmount)}</span></div>` : '',
+      `<div class="row total"><span>TOTAL</span><span>${fmtJ(total)}</span></div>`,
+      `<div class="row"><span>Payment</span><span class="cap">${payMethod}</span></div>`,
+      changeRow,
+      currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.name}</span></div>` : '',
+      '<div class="d"></div>',
+      '<div class="c" style="margin-top:8px">Thank you!</div>',
+      '</body></html>',
+    ].join('')
+
+    const blob = new Blob([html], { type: 'text/html' })
+    const url  = URL.createObjectURL(blob)
     const iframe = document.createElement('iframe')
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:340px;height:600px;visibility:hidden'
+    iframe.src = url
     document.body.appendChild(iframe)
-    const doc = iframe.contentDocument ?? iframe.contentWindow?.document
-    if (!doc) { document.body.removeChild(iframe); return }
-    doc.open(); doc.write(html); doc.close()
-    setTimeout(() => {
+    iframe.onload = () => {
       iframe.contentWindow?.print()
-      setTimeout(() => { try { document.body.removeChild(iframe) } catch { /* already removed */ } }, 1000)
-    }, 300)
+      setTimeout(() => {
+        try { document.body.removeChild(iframe) } catch { /* already removed */ }
+        URL.revokeObjectURL(url)
+      }, 1000)
+    }
   }
 
   // ── Success / receipt screen ──────────────────────────────
@@ -187,6 +203,7 @@ ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.na
             ...addons.map(a => ({ l: `+ ${a.name}`, v: fmtJ(a.price) })),
             { l: 'Total',   v: fmtJ(total),   bold: true },
             { l: 'Payment', v: payMethod[0].toUpperCase() + payMethod.slice(1) },
+            ...(change >= 0 && cashTendered && payMethod === 'cash' ? [{ l: 'Change', v: fmtJ(change), bold: true }] : []),
             ...(currentUser?.name ? [{ l: 'Staff', v: currentUser.name }] : []),
           ].map((row, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', borderBottom: '1px solid var(--bdr2)' }}>
@@ -319,6 +336,36 @@ ${currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.na
               </div>
             ))}
           </div>
+
+          {/* Cash tendered + change */}
+          {(payMethod === 'cash' || payMethod === 'mixed') && (
+            <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', background: 'var(--bg2)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid var(--bdr)' }}>
+                Cash Tendered
+              </div>
+              <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={cashTendered}
+                  onChange={e => setCashTendered(e.target.value)}
+                  placeholder={fmtJ(total)}
+                  style={{ ...inp, fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 18 }}
+                />
+                {cashTendered && tendered >= total && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(34,197,94,.08)', borderRadius: 'var(--r2)', border: '1px solid rgba(34,197,94,.3)' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--txt)' }}>Change</span>
+                    <span style={{ fontSize: 20, fontWeight: 900, fontFamily: 'var(--mono)', color: 'var(--grn)' }}>{fmtJ(change)}</span>
+                  </div>
+                )}
+                {cashTendered && tendered < total && (
+                  <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,.08)', borderRadius: 'var(--r2)', color: '#ef4444', fontSize: 13, fontWeight: 600 }}>
+                    Short by {fmtJ(total - tendered)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {error && (
             <div style={{ background: 'rgba(239,68,68,.1)', color: '#ef4444', padding: '10px 14px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 600, border: '1px solid rgba(239,68,68,.2)' }}>

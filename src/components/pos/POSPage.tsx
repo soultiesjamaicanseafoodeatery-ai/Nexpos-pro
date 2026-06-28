@@ -31,13 +31,13 @@ const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = 
   carwash:    { bg: 'var(--blue-bg)',            color: 'var(--blue)',          label: 'Wash' },
 }
 
-// Daily-resetting takeout order counter — TO-001, TO-002, … resets at midnight
-function nextTakeoutNum(): string {
+// Daily-resetting order counter — resets each new calendar day
+function nextDailyOrderNum(): string {
   const today = new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD'
-  const stored = storage.get('takeout_daily_counter') as { date: string; count: number } | null
+  const stored = storage.get('daily_order_counter') as { date: string; count: number } | null
   const count = (stored?.date === today ? stored.count : 0) + 1
-  storage.set('takeout_daily_counter', { date: today, count })
-  return 'TO-' + String(count).padStart(3, '0')
+  storage.set('daily_order_counter', { date: today, count })
+  return String(count).padStart(4, '0')
 }
 
 export interface OrderContext {
@@ -649,7 +649,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       items: cart,
     }
 
-    const orderNum   = cartOrderType === 'takeout' ? nextTakeoutNum() : String(tx.id).slice(-4).padStart(4, '0')
+    const orderNum   = nextDailyOrderNum()
     const hasKitchen = cart.some(ci => ci.module === 'restaurant')
     const hasBar     = cart.some(ci => ci.module === 'bar')
     const hasCarwash = cart.some(ci => ci.module === 'carwash')
@@ -747,7 +747,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const selTable   = posState['restaurant'].selTable ?? posState['bar'].selTable
     const nowTime    = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     const today      = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
-    const orderNum   = cartOrderType === 'takeout' ? nextTakeoutNum() : String(Date.now()).slice(-4).padStart(4, '0')
+    const orderNum   = nextDailyOrderNum()
     const hasKitchen = activeCart.some(ci => ci.module === 'restaurant')
     const hasBar     = activeCart.some(ci => ci.module === 'bar')
     const hasCarwash = activeCart.some(ci => ci.module === 'carwash')

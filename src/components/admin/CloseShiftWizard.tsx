@@ -107,8 +107,11 @@ export default function CloseShiftWizard() {
   const eodLookback = lastFormalClose ?? fortyEightHoursAgo
   const shiftTxs = allTxs.filter(tx => {
     if (tx.voided) return false
+    // Non-ISO timestamps (e.g. "06/27 06:50 PM") get parsed by V8 as year 2001, not Invalid Date,
+    // so isNaN alone doesn't catch them. Check for ISO format first.
+    if (typeof tx.ts !== 'string' || !tx.ts.includes('T')) return true
     const d = new Date(tx.ts)
-    if (isNaN(d.getTime())) return true // legacy non-ISO timestamps — include rather than silently drop
+    if (isNaN(d.getTime())) return true
     try { return d >= new Date(eodLookback) } catch { return false }
   })
 

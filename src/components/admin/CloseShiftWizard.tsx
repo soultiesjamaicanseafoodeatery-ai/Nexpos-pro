@@ -557,7 +557,7 @@ export default function CloseShiftWizard() {
               {totalRefunds > 0 && <SummaryRow label="Refunds"        value={'-'+fmtJ(totalRefunds)} color="var(--red)" />}
               <SummaryRow label="Net Sales"         value={fmtJ(netSales)} bold color="var(--blue)" />
               {totalDisc > 0 && <SummaryRow label="Discounts Given" value={'-'+fmtJ(totalDisc)} color="var(--ora)" />}
-              {totalTax > 0 && <SummaryRow label="Tax Collected (GCT)" value={fmtJ(totalTax)} />}
+              <SummaryRow label="GCT Collected" value={fmtJ(totalTax)} />
             </div>
           </div>
         </CardBody>
@@ -667,8 +667,8 @@ export default function CloseShiftWizard() {
             {note ?? <>
               <SummaryRow label="Subtotal"    value={fmtJ(stats.sub)} />
               {stats.disc > 0 && <SummaryRow label="Discounts" value={'-'+fmtJ(stats.disc)} color="var(--ora)" />}
-              {stats.tax  > 0 && <SummaryRow label="GCT (15%)" value={fmtJ(stats.tax)} />}
-              {stats.grat > 0 && <SummaryRow label="Gratuity"  value={fmtJ(stats.grat)} color="var(--grn)" />}
+              <SummaryRow label="GCT" value={fmtJ(stats.tax)} />
+              <SummaryRow label="Gratuity" value={fmtJ(stats.grat)} color={stats.grat > 0 ? 'var(--grn)' : undefined} />
             </>}
           </div>
         )}
@@ -722,8 +722,8 @@ export default function CloseShiftWizard() {
             <div style={{ background:'var(--surf)', borderRadius:'var(--r2)', padding:'14px 16px' }}>
               <div style={{ fontSize:11, fontWeight:700, color:'var(--txt3)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:10 }}>Combined Deductions & Additions</div>
               {grandDisc > 0 && <SummaryRow label="Total Discounts Given" value={'-'+fmtJ(grandDisc)} color="var(--ora)" />}
-              {grandTax  > 0 && <SummaryRow label="GCT Collected"        value={fmtJ(grandTax)} />}
-              {grandGrat > 0 && <SummaryRow label="Gratuity Collected"   value={fmtJ(grandGrat)} color="var(--grn)" />}
+              <SummaryRow label="GCT Collected"      value={fmtJ(grandTax)} />
+              <SummaryRow label="Gratuity Collected" value={fmtJ(grandGrat)} color={grandGrat > 0 ? 'var(--grn)' : undefined} />
               {totalRefunds > 0 && <SummaryRow label="Refunds Issued"    value={'-'+fmtJ(totalRefunds)} color="var(--red)" />}
               <SummaryRow label="Net Revenue (after refunds)" value={fmtJ(grandTotal - totalRefunds)} bold color="var(--grn)" />
             </div>

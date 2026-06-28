@@ -91,8 +91,7 @@ export default function CloseShiftWizard() {
 
   // ── Shift transactions ────────────────────────────────────────
   const _todayMidnight = new Date(); _todayMidnight.setHours(0, 0, 0, 0)
-  const _rawStart = savedShiftStart ?? currentShift?.start ?? _todayMidnight.toISOString()
-  const shiftStart = new Date(_rawStart) < _todayMidnight ? _todayMidnight.toISOString() : _rawStart
+  const shiftStart = savedShiftStart ?? currentShift?.start ?? _todayMidnight.toISOString()
   const shiftTxs = transactions.filter(tx => {
     if (tx.voided) return false
     if (typeof tx.ts !== 'string') return false

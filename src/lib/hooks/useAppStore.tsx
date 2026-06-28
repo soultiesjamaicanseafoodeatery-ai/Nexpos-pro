@@ -55,7 +55,7 @@ function dbStaffToUser(row: DbStaffRow): User {
 import { storage } from '@/lib/utils/storage'
 import {
   SEED_USERS, MODULE_DATA, DEFAULT_BIZ_CONFIG,
-  SEED_TRANSACTIONS, SEED_FLEET, SEED_PROMOS, SEED_VERSION,
+  SEED_FLEET, SEED_PROMOS, SEED_VERSION,
 } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
 
@@ -149,6 +149,7 @@ type Action =
   | { type: 'ADD_FLEET_ACCOUNT';    account: FleetAccount }
   | { type: 'UPDATE_FLEET_ACCOUNT'; account: FleetAccount }
   | { type: 'DELETE_FLEET_ACCOUNT'; id: string }
+  | { type: 'SET_TRANSACTIONS'; transactions: Transaction[] }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -188,7 +189,7 @@ function initState(): AppState {
     })(),
     heldOrders:   (() => { const v = storage.get('held_orders');   return Array.isArray(v) ? (v as HeldOrder[]).filter(h => h?.id && Array.isArray(h?.cart)) : [] })(),
     orderTickets: (() => { const v = storage.get('order_tickets'); return Array.isArray(v) ? (v as OrderTicket[]).filter(t => t?.id && t?.timeline && Array.isArray(t?.items)) : [] })(),
-    transactions: storage.get<Transaction[]>('tx') ?? SEED_TRANSACTIONS,
+    transactions: [],
     shifts: storage.get<Shift[]>('shifts') ?? [],
     audit: storage.get<AuditEntry[]>('audit') ?? [],
     biz: storage.get<BusinessConfig>('biz_config') ?? DEFAULT_BIZ_CONFIG,
@@ -549,6 +550,9 @@ function reducer(state: AppState, action: Action): AppState {
       storage.set('fleet', fleet)
       return { ...state, fleet }
     }
+    case 'SET_TRANSACTIONS': {
+      return { ...state, transactions: action.transactions }
+    }
     default:
       return state
   }
@@ -601,13 +605,64 @@ const AppContext = createContext<AppContextValue | null>(null)
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, rawDispatch] = useReducer(reducer, undefined, initState)
 
+  // stateRef: lets the dispatch callback read the latest state without a closure capture
+  const stateRef = useRef(state)
+  useEffect(() => { stateRef.current = state }, [state])
+
   // Refs for deduplicating realtime echoes
   const pendingWrites  = useRef<Set<string>>(new Set())
   const pendingDeletes = useRef<Set<string>>(new Set())
 
-  // Supabase-aware dispatch: syncs HOLD_ORDER / REMOVE_HELD_ORDER to Supabase
+  // Supabase-aware dispatch — Supabase is the single source of truth for all transactions
   const dispatch = useCallback((action: Action): void => {
+    // ADD_TRANSACTION: write to Supabase first, then update local state
+    if (action.type === 'ADD_TRANSACTION') {
+      ;(async () => {
+        try {
+          const { error } = await supabase.from('transactions').upsert({
+            id:      action.tx.id,
+            mod:     action.tx.mod,
+            cashier: action.tx.cashier,
+            data:    action.tx,
+          })
+          if (error) throw error
+        } catch {
+          // Supabase write failed — warn the operator; still record locally for offline resilience
+          const warnId = Date.now()
+          rawDispatch({ type: 'ADD_TOAST', msg: '⚠️ Transaction not synced to database — check your connection', toastType: 'warn', id: warnId })
+          setTimeout(() => rawDispatch({ type: 'REMOVE_TOAST', id: warnId }), 6000)
+        }
+        // Update local state after Supabase attempt (success or fail)
+        rawDispatch(action)
+      })()
+      return
+    }
+
+    // All other actions update local state immediately
     rawDispatch(action)
+
+    // VOID_TRANSACTION: update the stored record in Supabase
+    if (action.type === 'VOID_TRANSACTION') {
+      const tx = stateRef.current.transactions.find(t => t.id === action.id)
+      if (tx) {
+        const updated = { ...tx, voided: true, voidReason: action.reason }
+        ;(async () => {
+          try { await supabase.from('transactions').upsert({ id: updated.id, mod: updated.mod, cashier: updated.cashier, data: updated }) } catch {}
+        })()
+      }
+    }
+
+    // REFUND_TRANSACTION: update the stored record in Supabase
+    if (action.type === 'REFUND_TRANSACTION') {
+      const tx = stateRef.current.transactions.find(t => t.id === action.id)
+      if (tx) {
+        const updated = { ...tx, refunded: true, refundReason: action.reason, refundedBy: action.by, refundedAt: action.at, refundAmount: action.amount }
+        ;(async () => {
+          try { await supabase.from('transactions').upsert({ id: updated.id, mod: updated.mod, cashier: updated.cashier, data: updated }) } catch {}
+        })()
+      }
+    }
+
     if (action.type === 'HOLD_ORDER') {
       const oid = action.order.id
       pendingWrites.current.add(oid)
@@ -703,6 +758,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .subscribe()
 
     return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  // Load all transactions from Supabase on startup — Supabase is the single source of truth
+  const txFetched = useRef(false)
+  useEffect(() => {
+    if (txFetched.current) return
+    txFetched.current = true
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('data')
+          .order('created_at', { ascending: false })
+          .limit(50000)
+        if (error) throw error
+        if (!data || data.length === 0) return
+        const txs = (data as { data: Transaction }[]).map(r => r.data)
+        console.log('[NexPOS] Transactions loaded from Supabase:', txs.length, 'records | latest:', txs[0]?.ts ?? 'none')
+        rawDispatch({ type: 'SET_TRANSACTIONS', transactions: txs })
+      } catch (err) {
+        console.warn('[NexPOS] Could not load transactions from Supabase — will use local cache if available:', err)
+        const cached = storage.get<Transaction[]>('tx')
+        if (cached && cached.length > 0) rawDispatch({ type: 'SET_TRANSACTIONS', transactions: cached })
+      }
+    })()
   }, [])
 
   const toast = useCallback((msg: string, type = 'info') => {

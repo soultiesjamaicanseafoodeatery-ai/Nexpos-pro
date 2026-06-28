@@ -97,7 +97,7 @@ export default function CloseShiftWizard() {
     if (typeof tx.ts !== 'string') return false
     if (!tx.ts.includes('T')) {
       const m = tx.ts.match(/^(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
-      if (!m) return true
+      if (!m) return false
       const mon = parseInt(m[1]) - 1, day = parseInt(m[2])
       let hr = parseInt(m[3]); const min = parseInt(m[4])
       if (m[5].toUpperCase() === 'PM' && hr !== 12) hr += 12

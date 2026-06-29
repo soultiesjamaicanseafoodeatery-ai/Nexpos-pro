@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react'
 import { qzIsConnected } from '@/lib/utils/qzTray'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { ModuleKey, HeldOrder } from '@/types'
-import ShiftEndModal from '@/components/layout/ShiftEndModal'
-import SessionReportModal from '@/components/layout/SessionReportModal'
 
 const MOD_COLOR: Record<ModuleKey, { color: string; bg: string }> = {
   restaurant: { color: 'var(--ora)', bg: 'var(--ora-bg)' },
@@ -32,9 +30,6 @@ export default function Topbar() {
   const hasRestaurantItems = cart.some(ci => (ci as { module?: string }).module === 'restaurant')
   const [clock, setClock]             = useState('')
   const [printerOk, setPrinterOk]     = useState<boolean | null>(null)
-  const [showShiftEnd, setShowShiftEnd]         = useState(false)
-  const [showSessionReport, setShowSessionReport] = useState(false)
-  const [sessionClockinAt, setSessionClockinAt] = useState<string>('')
   const [showLogoutPrompt, setShowLogoutPrompt] = useState(false)
 
   // ── Save any open cart to held orders ────────────────────────
@@ -78,46 +73,11 @@ export default function Topbar() {
     })
   }
 
-  // ── Open session report, resolving personal clock-in time ─────
-  function openSessionReport() {
-    const userId = currentUser?.id ?? ''
-    let clockinAt: string
-    try {
-      clockinAt = localStorage.getItem(`personal_clockin_${userId}`) ?? (currentShift?.start ?? new Date().toISOString())
-    } catch {
-      clockinAt = currentShift?.start ?? new Date().toISOString()
-    }
-    setSessionClockinAt(clockinAt)
-    setShowSessionReport(true)
-  }
-
-  // ── Confirm clock-out after session report ───────────────────
-  function doClockOut() {
-    setShowSessionReport(false)
-    addAudit('CLOCK_OUT', `${currentUser?.name ?? 'Staff'} clocked out`)
-    dispatch({ type: 'CLOCK_OUT' })
-  }
-
   // ── Switch User — lock screen, shift stays alive ─────────────
   function handleSwitchUser() {
     saveCart()
     addAudit('LOCK_SCREEN', `${currentUser?.name ?? 'Staff'} locked screen for next user`)
     dispatch({ type: 'LOGOUT' })
-  }
-
-  // ── Clock Out — end of shift flow ────────────────────────────
-  function handleClockOut() {
-    saveCart()
-    const isManager = ['admin', 'manager'].includes(currentUser?.role ?? '')
-    const hasActive = state.orderTickets.some(t =>
-      !['paid', 'voided'].includes(t.status ?? '') &&
-      (isManager || t.server === currentUser?.name)
-    )
-    if (hasActive) {
-      setShowShiftEnd(true)
-    } else {
-      openSessionReport()
-    }
   }
 
   useEffect(() => {
@@ -231,21 +191,6 @@ export default function Topbar() {
         </button>
       </div>
 
-      {showShiftEnd && (
-        <ShiftEndModal
-          onLogout={() => { setShowShiftEnd(false); openSessionReport() }}
-          onCancel={() => setShowShiftEnd(false)}
-        />
-      )}
-
-      {showSessionReport && (
-        <SessionReportModal
-          clockinAt={sessionClockinAt}
-          onClockOut={doClockOut}
-          onCancel={() => setShowSessionReport(false)}
-        />
-      )}
-
       {showLogoutPrompt && (
         <div
           style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:900, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
@@ -266,11 +211,11 @@ export default function Topbar() {
                 <div style={{ fontSize:11, color:'var(--txt3)', marginTop:2 }}>Lock screen — next staff can log in</div>
               </button>
               <button
-                onClick={() => { setShowLogoutPrompt(false); handleClockOut() }}
+                onClick={() => { setShowLogoutPrompt(false); dispatch({ type: 'SET_PAGE', page: 'shifts' }) }}
                 style={{ padding:'10px 14px', borderRadius:'var(--r2)', fontSize:12, fontWeight:700, cursor:'pointer', border:'1px solid rgba(251,146,60,.4)', background:'rgba(251,146,60,.08)', color:'var(--ora)', textAlign:'left' }}
               >
-                <div style={{ fontWeight:800 }}>Clock Out</div>
-                <div style={{ fontSize:11, color:'var(--txt3)', marginTop:2 }}>End my shift + create payroll entry</div>
+                <div style={{ fontWeight:800 }}>Go to My Shift</div>
+                <div style={{ fontSize:11, color:'var(--txt3)', marginTop:2 }}>Clock out from the My Shift page</div>
               </button>
               <button
                 onClick={() => setShowLogoutPrompt(false)}

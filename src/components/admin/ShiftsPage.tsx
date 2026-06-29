@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import EODWizard from './EODWizard'
-import type { Transaction } from '@/types'
+import type { Transaction, HeldOrder, POSState } from '@/types'
+import { supabase } from '@/lib/supabase'
 
 function duration(start: string, end: string | null) {
   const s = new Date(start).getTime()
@@ -111,6 +112,8 @@ export default function ShiftsPage() {
   const [eodDate,      setEodDate]      = useState(todayStr)
   const [openingFloat, setOpeningFloat] = useState('')
   const [actualCash,   setActualCash]   = useState('')
+  const [clockOutStep, setClockOutStep] = useState<'idle' | 'confirm' | 'saving'>('idle')
+  const [clockOutError, setClockOutError] = useState('')
 
   // ── Admin/Manager: shift records ──────────────────────────────
   const allShifts    = [...state.shifts].sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime())
@@ -253,9 +256,111 @@ export default function ShiftsPage() {
     hoursMinPerDay[todayStr] = Math.max(0, workedMinsTotal - breakMins)
   }
 
+  // ── Clock-out helpers (staff) ─────────────────────────────────
+  function handlePrintSummary() {
+    if (!user) return
+    const clockOutTime = new Date()
+    const netMins = Math.max(0, workedMinsTotal - breakMins)
+    const lines = [
+      state.biz.name || 'NexPOS Pro',
+      'Shift Report',
+      '----------------------------',
+      `Employee: ${user.name}`,
+      `Date: ${clockOutTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`,
+      `Clock In:  ${shiftClockIn ? new Date(shiftClockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—'}`,
+      `Clock Out: ${clockOutTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+      `Duration:  ${fmtMins(workedMinsTotal)}`,
+      ...(!isSalary ? [`Break:     -${breakMins}m`] : []),
+      `Net Hours: ${fmtMins(netMins)}`,
+      '----------------------------',
+      `Orders:    ${myTodayTxs.length}`,
+      `Revenue:   ${fmt(myTodayRevenue)}`,
+      ...(myTodayTxs.length > 0 ? [`Avg Sale:  ${fmt(avgSale)}`] : []),
+      ...(payTotals.cash   > 0 ? [`Cash:      ${fmt(payTotals.cash)}`]   : []),
+      ...(payTotals.debit  > 0 ? [`Debit:     ${fmt(payTotals.debit)}`]  : []),
+      ...(payTotals.credit > 0 ? [`Credit:    ${fmt(payTotals.credit)}`] : []),
+      ...(payTotals.gift   > 0 ? [`Gift Card: ${fmt(payTotals.gift)}`]   : []),
+      ...(payTotals.house  > 0 ? [`House Acc: ${fmt(payTotals.house)}`]  : []),
+      '----------------------------',
+    ].join('\n')
+    const win = window.open('', '_blank', 'width=400,height=600')
+    if (!win) return
+    win.document.write(`<html><head><title>Shift Report</title><style>body{font-family:monospace;font-size:13px;margin:20px;white-space:pre;color:#000;background:#fff;}</style></head><body>${lines}</body></html>`)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 300)
+  }
+
+  async function doClockOut() {
+    if (!user || !shiftClockIn || !isCurrentlyClocked) return
+    setClockOutStep('saving')
+    setClockOutError('')
+    const clockOutAt = new Date().toISOString()
+    const netMins = Math.max(0, workedMinsTotal - breakMins)
+    // Auto-save any open cart items as a held order so nothing is lost
+    if (state.cart.length > 0) {
+      const ps = state.posState[state.activeModule] as POSState
+      const selTable = (state.posState['restaurant'] as POSState).selTable ?? (state.posState['bar'] as POSState).selTable ?? null
+      const label = ps.customerName || (selTable ? `Table ${selTable}` : `Order ${Date.now().toString().slice(-4)}`)
+      const held: HeldOrder = {
+        id: crypto.randomUUID(),
+        label: `${label} (auto-saved)`,
+        cart: [...state.cart],
+        orderType: state.cartOrderType,
+        module: state.activeModule,
+        selTable,
+        guestCount: 1,
+        customerName: ps.customerName,
+        discPct: ps.manualDiscPct ?? 0,
+        discFlat: ps.manualDiscFlat ?? 0,
+        gratuityPct: ps.gratuityPct ?? 0,
+        gratuityOverride: false,
+        openedAt: new Date().toISOString(),
+        savedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        savedBy: user.name,
+      }
+      dispatch({ type: 'HOLD_ORDER', order: held })
+      dispatch({ type: 'CLEAR_CART' })
+    }
+    // Persist shift record to Supabase (non-blocking — clock-out proceeds even if Supabase is unavailable)
+    try {
+      await supabase.from('staff_shifts').insert({
+        staff_id: user.id,
+        staff_name: user.name,
+        clock_in_at: shiftClockIn,
+        clock_out_at: clockOutAt,
+        break_minutes: breakMins,
+        payroll_type: payrollProfile?.payrollType ?? 'hourly',
+        net_worked_minutes: netMins,
+        transaction_count: myTodayTxs.length,
+        total_revenue: myTodayRevenue,
+        payment_breakdown: payTotals,
+        order_breakdown: orderTotals,
+        notes: `auto · ${payrollProfile?.payrollType ?? 'hourly'} · ${breakMins}m break`,
+      })
+    } catch { /* intentionally silent — shift record is best-effort */ }
+    // Audit trail
+    dispatch({
+      type: 'ADD_AUDIT',
+      entry: {
+        id: crypto.randomUUID(),
+        ts: new Date().toLocaleString(),
+        user: user.name,
+        userId: user.id,
+        action: 'CLOCK_OUT',
+        detail: `${user.name} clocked out. ${fmtMins(netMins)} worked. ${myTodayTxs.length} orders · ${fmt(myTodayRevenue)}`,
+        type: 'info',
+        mod: state.activeModule,
+      },
+    })
+    // Dispatch CLOCK_OUT: saves payroll time entry to localStorage, clears currentUser, returns to login
+    dispatch({ type: 'CLOCK_OUT' })
+  }
+
   // ── Staff view ────────────────────────────────────────────────
   if (isStaff && user) {
     return (
+      <>
       <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
 
         {/* Header */}
@@ -377,8 +482,8 @@ export default function ShiftsPage() {
           ))}
         </div>
 
-        {/* ── END OF SHIFT WARNING ──────────────────────────────── */}
-        {totalActiveOrders > 0 && (
+        {/* ── END OF SHIFT WARNING / CLOCK OUT ─────────────────── */}
+        {isCurrentlyClocked && totalActiveOrders > 0 && (
           <div style={{
             background: '#7c2d1222', border: '1.5px solid #f97316',
             borderRadius: 'var(--r3)', padding: '14px 16px', marginTop: 20,
@@ -398,6 +503,21 @@ export default function ShiftsPage() {
               }}
             >
               View Active Orders
+            </button>
+          </div>
+        )}
+        {isCurrentlyClocked && clockOutStep === 'idle' && totalActiveOrders === 0 && (
+          <div style={{ marginTop: 20, marginBottom: 4 }}>
+            <button
+              onClick={() => setClockOutStep('confirm')}
+              style={{
+                width: '100%', padding: '14px', background: '#7f1d1d33',
+                color: '#f87171', border: '1.5px solid rgba(248,113,113,.35)',
+                borderRadius: 'var(--r3)', fontSize: 14, fontWeight: 800,
+                cursor: 'pointer', letterSpacing: '-.2px',
+              }}
+            >
+              Clock Out
             </button>
           </div>
         )}
@@ -518,6 +638,75 @@ export default function ShiftsPage() {
           )
         })()}
       </div>
+
+      {/* ── Clock Out Shift Summary Modal ─────────────────────── */}
+      {clockOutStep !== 'idle' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 970, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r4)', width: '100%', maxWidth: 480, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,.75)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>Shift Summary</div>
+              <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>{user.name} · Review before clocking out</div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase' as const, letterSpacing: '.5px', marginBottom: 8 }}>Shift Hours</div>
+                <InfoRow label="Clock In"         value={shiftClockIn ? fmtTime(shiftClockIn) : '—'} mono />
+                <InfoRow label="Clock Out"         value={fmtTime(new Date().toISOString())} mono />
+                <InfoRow label="Total Time"        value={fmtMins(workedMinsTotal)} />
+                {!isSalary && <InfoRow label="Break Deduction" value={`-${breakMins}m`} valueColor="var(--txt3)" />}
+                <InfoRow label="Net Hours Worked"  value={fmtMins(Math.max(0, workedMinsTotal - breakMins))} valueColor="var(--grn)" last />
+              </div>
+              <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase' as const, letterSpacing: '.5px', marginBottom: 8 }}>Session Performance</div>
+                <InfoRow label="Orders Completed" value={String(myTodayTxs.length)} />
+                <InfoRow label="Total Revenue"    value={fmt(myTodayRevenue)} valueColor="var(--grn)" mono />
+                <InfoRow label="Avg Sale"         value={myTodayTxs.length > 0 ? fmt(avgSale) : '—'} mono last />
+              </div>
+              {myTodayTxs.length > 0 && (
+                <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r2)', padding: '10px 14px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase' as const, letterSpacing: '.5px', marginBottom: 8 }}>Payment Breakdown</div>
+                  {payTotals.cash   > 0 && <InfoRow label="Cash"          value={fmt(payTotals.cash)}   mono />}
+                  {payTotals.debit  > 0 && <InfoRow label="Debit Card"    value={fmt(payTotals.debit)}  mono />}
+                  {payTotals.credit > 0 && <InfoRow label="Credit Card"   value={fmt(payTotals.credit)} mono />}
+                  {payTotals.gift   > 0 && <InfoRow label="Gift Card"     value={fmt(payTotals.gift)}   mono />}
+                  {payTotals.house  > 0 && <InfoRow label="House Account" value={fmt(payTotals.house)}  mono last />}
+                  {Object.values(payTotals).every(v => v === 0) && (
+                    <InfoRow label="No payments recorded this session" value="—" last />
+                  )}
+                </div>
+              )}
+              {clockOutError && (
+                <div style={{ color: '#ef4444', fontSize: 12, padding: '8px 12px', background: '#7f1d1d22', borderRadius: 'var(--r2)', border: '1px solid rgba(239,68,68,.3)' }}>
+                  {clockOutError}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '14px 16px', borderTop: '1px solid var(--bdr)', flexShrink: 0, display: 'flex', gap: 8 }}>
+              <button
+                onClick={handlePrintSummary}
+                style={{ flex: 1, padding: '10px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt2)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}
+              >
+                Print
+              </button>
+              <button
+                onClick={() => { setClockOutStep('idle'); setClockOutError('') }}
+                disabled={clockOutStep === 'saving'}
+                style={{ flex: 1, padding: '10px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, background: 'transparent', color: 'var(--txt3)', border: '1.5px solid var(--bdr)', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={doClockOut}
+                disabled={clockOutStep === 'saving'}
+                style={{ flex: 2, padding: '10px', borderRadius: 'var(--r2)', fontSize: 13, fontWeight: 800, border: 'none', cursor: clockOutStep === 'saving' ? 'default' : 'pointer', background: clockOutStep === 'saving' ? 'var(--bdr)' : '#dc2626', color: '#fff', opacity: clockOutStep === 'saving' ? 0.7 : 1 }}
+              >
+                {clockOutStep === 'saving' ? 'Saving...' : 'Confirm Clock Out'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
     )
   }
 

@@ -24,6 +24,7 @@ const InventoryPage = lazy(() => import('@/components/admin/InventoryPage'))
 const SatisfactionPage = lazy(() => import('@/components/admin/SatisfactionPage'))
 const TargetsPage = lazy(() => import('@/components/admin/TargetsPage'))
 const KitchenDisplay = lazy(() => import('@/components/admin/KitchenDisplay'))
+const MyOrdersPage = lazy(() => import('@/components/admin/MyOrdersPage'))
 const VoidReport = lazy(() => import('@/components/admin/VoidReport'))
 const CarwashServicesPage = lazy(() => import('@/components/admin/CarwashServicesPage'))
 const CloseShiftWizard = lazy(() => import('@/components/admin/CloseShiftWizard'))
@@ -158,7 +159,7 @@ export default function AppShell() {
       case 'satisfaction': return <SatisfactionPage />
       case 'targets':      return <TargetsPage />
       case 'payroll':      return <PayrollPage />
-      case 'kitchen':      return <KitchenDisplay />
+      case 'kitchen':      return <MyOrdersPage />
       case 'voids':              return <VoidReport />
       case 'carwash-services':   return <CarwashServicesPage />
       case 'carwash-queue':      return <CarWashQueue />

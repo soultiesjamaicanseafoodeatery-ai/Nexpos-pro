@@ -4,7 +4,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import type { KitchenStatus, BarStatus, CarwashStatus, OrderTicket } from '@/types'
 import { buildKitchenTicket, buildBarTicket, smartPrint } from '@/lib/utils/ticketPrinter'
 
-type FilterMode = 'all' | 'kitchen' | 'bar' | 'carwash'
+type FilterMode = 'all' | 'mine' | 'kitchen' | 'bar' | 'carwash'
 type StatusFilter = 'active' | 'pending' | 'preparing' | 'ready' | 'served' | 'done'
 
 const KITCHEN_LABELS: Record<KitchenStatus, string>  = { pending: 'Pending', preparing: 'Preparing', ready: 'Ready', served: 'Served' }
@@ -148,6 +148,7 @@ export default function KitchenDisplay() {
       if (filter === 'kitchen' && !t.hasKitchen) return false
       if (filter === 'bar'     && !t.hasBar)     return false
       if (filter === 'carwash' && !t.hasCarwash) return false
+      if (filter === 'mine'    && t.server !== (currentUser?.name ?? '')) return false
 
       // Status filter
       const kitchenDone = t.kitchenStatus === 'served' || !t.hasKitchen
@@ -206,7 +207,7 @@ export default function KitchenDisplay() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Module filter */}
           <div style={{ display: 'flex', gap: 4 }}>
-            {([['all', 'All'], ['kitchen', 'Kitchen'], ['bar', 'Bar'], ['carwash', 'Car Wash']] as const).map(([f, lbl]) => (
+            {([['all', 'All'], ['mine', 'My Orders'], ['kitchen', 'Kitchen'], ['bar', 'Bar'], ['carwash', 'Car Wash']] as const).map(([f, lbl]) => (
               <button key={f} onClick={() => setFilter(f)} style={{
                 padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                 border: `1.5px solid ${filter === f ? 'transparent' : 'var(--bdr)'}`,

@@ -28,10 +28,10 @@ export default function TransactionsPage() {
       const { data, error } = await supabase
         .from('transactions')
         .select('data')
-        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(50000)
       if (error) throw error
-      const txs = ((data ?? []) as { data: Transaction }[]).map(r => r.data)
+      const txs = ((data ?? []) as { data: Transaction }[]).map(r => r.data).sort((a, b) => b.id - a.id)
       console.log(
         '[NexPOS:TransactionsPage] source=Supabase',
         '| count=' + txs.length,

@@ -773,27 +773,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase
           .from('transactions')
           .select('data')
-          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
           .limit(50000)
         if (error) throw error
 
-        const supaTxs = ((data ?? []) as { data: Transaction }[]).map(r => r.data)
-        const supaIds = new Set(supaTxs.map(t => t.id))
-
-        // Find real localStorage transactions that haven't been saved to Supabase yet
-        const localCached = (storage.get<Transaction[]>('tx') ?? []).filter(t => t.id > 1003)
-        const toMigrate   = localCached.filter(t => !supaIds.has(t.id))
-
-        if (toMigrate.length > 0) {
-          console.log('[NexPOS] Migrating', toMigrate.length, 'transaction(s) from localStorage to Supabase…')
-          await Promise.all(toMigrate.map(tx =>
-            supabase.from('transactions').upsert({ id: tx.id, mod: tx.mod, cashier: tx.cashier, data: tx })
-          ))
-        }
-
-        // Merge Supabase data with newly migrated local transactions and sort newest-first
-        const allTxs = [...toMigrate, ...supaTxs].sort((a, b) => b.id - a.id)
-        console.log('[NexPOS] Transactions ready:', allTxs.length, '| migrated:', toMigrate.length, '| latest:', allTxs[0]?.ts ?? 'none')
+        // Supabase is the single source of truth — set state directly, no local merge
+        const allTxs = ((data ?? []) as { data: Transaction }[]).map(r => r.data).sort((a, b) => b.id - a.id)
         rawDispatch({ type: 'SET_TRANSACTIONS', transactions: allTxs })
       } catch (err) {
         console.warn('[NexPOS] Could not sync transactions with Supabase:', err)

@@ -140,7 +140,13 @@ export default function KitchenDisplay() {
   const isTicketPaid = (t: OrderTicket) =>
     (t.status ?? (t.txId ? 'paid' : 'sent')) === 'paid'
 
-  const activeTickets = useMemo(() => orderTickets.filter(t => !isTicketPaid(t)), [orderTickets])
+  const isTicketComplete = (t: OrderTicket) => {
+    const kitchenDone = !t.hasKitchen || t.kitchenStatus === 'served'
+    const barDone     = !t.hasBar     || t.barStatus     === 'ready'
+    const cwDone      = !t.hasCarwash || t.carwashStatus === 'completed'
+    return kitchenDone && barDone && cwDone
+  }
+  const activeTickets = useMemo(() => orderTickets.filter(t => !isTicketComplete(t)), [orderTickets])
 
   const filtered = useMemo(() => {
     return activeTickets.filter(t => {

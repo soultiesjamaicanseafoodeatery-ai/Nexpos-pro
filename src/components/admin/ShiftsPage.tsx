@@ -49,7 +49,7 @@ function StatCard({ label, value, sub, color }: StatCardProps) {
 
 export default function ShiftsPage() {
   const { state } = useApp()
-  const user = state.user
+  const user = state.currentUser
   const isStaff = user?.role === 'staff'
   const sym = state.biz.currencySymbol ?? 'J$'
   const fmt = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

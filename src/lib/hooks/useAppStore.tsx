@@ -189,7 +189,10 @@ function initState(): AppState {
     })(),
     heldOrders:   (() => { const v = storage.get('held_orders');   return Array.isArray(v) ? (v as HeldOrder[]).filter(h => h?.id && Array.isArray(h?.cart)) : [] })(),
     orderTickets: (() => { const v = storage.get('order_tickets'); return Array.isArray(v) ? (v as OrderTicket[]).filter(t => t?.id && t?.timeline && Array.isArray(t?.items)) : [] })(),
-    transactions: [],
+    transactions: (() => {
+      const cached = storage.get<Transaction[]>('tx') ?? []
+      return cached.filter(t => t.id > 1003) // exclude seed demo data; show real localStorage data immediately while Supabase loads
+    })(),
     shifts: storage.get<Shift[]>('shifts') ?? [],
     audit: storage.get<AuditEntry[]>('audit') ?? [],
     biz: storage.get<BusinessConfig>('biz_config') ?? DEFAULT_BIZ_CONFIG,
@@ -760,7 +763,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { supabase.removeChannel(ch) }
   }, [])
 
-  // Load all transactions from Supabase on startup — Supabase is the single source of truth
+  // Startup: load from Supabase + migrate any localStorage transactions not yet there
   const txFetched = useRef(false)
   useEffect(() => {
     if (txFetched.current) return
@@ -773,14 +776,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .order('created_at', { ascending: false })
           .limit(50000)
         if (error) throw error
-        if (!data || data.length === 0) return
-        const txs = (data as { data: Transaction }[]).map(r => r.data)
-        console.log('[NexPOS] Transactions loaded from Supabase:', txs.length, 'records | latest:', txs[0]?.ts ?? 'none')
-        rawDispatch({ type: 'SET_TRANSACTIONS', transactions: txs })
+
+        const supaTxs = ((data ?? []) as { data: Transaction }[]).map(r => r.data)
+        const supaIds = new Set(supaTxs.map(t => t.id))
+
+        // Find real localStorage transactions that haven't been saved to Supabase yet
+        const localCached = (storage.get<Transaction[]>('tx') ?? []).filter(t => t.id > 1003)
+        const toMigrate   = localCached.filter(t => !supaIds.has(t.id))
+
+        if (toMigrate.length > 0) {
+          console.log('[NexPOS] Migrating', toMigrate.length, 'transaction(s) from localStorage to Supabase…')
+          await Promise.all(toMigrate.map(tx =>
+            supabase.from('transactions').upsert({ id: tx.id, mod: tx.mod, cashier: tx.cashier, data: tx })
+          ))
+        }
+
+        // Merge Supabase data with newly migrated local transactions and sort newest-first
+        const allTxs = [...toMigrate, ...supaTxs].sort((a, b) => b.id - a.id)
+        console.log('[NexPOS] Transactions ready:', allTxs.length, '| migrated:', toMigrate.length, '| latest:', allTxs[0]?.ts ?? 'none')
+        rawDispatch({ type: 'SET_TRANSACTIONS', transactions: allTxs })
       } catch (err) {
-        console.warn('[NexPOS] Could not load transactions from Supabase — will use local cache if available:', err)
-        const cached = storage.get<Transaction[]>('tx')
-        if (cached && cached.length > 0) rawDispatch({ type: 'SET_TRANSACTIONS', transactions: cached })
+        console.warn('[NexPOS] Could not sync transactions with Supabase:', err)
+        // Keep whatever initState loaded from localStorage (already shown to user)
       }
     })()
   }, [])

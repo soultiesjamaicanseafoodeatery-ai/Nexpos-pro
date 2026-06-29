@@ -104,7 +104,6 @@ export default function TransactionsPage() {
     }
     dispatch({ type: 'ADD_VOID_LOG', entry: logEntry })
     audit('VOID_TRANSACTION', `Transaction #${voidingTx.id} voided — ${reasonText}`, 'warn')
-    toast('Transaction voided', 'warn')
     setVoidingTxId(null)
     // Re-fetch from Supabase so the updated record is reflected immediately
     setTimeout(fetchTxs, 800)

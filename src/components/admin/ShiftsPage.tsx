@@ -71,9 +71,16 @@ export default function ShiftsPage() {
 
   // ── Staff: transaction-based activity ─────────────────────────
   // Staff joining an open shift don't get a Shift record — their work lives in transactions
+  // Filter by cashier name (always set at payment time) rather than userId (unreliable from Supabase)
   const myAllTxs = isStaff && user
     ? [...state.transactions]
-        .filter(tx => !tx.voided && tx.userId === user.id)
+        .filter(tx => !tx.voided && tx.cashier === user.name)
+        .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+    : []
+  // Separate list for My Orders section — includes voided so they show with VOID badge
+  const myOrdersAll = isStaff && user
+    ? [...state.transactions]
+        .filter(tx => tx.cashier === user.name)
         .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
     : []
   const myTodayTxs = myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr)
@@ -170,8 +177,8 @@ export default function ShiftsPage() {
         {/* My Orders — read-only transaction list */}
         {(() => {
           const ordersToShow = myOrdersFilter === 'today'
-            ? myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr)
-            : myAllTxs
+            ? myOrdersAll.filter(tx => txDateKey(tx.ts) === todayStr)
+            : myOrdersAll
           return (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>

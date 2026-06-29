@@ -75,7 +75,7 @@ export default function ShiftsPage() {
         .filter(tx => !tx.voided && tx.userId === user.id)
         .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
     : []
-  const myTodayTxs = myAllTxs.filter(tx => sameDay(tx.ts, todayStr))
+  const myTodayTxs = myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr)
   const myTodayRevenue = myTodayTxs.reduce((s, tx) => s + tx.total, 0)
 
   // Group all my transactions by date for history table

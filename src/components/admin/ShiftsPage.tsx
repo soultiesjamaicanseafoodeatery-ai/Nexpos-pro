@@ -60,6 +60,7 @@ export default function ShiftsPage() {
 
   const todayStr = new Date().toISOString().slice(0, 10)
   const [showEOD, setShowEOD] = useState(false)
+  const [myOrdersFilter, setMyOrdersFilter] = useState<'today' | 'all'>('today')
   const [eodDate,      setEodDate]      = useState(todayStr)
   const [openingFloat, setOpeningFloat] = useState('')
   const [actualCash,   setActualCash]   = useState('')
@@ -135,7 +136,7 @@ export default function ShiftsPage() {
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)', marginBottom: 8 }}>My Activity</div>
         </div>
-        <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+        <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', marginBottom: 20 }}>
           {myDays.length === 0 ? (
             <div style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>
               No transactions recorded yet for your account.
@@ -165,6 +166,79 @@ export default function ShiftsPage() {
             </div>
           )}
         </div>
+
+        {/* My Orders — read-only transaction list */}
+        {(() => {
+          const ordersToShow = myOrdersFilter === 'today'
+            ? myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr)
+            : myAllTxs
+          return (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>
+                  My Orders
+                  <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--txt3)', marginLeft: 8 }}>
+                    ({ordersToShow.length})
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['today', 'all'] as const).map(f => (
+                    <button key={f} onClick={() => setMyOrdersFilter(f)} style={{
+                      padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                      border: `1.5px solid ${myOrdersFilter === f ? 'var(--blue)' : 'var(--bdr)'}`,
+                      background: myOrdersFilter === f ? 'var(--blue)' : 'transparent',
+                      color: myOrdersFilter === f ? '#fff' : 'var(--txt3)',
+                    }}>{f === 'today' ? 'Today' : 'All Time'}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+                {ordersToShow.length === 0 ? (
+                  <div style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>
+                    No orders {myOrdersFilter === 'today' ? 'today' : 'found'}.
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)' }}>
+                          {['Time', 'Order #', 'Items', 'Type', 'Method', 'Total'].map(h => (
+                            <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--txt3)', fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ordersToShow.map(tx => (
+                          <tr key={tx.id} style={{ borderBottom: '1px solid var(--bdr2)', opacity: tx.voided ? 0.5 : 1 }}>
+                            <td style={{ padding: '8px 12px', color: 'var(--txt3)', fontFamily: 'var(--mono)', fontSize: 11, whiteSpace: 'nowrap' }}>
+                              {(() => { try { return new Date(tx.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) } catch { return tx.ts } })()}
+                            </td>
+                            <td style={{ padding: '8px 12px', color: 'var(--txt2)', fontFamily: 'var(--mono)', fontSize: 11 }}>
+                              {tx.orderNum ?? `#${tx.id}`}
+                              {tx.voided && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#ef4444', background: '#7f1d1d22', border: '1px solid #ef444444', borderRadius: 4, padding: '1px 4px' }}>VOID</span>}
+                            </td>
+                            <td style={{ padding: '8px 12px', color: 'var(--txt)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {tx.item}
+                            </td>
+                            <td style={{ padding: '8px 12px', color: 'var(--txt3)', textTransform: 'capitalize', fontSize: 11 }}>
+                              {tx.orderType ?? '—'}
+                            </td>
+                            <td style={{ padding: '8px 12px', color: 'var(--txt3)', textTransform: 'capitalize', fontSize: 11 }}>
+                              {tx.pay}
+                            </td>
+                            <td style={{ padding: '8px 12px', color: tx.voided ? 'var(--txt3)' : 'var(--grn)', fontWeight: 700, fontFamily: 'var(--mono)' }}>
+                              {fmt(tx.total)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )
+        })()}
       </div>
     )
   }

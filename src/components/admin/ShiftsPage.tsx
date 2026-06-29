@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import EODWizard from './EODWizard'
 import type { Transaction } from '@/types'
@@ -40,6 +40,24 @@ function txDateKey(ts: string) {
   try { return new Date(ts).toISOString().slice(0, 10) } catch { return ts }
 }
 
+function fmtTime(iso: string) {
+  try { return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) } catch { return '—' }
+}
+
+function fmtMins(m: number) {
+  if (m < 1) return '0m'
+  if (m < 60) return `${m}m`
+  return `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
+function minutesBetween(clockIn: string, clockOut: string) {
+  const [ih, im] = clockIn.split(':').map(Number)
+  const [oh, om] = clockOut.split(':').map(Number)
+  let d = (oh * 60 + om) - (ih * 60 + im)
+  if (d < 0) d += 1440
+  return d
+}
+
 interface StatCardProps { label: string; value: string; sub?: string; color: string }
 function StatCard({ label, value, sub, color }: StatCardProps) {
   return (
@@ -51,12 +69,41 @@ function StatCard({ label, value, sub, color }: StatCardProps) {
   )
 }
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 8, marginTop: 20 }}>
+      {children}
+    </div>
+  )
+}
+
+function InfoRow({ label, value, valueColor = 'var(--txt)', mono = false, last = false }: {
+  label: string; value: string; valueColor?: string; mono?: boolean; last?: boolean
+}) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+      padding: '8px 0', borderBottom: last ? 'none' : '1px solid var(--bdr2)',
+    }}>
+      <div style={{ fontSize: 12, color: 'var(--txt3)', fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: valueColor, fontFamily: mono ? 'var(--mono)' : undefined }}>{value}</div>
+    </div>
+  )
+}
+
 export default function ShiftsPage() {
-  const { state } = useApp()
+  const { state, dispatch } = useApp()
   const user = state.currentUser
   const isStaff = user?.role === 'staff'
   const sym = state.biz.currencySymbol ?? 'J$'
   const fmt = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  // Live timer — re-renders every 30s so time-worked stays current
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000)
+    return () => clearInterval(id)
+  }, [])
 
   const todayStr = new Date().toISOString().slice(0, 10)
   const [showEOD, setShowEOD] = useState(false)
@@ -70,23 +117,20 @@ export default function ShiftsPage() {
   const totalRevenue = allShifts.filter(s => s.end).reduce((sum, s) => sum + s.revenue, 0)
 
   // ── Staff: transaction-based activity ─────────────────────────
-  // Staff joining an open shift don't get a Shift record — their work lives in transactions
-  // Filter by cashier name (always set at payment time) rather than userId (unreliable from Supabase)
   const myAllTxs = isStaff && user
     ? [...state.transactions]
         .filter(tx => !tx.voided && tx.cashier === user.name)
         .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
     : []
-  // Separate list for My Orders section — includes voided so they show with VOID badge
   const myOrdersAll = isStaff && user
     ? [...state.transactions]
         .filter(tx => tx.cashier === user.name)
         .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
     : []
-  const myTodayTxs = myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr)
+  const myTodayTxs    = myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr)
   const myTodayRevenue = myTodayTxs.reduce((s, tx) => s + tx.total, 0)
 
-  // Group all my transactions by date for history table
+  // Group all transactions by date for activity table
   const myDayMap: Record<string, { count: number; revenue: number }> = {}
   for (const tx of myAllTxs) {
     const key = txDateKey(tx.ts)
@@ -97,31 +141,131 @@ export default function ShiftsPage() {
   const myDays = Object.entries(myDayMap).sort((a, b) => b[0].localeCompare(a[0]))
 
   // ── EOD calculations (admin/manager only) ─────────────────────
-  const dayTxs    = state.transactions.filter(tx => sameDay(tx.ts, eodDate))
-  const cashTxs   = dayTxs.filter(isCashTx)
-  const cashSales  = cashTxs.reduce((s, tx) => s + cashAmount(tx), 0)
-  const cardSales  = dayTxs.filter(tx => !tx.voided && !isCashTx(tx)).reduce((s, tx) => s + tx.total, 0)
+  const dayTxs   = state.transactions.filter(tx => sameDay(tx.ts, eodDate))
+  const cashTxs  = dayTxs.filter(isCashTx)
+  const cashSales = cashTxs.reduce((s, tx) => s + cashAmount(tx), 0)
+  const cardSales = dayTxs.filter(tx => !tx.voided && !isCashTx(tx)).reduce((s, tx) => s + tx.total, 0)
   const totalSales = dayTxs.filter(tx => !tx.voided).reduce((s, tx) => s + tx.total, 0)
-  const floatNum   = parseFloat(openingFloat) || 0
-  const actualNum  = parseFloat(actualCash)   || 0
-  const expected   = floatNum + cashSales
-  const overShort  = actualCash.trim() ? actualNum - expected : null
+  const floatNum  = parseFloat(openingFloat) || 0
+  const actualNum = parseFloat(actualCash)   || 0
+  const expected  = floatNum + cashSales
+  const overShort = actualCash.trim() ? actualNum - expected : null
 
   const overShortColor = overShort === null ? 'var(--txt3)'
     : overShort === 0  ? 'var(--grn)'
     : '#ef4444'
 
+  // ── Staff: clock-in / out ─────────────────────────────────────
+  type ClockoutRec = { clockinAt: string; at: string }
+  const clockinAt: string | null = (() => {
+    try { return localStorage.getItem(`personal_clockin_${user?.id ?? ''}`) } catch { return null }
+  })()
+  const clockoutRecord: ClockoutRec | null = (() => {
+    try {
+      const raw = localStorage.getItem(`clockout_${user?.id ?? ''}`)
+      return raw ? JSON.parse(raw) as ClockoutRec : null
+    } catch { return null }
+  })()
+
+  // ── Staff: payroll profile ────────────────────────────────────
+  type PayProfile = { staffId: string; payrollType: 'hourly' | 'salary'; active: boolean }
+  const payrollProfile: PayProfile | null = (() => {
+    try {
+      const profiles: PayProfile[] = JSON.parse(localStorage.getItem('payroll_profiles') ?? '[]')
+      return profiles.find(p => p.staffId === (user?.id ?? '') && p.active) ?? null
+    } catch { return null }
+  })()
+  const isSalary = payrollProfile?.payrollType === 'salary'
+  const breakMins = isSalary ? 0 : 30
+
+  // ── Staff: time entries for hours-per-day ─────────────────────
+  type TimeEntry = { id: string; staffId: string; date: string; clockIn: string; clockOut: string | null; breakMinutes: number }
+  const myTimeEntries: TimeEntry[] = (() => {
+    try {
+      const all: TimeEntry[] = JSON.parse(localStorage.getItem('payroll_time_entries') ?? '[]')
+      return all.filter(e => e.staffId === (user?.id ?? ''))
+    } catch { return [] }
+  })()
+
+  // ── Staff: shift timing ───────────────────────────────────────
+  const isCurrentlyClocked = !!clockinAt
+  const shiftClockIn  = clockinAt ?? clockoutRecord?.clockinAt ?? null
+  const shiftClockOut = isCurrentlyClocked ? null : (clockoutRecord?.at ?? null)
+
+  const workedMinsTotal = (() => {
+    if (!shiftClockIn) return 0
+    const endMs = shiftClockOut ? new Date(shiftClockOut).getTime() : now.getTime()
+    return Math.max(0, Math.round((endMs - new Date(shiftClockIn).getTime()) / 60000))
+  })()
+
+  // ── Staff: payment breakdown (today) ─────────────────────────
+  const payTotals = { cash: 0, debit: 0, credit: 0, gift: 0, house: 0 }
+  for (const tx of myTodayTxs) {
+    const add = (method: string, amount: number) => {
+      const m = method.toLowerCase()
+      if      (m.includes('cash'))   payTotals.cash   += amount
+      else if (m.includes('debit'))  payTotals.debit  += amount
+      else if (m.includes('credit')) payTotals.credit += amount
+      else if (m.includes('gift'))   payTotals.gift   += amount
+      else if (m.includes('house'))  payTotals.house  += amount
+      else                            payTotals.cash   += amount
+    }
+    if (tx.payments && tx.payments.length > 0) {
+      tx.payments.forEach(p => add(p.method, p.amount))
+    } else {
+      add(tx.pay, tx.total)
+    }
+  }
+
+  // ── Staff: order breakdown (today) ───────────────────────────
+  const orderTotals = { restaurant: 0, bar: 0, takeout: 0, delivery: 0, carwash: 0 }
+  for (const tx of myTodayTxs) {
+    if      (tx.mod === 'carwash')          orderTotals.carwash++
+    else if (tx.mod === 'bar')              orderTotals.bar++
+    else if (tx.orderType === 'takeout')    orderTotals.takeout++
+    else if (tx.orderType === 'delivery')   orderTotals.delivery++
+    else                                    orderTotals.restaurant++
+  }
+
+  // ── Staff: active orders check ───────────────────────────────
+  const activeHeld    = state.heldOrders.filter(h => h.savedBy === (user?.name ?? ''))
+  const activeTickets = state.orderTickets.filter(t =>
+    t.server === (user?.name ?? '') &&
+    t.status !== undefined &&
+    t.status !== 'paid' &&
+    t.status !== 'voided'
+  )
+  const totalActiveOrders = activeHeld.length + activeTickets.length
+
+  // ── Staff: avg sale ───────────────────────────────────────────
+  const avgSale = myTodayTxs.length > 0 ? myTodayRevenue / myTodayTxs.length : 0
+
+  // ── Staff: hours per day (from payroll time entries) ──────────
+  const hoursMinPerDay: Record<string, number> = {}
+  for (const e of myTimeEntries) {
+    if (e.clockOut) {
+      const net = Math.max(0, minutesBetween(e.clockIn, e.clockOut) - e.breakMinutes)
+      hoursMinPerDay[e.date] = (hoursMinPerDay[e.date] ?? 0) + net
+    }
+  }
+  // Overlay today's live clock-in if active
+  if (shiftClockIn && txDateKey(shiftClockIn) === todayStr && isCurrentlyClocked) {
+    hoursMinPerDay[todayStr] = Math.max(0, workedMinsTotal - breakMins)
+  }
+
   // ── Staff view ────────────────────────────────────────────────
   if (isStaff && user) {
     return (
       <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
+
+        {/* Header */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>My Shift</div>
           <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>Activity tracked per transaction</div>
         </div>
 
-        {/* Active session card */}
-        <div style={{ background: '#14532d22', border: '1.5px solid var(--grn)', borderRadius: 'var(--r3)', padding: '14px 18px', marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+        {/* Session card */}
+        <div style={{ background: '#14532d22', border: '1.5px solid var(--grn)', borderRadius: 'var(--r3)', padding: '14px 18px', marginBottom: 4, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--grn)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Session Active</div>
             <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{user.name}</div>
@@ -139,10 +283,127 @@ export default function ShiftsPage() {
           </div>
         </div>
 
-        {/* My activity by day */}
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)', marginBottom: 8 }}>My Activity</div>
+        {/* ── CURRENT SHIFT ─────────────────────────────────────── */}
+        <SectionLabel>Current Shift</SectionLabel>
+        <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: '14px 16px', marginBottom: 4 }}>
+          {!shiftClockIn ? (
+            <div style={{ fontSize: 12, color: 'var(--txt3)', textAlign: 'center', padding: '8px 0' }}>
+              No clock-in recorded for this session.
+            </div>
+          ) : (
+            <>
+              <InfoRow label="Clock In" value={fmtTime(shiftClockIn)} mono />
+              {shiftClockOut && (
+                <InfoRow label="Clock Out" value={fmtTime(shiftClockOut)} mono />
+              )}
+              {isCurrentlyClocked && (
+                <InfoRow label="Time Worked" value={fmtMins(workedMinsTotal)} valueColor="var(--blue)" />
+              )}
+              {shiftClockOut && (
+                <InfoRow label="Total Hours Worked" value={fmtMins(Math.max(0, workedMinsTotal - breakMins))} valueColor="var(--grn)" />
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--txt3)', fontWeight: 600 }}>Status</div>
+                <div style={{
+                  fontSize: 12, fontWeight: 800, padding: '3px 10px', borderRadius: 20,
+                  background: isCurrentlyClocked ? '#14532d33' : 'var(--bg3)',
+                  color: isCurrentlyClocked ? 'var(--grn)' : 'var(--txt3)',
+                  border: `1px solid ${isCurrentlyClocked ? 'var(--grn)' : 'var(--bdr)'}`,
+                }}>
+                  {isCurrentlyClocked ? '🟢 Clocked In' : 'Shift Complete'}
+                </div>
+              </div>
+            </>
+          )}
         </div>
+
+        {/* ── BREAKS ────────────────────────────────────────────── */}
+        <SectionLabel>Breaks</SectionLabel>
+        <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: '14px 16px', marginBottom: 4 }}>
+          <InfoRow
+            label="Break Deduction"
+            value={isSalary ? 'Not Applicable (Salary Employee)' : `${breakMins} Minutes`}
+            valueColor={isSalary ? 'var(--txt3)' : 'var(--txt)'}
+            last
+          />
+        </div>
+
+        {/* ── SESSION SUMMARY ───────────────────────────────────── */}
+        <SectionLabel>Session Summary</SectionLabel>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 4 }}>
+          <StatCard label="Transactions"  value={String(myTodayTxs.length)} color="var(--txt)" />
+          <StatCard label="Revenue"        value={fmt(myTodayRevenue)}         color="var(--grn)" />
+          <StatCard label="Avg Sale"       value={myTodayTxs.length > 0 ? fmt(avgSale) : '—'} color="var(--blue)" />
+        </div>
+
+        {/* ── PAYMENT BREAKDOWN ─────────────────────────────────── */}
+        <SectionLabel>Payment Breakdown</SectionLabel>
+        <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: '14px 16px', marginBottom: 4 }}>
+          {([
+            { label: 'Cash',          value: payTotals.cash   },
+            { label: 'Debit Card',    value: payTotals.debit  },
+            { label: 'Credit Card',   value: payTotals.credit },
+            { label: 'Gift Card',     value: payTotals.gift   },
+            { label: 'House Account', value: payTotals.house  },
+          ] as const).map(({ label, value }, i, arr) => (
+            <InfoRow
+              key={label}
+              label={label}
+              value={value > 0 ? fmt(value) : `${sym}0.00`}
+              valueColor={value > 0 ? 'var(--grn)' : 'var(--txt3)'}
+              mono
+              last={i === arr.length - 1}
+            />
+          ))}
+        </div>
+
+        {/* ── ORDER BREAKDOWN ───────────────────────────────────── */}
+        <SectionLabel>Order Breakdown</SectionLabel>
+        <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', padding: '14px 16px', marginBottom: 4 }}>
+          {([
+            { label: 'Restaurant', value: orderTotals.restaurant },
+            { label: 'Bar',        value: orderTotals.bar        },
+            { label: 'Takeout',    value: orderTotals.takeout    },
+            { label: 'Delivery',   value: orderTotals.delivery   },
+            { label: 'Car Wash',   value: orderTotals.carwash    },
+          ] as const).map(({ label, value }, i, arr) => (
+            <InfoRow
+              key={label}
+              label={label}
+              value={String(value)}
+              valueColor={value > 0 ? 'var(--txt)' : 'var(--txt3)'}
+              last={i === arr.length - 1}
+            />
+          ))}
+        </div>
+
+        {/* ── END OF SHIFT WARNING ──────────────────────────────── */}
+        {totalActiveOrders > 0 && (
+          <div style={{
+            background: '#7c2d1222', border: '1.5px solid #f97316',
+            borderRadius: 'var(--r3)', padding: '14px 16px', marginTop: 20,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#f97316', marginBottom: 4 }}>
+              ⚠ You still have {totalActiveOrders} active order{totalActiveOrders > 1 ? 's' : ''} assigned.
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 12 }}>
+              Please complete or transfer them before clocking out.
+            </div>
+            <button
+              onClick={() => dispatch({ type: 'SET_PAGE', page: 'kitchen' })}
+              style={{
+                background: '#f97316', color: '#fff', border: 'none',
+                borderRadius: 'var(--r2)', padding: '8px 16px',
+                fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              View Active Orders
+            </button>
+          </div>
+        )}
+
+        {/* ── SHIFT ACTIVITY ────────────────────────────────────── */}
+        <SectionLabel>Shift Activity</SectionLabel>
         <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', marginBottom: 20 }}>
           {myDays.length === 0 ? (
             <div style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>
@@ -153,21 +414,31 @@ export default function ShiftsPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--bdr)', background: 'var(--bg3)' }}>
-                    {['Date', 'Transactions', 'Revenue'].map(h => (
+                    {['Date', 'Transactions', 'Revenue', 'Hours Worked', 'Avg Sale'].map(h => (
                       <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--txt3)', fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {myDays.map(([date, data]) => (
-                    <tr key={date} style={{ borderBottom: '1px solid var(--bdr2)' }}>
-                      <td style={{ padding: '9px 12px', color: 'var(--txt3)', fontFamily: 'var(--mono)', fontSize: 11 }}>
-                        {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                      </td>
-                      <td style={{ padding: '9px 12px', color: 'var(--txt)', fontWeight: 700, textAlign: 'center' }}>{data.count}</td>
-                      <td style={{ padding: '9px 12px', color: 'var(--grn)', fontWeight: 700, fontFamily: 'var(--mono)' }}>{fmt(data.revenue)}</td>
-                    </tr>
-                  ))}
+                  {myDays.map(([date, data]) => {
+                    const hrsMin = hoursMinPerDay[date]
+                    const avg    = data.count > 0 ? data.revenue / data.count : 0
+                    return (
+                      <tr key={date} style={{ borderBottom: '1px solid var(--bdr2)' }}>
+                        <td style={{ padding: '9px 12px', color: 'var(--txt3)', fontFamily: 'var(--mono)', fontSize: 11 }}>
+                          {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        </td>
+                        <td style={{ padding: '9px 12px', color: 'var(--txt)', fontWeight: 700, textAlign: 'center' }}>{data.count}</td>
+                        <td style={{ padding: '9px 12px', color: 'var(--grn)', fontWeight: 700, fontFamily: 'var(--mono)' }}>{fmt(data.revenue)}</td>
+                        <td style={{ padding: '9px 12px', color: hrsMin != null ? 'var(--blue)' : 'var(--txt3)', fontFamily: 'var(--mono)' }}>
+                          {hrsMin != null ? fmtMins(hrsMin) : '—'}
+                        </td>
+                        <td style={{ padding: '9px 12px', color: avg > 0 ? 'var(--txt2)' : 'var(--txt3)', fontFamily: 'var(--mono)' }}>
+                          {avg > 0 ? fmt(avg) : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

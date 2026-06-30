@@ -1,6 +1,8 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
+import { supabase } from '@/lib/supabase'
+import { hashPin } from '@/lib/utils/hash'
 
 // ── Types ────────────────────────────────────────────────────────
 interface PayrollProfile {
@@ -25,6 +27,17 @@ interface PayrollRun {
   periodStart: string; periodEnd: string
   processedAt: string; processedBy: string
   entries: PayrollEntry[]; totalGross: number
+}
+interface ShiftCorrection {
+  id: string; entryId: string; staffId: string; staffName: string; shiftDate: string
+  originalClockIn: string; originalClockOut: string | null; originalBreakMins: number
+  newClockIn: string; newClockOut: string | null; newBreakMins: number
+  reason: string; editedBy: string; editedById: string; editedAt: string
+}
+interface PeriodLock {
+  id: string; runId: string; periodStart: string; periodEnd: string
+  lockedBy: string; lockedAt: string; isLocked: boolean
+  unlockedBy?: string; unlockedAt?: string
 }
 
 // ── Style constants ──────────────────────────────────────────────
@@ -440,6 +453,177 @@ function EntryModal({ entry, users, onSave, onClose }: {
   )
 }
 
+// ── Correction Modal ──────────────────────────────────────────────
+function CorrectionModal({ entry, currentUser, isLocked, isAdmin, onSave, onClose }: {
+  entry: TimeEntry
+  currentUser: { id: string; name: string; role: string; pin_hash: string } | null
+  isLocked: boolean
+  isAdmin: boolean
+  onSave: (newEntry: TimeEntry, correction: ShiftCorrection) => void
+  onClose: () => void
+}) {
+  const [newClockIn,   setNewClockIn]   = useState(entry.clockIn)
+  const [newClockOut,  setNewClockOut]  = useState(entry.clockOut ?? '')
+  const [newBreakMins, setNewBreakMins] = useState(entry.breakMinutes)
+  const [reason,       setReason]       = useState('')
+  const [pin,          setPin]          = useState('')
+  const [pinError,     setPinError]     = useState('')
+  const [saving,       setSaving]       = useState(false)
+
+  const originalNet = useMemo(() => {
+    if (!entry.clockOut) return 0
+    return Math.max(0, minutesBetween(entry.clockIn, entry.clockOut) - entry.breakMinutes)
+  }, [entry])
+
+  const newNet = useMemo(() =>
+    newClockOut ? Math.max(0, minutesBetween(newClockIn, newClockOut) - newBreakMins) : 0,
+    [newClockIn, newClockOut, newBreakMins]
+  )
+
+  const diff = newNet - originalNet
+  const hasChanges = newClockIn !== entry.clockIn || newClockOut !== (entry.clockOut ?? '') || newBreakMins !== entry.breakMinutes
+
+  async function handleSave() {
+    if (!reason.trim()) { setPinError('Reason for change is required'); return }
+    if (!pin)            { setPinError('Your PIN is required to authorize this change'); return }
+    if (!hasChanges)     { setPinError('No changes detected'); return }
+    if (!currentUser)    return
+    setSaving(true)
+    try {
+      const hashed = await hashPin(pin)
+      if (hashed !== currentUser.pin_hash) {
+        setPinError('Incorrect PIN — please try again')
+        setSaving(false)
+        return
+      }
+    } catch {
+      setPinError('PIN verification failed'); setSaving(false); return
+    }
+    const now = new Date().toISOString()
+    const newEntry: TimeEntry = { ...entry, clockIn: newClockIn, clockOut: newClockOut || entry.clockOut, breakMinutes: newBreakMins }
+    const correction: ShiftCorrection = {
+      id: `SC-${Date.now()}`,
+      entryId: entry.id, staffId: entry.staffId, staffName: entry.staffName, shiftDate: entry.date,
+      originalClockIn: entry.clockIn, originalClockOut: entry.clockOut, originalBreakMins: entry.breakMinutes,
+      newClockIn, newClockOut: newClockOut || entry.clockOut, newBreakMins,
+      reason: reason.trim(), editedBy: currentUser.name, editedById: currentUser.id, editedAt: now,
+    }
+    onSave(newEntry, correction)
+  }
+
+  if (isLocked && !isAdmin) {
+    return (
+      <div className="mo-bg" onClick={onClose}>
+        <div className="mo" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+          <div className="mh"><span className="mt">Period Locked</span><button className="mx" onClick={onClose}>×</button></div>
+          <div className="mb-c" style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>🔒</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--txt)', marginBottom: 6 }}>This shift is in a locked payroll period</div>
+            <div style={{ fontSize: 12, color: 'var(--txt3)' }}>Only an Administrator can unlock this period to allow corrections.</div>
+          </div>
+          <div className="mf"><button className="btn btn-gh" onClick={onClose}>Close</button></div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mo-bg" onClick={onClose}>
+      <div className="mo" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div className="mh">
+          <div>
+            <span className="mt">Correct Shift — {entry.staffName}</span>
+            {isLocked && <span style={{ fontSize: 11, color: 'var(--red)', marginLeft: 10, fontWeight: 700 }}>🔓 Admin Override</span>}
+          </div>
+          <button className="mx" onClick={onClose}>×</button>
+        </div>
+        <div className="mb-c" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {isLocked && isAdmin && (
+            <div style={{ background: 'var(--red-bg)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 'var(--r)', padding: '10px 14px', fontSize: 12, color: 'var(--red)', fontWeight: 600 }}>
+              ⚠ This shift is in an approved locked payroll period. You are editing as Administrator.
+            </div>
+          )}
+
+          {/* Original values — read-only */}
+          <div style={{ background: 'var(--surf)', borderRadius: 'var(--r)', padding: '12px 14px' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase' as const, letterSpacing: '.6px', marginBottom: 10 }}>Original Values</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 8 }}>
+              {([['Clock In', entry.clockIn], ['Clock Out', entry.clockOut ?? '—'], ['Break', `${entry.breakMinutes}m`]] as [string, string][]).map(([label2, val]) => (
+                <div key={label2}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label2}</div>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 700, color: 'var(--txt2)' }}>{val}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--txt3)' }}>Net hours: <strong style={{ color: 'var(--txt2)' }}>{fmtHrs(originalNet)}</strong></div>
+          </div>
+
+          {/* New values — editable */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase' as const, letterSpacing: '.6px', marginBottom: 8 }}>Corrected Values</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <div><label style={lbl}>New Clock In *</label><input style={inp} type="time" value={newClockIn} onChange={e => setNewClockIn(e.target.value)} /></div>
+              <div><label style={lbl}>New Clock Out</label><input style={inp} type="time" value={newClockOut} onChange={e => setNewClockOut(e.target.value)} /></div>
+              <div><label style={lbl}>Break (min)</label><input style={inp} type="number" min={0} max={480} value={newBreakMins} onChange={e => setNewBreakMins(Number(e.target.value))} /></div>
+            </div>
+          </div>
+
+          {/* Hours comparison */}
+          {newClockOut && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              {[
+                { label: 'Original', value: fmtHrs(originalNet), color: 'var(--txt2)', bg: 'var(--surf)' },
+                { label: 'New',      value: fmtHrs(newNet),      color: 'var(--grn)',  bg: 'var(--grn-bg)' },
+                {
+                  label: 'Difference',
+                  value: `${diff >= 0 ? '+' : ''}${fmtHrs(Math.abs(diff))}`,
+                  color: diff > 0 ? 'var(--grn)' : diff < 0 ? 'var(--red)' : 'var(--txt3)',
+                  bg:    diff > 0 ? 'var(--grn-bg)' : diff < 0 ? 'var(--red-bg)' : 'var(--surf)',
+                },
+              ].map(item => (
+                <div key={item.label} style={{ padding: '9px 12px', background: item.bg, borderRadius: 'var(--r)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'var(--txt3)', fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 4 }}>{item.label}</div>
+                  <div style={{ fontFamily: 'var(--mono)', fontWeight: 800, color: item.color }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Reason */}
+          <div>
+            <label style={lbl}>Reason for Change *</label>
+            <textarea
+              style={{ ...inp, minHeight: 64, resize: 'vertical' as const, fontFamily: 'inherit' }}
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Describe why this correction is needed (required)"
+            />
+          </div>
+
+          {/* PIN */}
+          <div>
+            <label style={lbl}>{currentUser?.role === 'admin' ? 'Admin' : 'Manager'} PIN (to authorize) *</label>
+            <input style={inp} type="password" value={pin} onChange={e => { setPin(e.target.value); setPinError('') }} placeholder="Enter your PIN" maxLength={6} autoComplete="off" />
+          </div>
+
+          {pinError && (
+            <div style={{ color: 'var(--red)', fontSize: 12, padding: '8px 12px', background: 'var(--red-bg)', borderRadius: 'var(--r)', border: '1px solid rgba(239,68,68,.25)' }}>
+              {pinError}
+            </div>
+          )}
+        </div>
+        <div className="mf">
+          <button className="btn btn-gh" onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn btn-pr" onClick={handleSave} disabled={saving || !reason.trim() || !pin || !hasChanges}>
+            {saving ? 'Verifying...' : 'Save Correction'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Type badge helper ─────────────────────────────────────────────
 function TypeBadge({ type }: { type: 'hourly' | 'salary' }) {
   return (
@@ -455,9 +639,12 @@ function TypeBadge({ type }: { type: 'hourly' | 'salary' }) {
 
 // ── Main Component ────────────────────────────────────────────────
 export default function PayrollPage() {
-  const { state, toast } = useApp()
+  const { state, dispatch, toast } = useApp()
   const { users, currentUser, transactions } = state
   const activeUsers = users.filter(u => u.active)
+
+  const canEdit = ['admin', 'manager'].includes(currentUser?.role ?? '')
+  const isAdmin  = currentUser?.role === 'admin'
 
   // ── Persisted state ─────────────────────────────────────────────
   const [profiles, setProfiles] = useState<PayrollProfile[]>(() => {
@@ -469,12 +656,17 @@ export default function PayrollPage() {
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>(() => {
     try { return JSON.parse(localStorage.getItem('payroll_runs') ?? '[]') } catch { return [] }
   })
-  useEffect(() => { try { localStorage.setItem('payroll_profiles', JSON.stringify(profiles)) } catch {} }, [profiles])
-  useEffect(() => { try { localStorage.setItem('payroll_time_entries', JSON.stringify(timeEntries)) } catch {} }, [timeEntries])
-  useEffect(() => { try { localStorage.setItem('payroll_runs', JSON.stringify(payrollRuns)) } catch {} }, [payrollRuns])
+  const [periodLocks, setPeriodLocks] = useState<PeriodLock[]>(() => {
+    try { return JSON.parse(localStorage.getItem('payroll_period_locks') ?? '[]') } catch { return [] }
+  })
+
+  useEffect(() => { try { localStorage.setItem('payroll_profiles',      JSON.stringify(profiles))    } catch {} }, [profiles])
+  useEffect(() => { try { localStorage.setItem('payroll_time_entries',  JSON.stringify(timeEntries)) } catch {} }, [timeEntries])
+  useEffect(() => { try { localStorage.setItem('payroll_runs',          JSON.stringify(payrollRuns)) } catch {} }, [payrollRuns])
+  useEffect(() => { try { localStorage.setItem('payroll_period_locks',  JSON.stringify(periodLocks)) } catch {} }, [periodLocks])
 
   // ── Tab ─────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<'profiles' | 'timeclock' | 'process' | 'reports'>('profiles')
+  const [tab, setTab] = useState<'profiles' | 'timeclock' | 'process' | 'reports' | 'corrections'>('profiles')
 
   // ── Profiles ────────────────────────────────────────────────────
   const [showProfileModal, setShowProfileModal] = useState(false)
@@ -496,8 +688,29 @@ export default function PayrollPage() {
   const [showEntryModal, setShowEntryModal] = useState(false)
   const [editEntry,      setEditEntry]      = useState<TimeEntry | null>(null)
 
+  // Correction state
+  const [correctEntry,  setCorrectEntry]  = useState<TimeEntry | null>(null)
+  const [corrections,   setCorrections]   = useState<ShiftCorrection[]>([])
+  const [corrLoading,   setCorrLoading]   = useState(false)
+
+  // Reports state
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [deleteRunId,   setDeleteRunId]   = useState<string | null>(null)
+  const [unlockRunId,   setUnlockRunId]   = useState<string | null>(null)
+
   const activeEntries = timeEntries.filter(e => e.clockOut === null)
   const dateEntries   = timeEntries.filter(e => e.date === clockDate && e.clockOut !== null)
+
+  // Load corrections from Supabase when corrections tab opens
+  useEffect(() => {
+    if (tab !== 'corrections') return
+    setCorrLoading(true)
+    supabase.from('shift_corrections').select('*').order('edited_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setCorrections(data as unknown as ShiftCorrection[])
+        setCorrLoading(false)
+      })
+  }, [tab])
 
   const doClockIn = (data: Omit<TimeEntry, 'id'>) => {
     const already = timeEntries.find(e => e.staffId === data.staffId && e.clockOut === null)
@@ -510,6 +723,7 @@ export default function PayrollPage() {
     const e = timeEntries.find(x => x.id === entryId)
     if (e) {
       const net = Math.max(0, minutesBetween(e.clockIn, clockOut) - breakMinutes)
+      void net
     }
   }
 
@@ -522,6 +736,95 @@ export default function PayrollPage() {
 
   const deleteEntry = (id: string) => {
     setTimeEntries(prev => prev.filter(e => e.id !== id))
+  }
+
+  // ── Period lock helpers ─────────────────────────────────────────
+  function isDateLocked(date: string) {
+    return periodLocks.some(l => l.isLocked && date >= l.periodStart && date <= l.periodEnd)
+  }
+
+  async function saveLock(runId: string) {
+    if (!currentUser) return
+    const run = payrollRuns.find(r => r.id === runId)
+    if (!run) return
+    const lock: PeriodLock = {
+      id: `PL-${Date.now()}`, runId,
+      periodStart: run.periodStart, periodEnd: run.periodEnd,
+      lockedBy: currentUser.name, lockedAt: new Date().toISOString(), isLocked: true,
+    }
+    try {
+      await supabase.from('payroll_period_locks').insert({
+        run_id: lock.runId, period_start: lock.periodStart, period_end: lock.periodEnd,
+        locked_by: lock.lockedBy, is_locked: true,
+      })
+    } catch {}
+    setPeriodLocks(prev => [...prev.filter(l => l.runId !== runId), lock])
+    dispatch({
+      type: 'ADD_AUDIT',
+      entry: {
+        id: crypto.randomUUID(), ts: new Date().toLocaleString(),
+        user: currentUser.name, userId: currentUser.id,
+        action: 'PAYROLL_LOCK',
+        detail: `Payroll period ${run.periodStart}→${run.periodEnd} locked by ${currentUser.name}`,
+        type: 'info' as const, mod: state.activeModule,
+      },
+    })
+    toast(`Period ${run.periodStart} → ${run.periodEnd} locked`, 'success')
+  }
+
+  async function doUnlock(runId: string) {
+    if (!currentUser) return
+    const run = payrollRuns.find(r => r.id === runId)
+    if (!run) return
+    try {
+      await supabase.from('payroll_period_locks').update({
+        is_locked: false, unlocked_by: currentUser.name, unlocked_at: new Date().toISOString(),
+      }).eq('run_id', runId)
+    } catch {}
+    setPeriodLocks(prev => prev.map(l => l.runId === runId
+      ? { ...l, isLocked: false, unlockedBy: currentUser.name, unlockedAt: new Date().toISOString() }
+      : l
+    ))
+    dispatch({
+      type: 'ADD_AUDIT',
+      entry: {
+        id: crypto.randomUUID(), ts: new Date().toLocaleString(),
+        user: currentUser.name, userId: currentUser.id,
+        action: 'PAYROLL_UNLOCK',
+        detail: `Payroll period ${run.periodStart}→${run.periodEnd} UNLOCKED by ${currentUser.name}`,
+        type: 'warn' as const, mod: state.activeModule,
+      },
+    })
+    setUnlockRunId(null)
+    toast(`Period ${run.periodStart} → ${run.periodEnd} unlocked`, 'success')
+  }
+
+  async function saveCorrection(newEntry: TimeEntry, correction: ShiftCorrection) {
+    setTimeEntries(prev => prev.map(e => e.id === newEntry.id ? newEntry : e))
+    try {
+      await supabase.from('shift_corrections').insert({
+        entry_id: correction.entryId, staff_id: correction.staffId, staff_name: correction.staffName,
+        shift_date: correction.shiftDate,
+        original_clock_in: correction.originalClockIn, original_clock_out: correction.originalClockOut,
+        original_break_mins: correction.originalBreakMins,
+        new_clock_in: correction.newClockIn, new_clock_out: correction.newClockOut,
+        new_break_mins: correction.newBreakMins,
+        reason: correction.reason, edited_by: correction.editedBy, edited_by_id: correction.editedById,
+        edited_at: correction.editedAt,
+      })
+    } catch {}
+    dispatch({
+      type: 'ADD_AUDIT',
+      entry: {
+        id: crypto.randomUUID(), ts: new Date().toLocaleString(),
+        user: correction.editedBy, userId: correction.editedById,
+        action: 'SHIFT_CORRECTION',
+        detail: `${correction.staffName} ${correction.shiftDate}: ${correction.originalClockIn}–${correction.originalClockOut ?? '?'} → ${correction.newClockIn}–${correction.newClockOut ?? '?'}. Reason: ${correction.reason}`,
+        type: 'info' as const, mod: state.activeModule,
+      },
+    })
+    setCorrectEntry(null)
+    toast(`Correction saved for ${correction.staffName}`, 'success')
   }
 
   // ── Process Payroll ─────────────────────────────────────────────
@@ -613,15 +916,12 @@ export default function PayrollPage() {
     setTab('reports')
   }
 
-  // ── Reports ─────────────────────────────────────────────────────
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
-  const [deleteRunId,   setDeleteRunId]   = useState<string | null>(null)
-
   const TABS = [
-    { id: 'profiles'  as const, label: '👤 Profiles',       count: profiles.length },
-    { id: 'timeclock' as const, label: '⏱ Time Clock',      count: activeEntries.length },
-    { id: 'process'   as const, label: '💰 Process Payroll', count: 0 },
-    { id: 'reports'   as const, label: '📊 Reports',         count: payrollRuns.length },
+    { id: 'profiles'    as const, label: '👤 Profiles',        count: profiles.length },
+    { id: 'timeclock'   as const, label: '⏱ Time Clock',       count: activeEntries.length },
+    { id: 'process'     as const, label: '💰 Process Payroll',  count: 0 },
+    { id: 'reports'     as const, label: '📊 Reports',          count: payrollRuns.length },
+    { id: 'corrections' as const, label: '📋 Corrections',      count: 0 },
   ]
 
   return (
@@ -777,6 +1077,7 @@ export default function PayrollPage() {
                     </td></tr>
                   ) : dateEntries.map(e => {
                     const net = Math.max(0, minutesBetween(e.clockIn, e.clockOut!) - e.breakMinutes)
+                    const locked = isDateLocked(e.date)
                     return (
                       <tr key={e.id}>
                         <td style={{ fontWeight: 700, color: 'var(--txt)' }}>{e.staffName}</td>
@@ -798,7 +1099,11 @@ export default function PayrollPage() {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 5 }}>
-                            <button className="btn btn-gh btn-xs" onClick={() => { setEditEntry(e); setShowEntryModal(true) }}>Edit</button>
+                            {canEdit && (
+                              <button className="btn btn-gh btn-xs" onClick={() => setCorrectEntry(e)}>
+                                {locked ? '🔒 Correct' : 'Correct'}
+                              </button>
+                            )}
                             <button className="btn btn-xs" style={{ background: 'var(--red-bg)', color: 'var(--red)', border: 'none' }} onClick={() => deleteEntry(e.id)}>Del</button>
                           </div>
                         </td>
@@ -909,6 +1214,9 @@ export default function PayrollPage() {
                   <button className="btn btn-gh" onClick={() => { setPreview([]); setCalculated(false) }}>Clear</button>
                   <button className="btn btn-pr" onClick={saveRun}>Save Payroll Run</button>
                 </div>
+                <div style={{ fontSize: 11, color: 'var(--txt3)', textAlign: 'right', marginTop: 6 }}>
+                  After saving, go to Reports to approve and lock this period.
+                </div>
               </>
             )}
             {calculated && preview.length === 0 && (
@@ -931,6 +1239,8 @@ export default function PayrollPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {payrollRuns.map(run => {
                   const isOpen = selectedRunId === run.id
+                  const lock   = periodLocks.find(l => l.runId === run.id)
+                  const locked = lock?.isLocked ?? false
                   return (
                     <div key={run.id} style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
                       <div
@@ -951,7 +1261,25 @@ export default function PayrollPage() {
                         <div style={{ fontFamily: 'var(--mono)', fontWeight: 800, color: 'var(--grn)', fontSize: 15, flexShrink: 0 }}>
                           {fmtJMD(run.totalGross)}
                         </div>
+                        {/* Lock status badge */}
+                        <span style={{
+                          fontSize: 11, padding: '3px 10px', borderRadius: 12, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+                          border: '1px solid',
+                          background: locked ? 'var(--red-bg)' : 'var(--grn-bg)',
+                          color:      locked ? 'var(--red)'    : 'var(--grn)',
+                          borderColor: locked ? 'rgba(239,68,68,.25)' : 'rgba(62,207,142,.2)',
+                        }}>
+                          {locked ? '🔒 Locked' : '🔓 Open'}
+                        </span>
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          {canEdit && !locked && (
+                            <button className="btn btn-gh btn-xs" style={{ whiteSpace: 'nowrap' }}
+                              onClick={ev => { ev.stopPropagation(); saveLock(run.id) }}>🔒 Lock</button>
+                          )}
+                          {locked && isAdmin && (
+                            <button className="btn btn-xs" style={{ background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid rgba(239,68,68,.25)', whiteSpace: 'nowrap' }}
+                              onClick={ev => { ev.stopPropagation(); setUnlockRunId(run.id) }}>🔓 Unlock</button>
+                          )}
                           <button className="btn btn-gh btn-xs" onClick={e => { e.stopPropagation(); exportCSV(run) }}>📥 CSV</button>
                           <button className="btn btn-xs" style={{ background: 'var(--red-bg)', color: 'var(--red)', border: 'none' }}
                             onClick={e => { e.stopPropagation(); setDeleteRunId(run.id) }}>Del</button>
@@ -1015,6 +1343,73 @@ export default function PayrollPage() {
             )}
           </div>
         )}
+
+        {/* ══ CORRECTIONS ═══════════════════════════════════════ */}
+        {tab === 'corrections' && (
+          <div style={{ padding: '18px 20px' }}>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>Shift Corrections Audit</div>
+              <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>
+                Complete history of all clock-in/out corrections — every change is permanently recorded in Supabase.
+              </div>
+            </div>
+            {corrLoading ? (
+              <div style={{ padding: 48, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>Loading corrections...</div>
+            ) : corrections.length === 0 ? (
+              <div style={{ padding: 48, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>
+                No corrections recorded yet. All shift corrections made through this system will appear here.
+              </div>
+            ) : (
+              <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+                <table className="dt">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Employee</th>
+                      <th>Original</th>
+                      <th>Corrected</th>
+                      <th>Reason</th>
+                      <th>Edited By</th>
+                      <th>Edited At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {corrections.map(c => {
+                      const origNet = c.originalClockOut ? Math.max(0, minutesBetween(c.originalClockIn, c.originalClockOut) - c.originalBreakMins) : 0
+                      const newNet  = c.newClockOut      ? Math.max(0, minutesBetween(c.newClockIn, c.newClockOut) - c.newBreakMins) : 0
+                      const diff2   = newNet - origNet
+                      return (
+                        <tr key={c.id}>
+                          <td style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--txt3)', whiteSpace: 'nowrap' }}>{c.shiftDate}</td>
+                          <td style={{ fontWeight: 700, color: 'var(--txt)' }}>{c.staffName}</td>
+                          <td style={{ fontSize: 11, color: 'var(--txt3)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>
+                            {c.originalClockIn}–{c.originalClockOut ?? '?'}<br />
+                            <span style={{ fontSize: 10 }}>{fmtHrs(origNet)}</span>
+                          </td>
+                          <td style={{ fontSize: 11, color: 'var(--grn)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>
+                            {c.newClockIn}–{c.newClockOut ?? '?'}<br />
+                            <span style={{ fontSize: 10 }}>{fmtHrs(newNet)}
+                              {diff2 !== 0 && (
+                                <span style={{ color: diff2 > 0 ? 'var(--grn)' : 'var(--red)', marginLeft: 4 }}>
+                                  ({diff2 > 0 ? '+' : ''}{fmtHrs(Math.abs(diff2))})
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: 12, color: 'var(--txt2)', maxWidth: 200 }}>{c.reason}</td>
+                          <td style={{ fontSize: 12, color: 'var(--txt2)', fontWeight: 600 }}>{c.editedBy}</td>
+                          <td style={{ fontSize: 11, color: 'var(--txt3)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>
+                            {new Date(c.editedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Modals ──────────────────────────────────────────────── */}
@@ -1053,6 +1448,35 @@ export default function PayrollPage() {
           onClose={() => { setShowEntryModal(false); setEditEntry(null) }}
         />
       )}
+      {correctEntry && (
+        <CorrectionModal
+          entry={correctEntry}
+          currentUser={currentUser as { id: string; name: string; role: string; pin_hash: string } | null}
+          isLocked={isDateLocked(correctEntry.date)}
+          isAdmin={isAdmin}
+          onSave={saveCorrection}
+          onClose={() => setCorrectEntry(null)}
+        />
+      )}
+      {unlockRunId && (
+        <div className="mo-bg" onClick={() => setUnlockRunId(null)}>
+          <div className="mo" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div className="mh">
+              <span className="mt">Unlock Payroll Period</span>
+              <button className="mx" onClick={() => setUnlockRunId(null)}>×</button>
+            </div>
+            <div className="mb-c">
+              <p style={{ fontSize: 13, color: 'var(--txt2)' }}>
+                This will unlock the approved payroll period, allowing shift corrections to be made. The unlock event will be recorded in the audit log.
+              </p>
+            </div>
+            <div className="mf">
+              <button className="btn btn-gh" onClick={() => setUnlockRunId(null)}>Cancel</button>
+              <button className="btn btn-red" onClick={() => doUnlock(unlockRunId)}>Unlock Period</button>
+            </div>
+          </div>
+        </div>
+      )}
       {deleteRunId && (
         <div className="mo-bg" onClick={() => setDeleteRunId(null)}>
           <div className="mo" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
@@ -1077,4 +1501,3 @@ export default function PayrollPage() {
     </div>
   )
 }
-

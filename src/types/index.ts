@@ -176,7 +176,8 @@ export interface CartItem {
   plate?: string    // carwash only
   flavour?: string  // selected flavour name
   size?: string     // selected size name
-  sides?: string[]  // selected side names
+  sides?: string[]  // selected side names (for kitchen display)
+  sideDetails?: Array<{ id: string; name: string; price: number }>  // sides with prices (for calc + display)
   // Void — soft-delete; item stays in array for audit
   voided?: boolean
   voidReason?: VoidReason

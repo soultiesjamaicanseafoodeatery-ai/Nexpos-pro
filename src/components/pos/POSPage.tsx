@@ -452,8 +452,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     if (!modalItem) return
     const effectivePrice = modalSizeId ? modalSizePrice : modalItem.price
     const flavourName = liveFlavours.find(f => f.id === modalFlavourId)?.name
-    const sideName = modalSideIds.map(id => liveSides.find(s => s.id === id)?.name).filter(Boolean) as string[]
-    const sizeName  = liveSizesDefs.find(s => s.id === modalSizeId)?.name
+    const resolvedSides = modalSideIds.map(id => liveSides.find(s => s.id === id)).filter(Boolean) as SideRow[]
+    const sideName    = resolvedSides.map(s => s.name)
+    const sideDetails = resolvedSides.map(s => ({ id: s.id, name: s.name, price: s.price }))
+    const sizeName    = liveSizesDefs.find(s => s.id === modalSizeId)?.name
 
     const cartItem: CartItem = {
       id: crypto.randomUUID(),
@@ -468,6 +470,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       flavour: flavourName,
       size: sizeName,
       sides: sideName.length > 0 ? sideName : undefined,
+      sideDetails: sideDetails.length > 0 ? sideDetails : undefined,
     }
     dispatch({ type: 'ADD_TO_CART', item: cartItem })
     closeModal()
@@ -834,7 +837,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       user: currentUser.name, userId: currentUser.id, role,
       voidType: 'item', itemName: item.name,
       reason, reasonText,
-      amount: (item.price + item.addons.reduce((s, a) => s + a.price, 0)) * item.qty,
+      amount: (item.price + item.addons.reduce((s, a) => s + a.price, 0) + (item.sideDetails ?? []).reduce((s, sd) => s + sd.price, 0)) * item.qty,
       mod: item.module,
     }
     dispatch({ type: 'ADD_VOID_LOG', entry: logEntry })
@@ -852,7 +855,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       user: currentUser.name, userId: currentUser.id, role,
       voidType: 'item', orderNum: ticket.orderNum, itemName: item.name,
       reason, reasonText,
-      amount: (item.price + item.addons.reduce((s, a) => s + a.price, 0)) * item.qty,
+      amount: (item.price + item.addons.reduce((s, a) => s + a.price, 0) + (item.sideDetails ?? []).reduce((s, sd) => s + sd.price, 0)) * item.qty,
       mod: item.module,
     }
     dispatch({ type: 'ADD_VOID_LOG', entry: logEntry })
@@ -877,7 +880,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       ci.voided ? ci : { ...ci, voided: true, voidReason: reason, voidReasonText: reasonText, voidedBy: currentUser.name, voidedAt: nowTime }
     )
     dispatch({ type: 'UPDATE_ORDER_TICKET', id: ticket.id, patch: { status: 'voided', items: voidedItems } })
-    const totalAmt = ticket.items.filter(ci => !ci.voided).reduce((s, ci) => s + (ci.price + ci.addons.reduce((as, a) => as + a.price, 0)) * ci.qty, 0)
+    const totalAmt = ticket.items.filter(ci => !ci.voided).reduce((s, ci) => s + (ci.price + ci.addons.reduce((as, a) => as + a.price, 0) + (ci.sideDetails ?? []).reduce((as, sd) => as + sd.price, 0)) * ci.qty, 0)
     dispatch({ type: 'ADD_VOID_LOG', entry: {
       id: crypto.randomUUID(), ts: new Date().toLocaleString(),
       user: currentUser.name, userId: currentUser.id, role,
@@ -1515,7 +1518,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
               ) : (
                 cart.map((ci: CartItem) => {
                   const badge = MOD_BADGE[ci.module] ?? MOD_BADGE.restaurant
-                  const lineTotal = (ci.price + ci.addons.reduce((s, a) => s + a.price, 0)) * ci.qty
+                  const sidesLineTotal = (ci.sideDetails ?? []).reduce((s, sd) => s + sd.price, 0)
+                  const lineTotal = (ci.price + ci.addons.reduce((s, a) => s + a.price, 0) + sidesLineTotal) * ci.qty
                   const isVoided = !!ci.voided
                   return (
                     <div key={ci.id} style={{ background: isVoided ? 'var(--surf3)' : 'var(--surf)', borderRadius: 'var(--r)', marginBottom: 7, overflow: 'hidden', border: `1px solid ${isVoided ? '#ef444433' : 'var(--bdr)'}`, opacity: isVoided ? .55 : 1, display: 'flex' }}>
@@ -1536,7 +1540,17 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                           <>
                             {ci.flavour && <div style={{ fontSize: 11, color: 'var(--ora)', marginBottom: 1 }}>Flavour: {ci.flavour}</div>}
                             {ci.size    && <div style={{ fontSize: 11, color: 'var(--pur)', marginBottom: 1 }}>Size: {ci.size}</div>}
-                            {ci.sides && ci.sides.length > 0 && <div style={{ fontSize: 11, color: 'var(--grn)', marginBottom: 1 }}>Sides: {ci.sides.join(', ')}</div>}
+                            {ci.sideDetails && ci.sideDetails.length > 0
+                              ? ci.sideDetails.map(sd => (
+                                  <div key={sd.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--grn)', marginBottom: 1 }}>
+                                    <span>+ {sd.name}</span>
+                                    <span>{sd.price > 0 ? `+${fmt(sd.price, sym)}` : 'Free'}</span>
+                                  </div>
+                                ))
+                              : ci.sides && ci.sides.length > 0
+                                ? <div style={{ fontSize: 11, color: 'var(--grn)', marginBottom: 1 }}>Sides: {ci.sides.join(', ')}</div>
+                                : null
+                            }
                             {ci.addons.map(a => (
                               <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--txt3)', marginBottom: 1 }}>
                                 <span>{a.name}</span><span>+{fmt(a.price, sym)}</span>

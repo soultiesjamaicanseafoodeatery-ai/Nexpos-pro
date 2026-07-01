@@ -81,14 +81,16 @@ export function calcCart(
 
   const sub = cart.reduce((sum, ci) => {
     const addonsTotal = ci.addons.reduce((s, a) => s + a.price, 0)
-    return sum + (ci.price + addonsTotal) * ci.qty
+    const sidesTotal  = (ci.sideDetails ?? []).reduce((s, sd) => s + sd.price, 0)
+    return sum + (ci.price + addonsTotal + sidesTotal) * ci.qty
   }, 0)
 
   const restaurantSub = cart
     .filter(ci => ci.module === 'restaurant')
     .reduce((sum, ci) => {
       const addonsTotal = ci.addons.reduce((s, a) => s + a.price, 0)
-      return sum + (ci.price + addonsTotal) * ci.qty
+      const sidesTotal  = (ci.sideDetails ?? []).reduce((s, sd) => s + sd.price, 0)
+      return sum + (ci.price + addonsTotal + sidesTotal) * ci.qty
     }, 0)
 
   const disc = opts.manualDiscPct

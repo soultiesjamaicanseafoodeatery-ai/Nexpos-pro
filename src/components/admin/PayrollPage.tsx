@@ -1098,6 +1098,11 @@ export default function PayrollPage() {
                         <td>
                           <div style={{ display: 'flex', gap: 5 }}>
                             {canEdit && (
+                              <button className="btn btn-gh btn-xs" onClick={() => { setEditEntry(e); setShowEntryModal(true) }}>
+                                Edit
+                              </button>
+                            )}
+                            {canEdit && (
                               <button className="btn btn-gh btn-xs" onClick={() => setCorrectEntry(e)}>
                                 {locked ? '🔒 Correct' : 'Correct'}
                               </button>

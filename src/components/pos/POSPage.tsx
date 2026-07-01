@@ -2065,8 +2065,9 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                   if (assignment?.addon_ids?.length > 0) {
                     displayAddons = assignment.addon_ids.map(id => {
                       const a = livePosAddons.find(x => x.id === id)
-                      if (!a) return null
-                      return { id: a.id, name: a.name, desc: a.description, price: a.price, icon: a.icon ?? '', active: a.active } as Addon
+                      if (a) return { id: a.id, name: a.name, desc: a.description, price: a.price, icon: a.icon ?? '', active: a.active } as Addon
+                      // fallback: check localStorage-backed addons for legacy assignments
+                      return (state.menuData[activeModule]?.addons ?? []).find(x => x.id === id) ?? null
                     }).filter(Boolean) as Addon[]
                   } else {
                     displayAddons = []

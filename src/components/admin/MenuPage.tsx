@@ -439,7 +439,22 @@ export default function MenuPage() {
       .catch(() => setLoadingSides(false))
   }
 
-  useEffect(() => { loadFlavours(); loadSides() }, [])
+  // Addons — API-backed (Supabase addons table)
+  const [liveAddons,    setLiveAddons]    = useState<Addon[] | null>(null)
+  const [loadingAddons, setLoadingAddons] = useState(true)
+
+  const loadAddons = () => {
+    setLoadingAddons(true)
+    fetch('/api/addons')
+      .then(r => r.json())
+      .then((data: Array<{ id: string; name: string; description?: string; price: number; icon?: string; active?: boolean }>) => {
+        setLiveAddons(data.map(r => ({ id: r.id, name: r.name, desc: r.description ?? '', price: Number(r.price), icon: r.icon ?? '✨', active: r.active ?? true })))
+        setLoadingAddons(false)
+      })
+      .catch(() => setLoadingAddons(false))
+  }
+
+  useEffect(() => { loadFlavours(); loadSides(); loadAddons() }, [])
 
   const [editItem, setEditItem]           = useState<MenuItem | null>(null)
   const [showItemModal, setShowItemModal] = useState(false)
@@ -456,7 +471,7 @@ export default function MenuPage() {
   const md         = state.menuData[mod]
   const items      = liveItems ?? md.items
   const categories = Array.from(new Set([...md.categories, ...(liveItems ?? []).map(i => i.cat).filter(Boolean)]))
-  const addons     = md.addons
+  const addons     = liveAddons ?? md.addons
 
   const filtered = items.filter(i => {
     if (!search.trim()) return true
@@ -542,18 +557,38 @@ export default function MenuPage() {
     dispatch({ type: 'SET_MENU_CATEGORIES', mod, categories: cats })
   }
 
-  // ── Addon CRUD ─────────────────────────────────────────────
-  const saveAddon = (data: Addon) => {
-    if (addons.some(a => a.id === data.id)) {
-      dispatch({ type: 'UPDATE_MENU_ADDON', mod, addon: data })
+  // ── Addon CRUD — API-backed ────────────────────────────────
+  const saveAddon = async (data: Addon) => {
+    const isNew = !addons.some(a => a.id === data.id)
+    const body = { id: data.id, name: data.name, description: data.desc, price: data.price, icon: data.icon, active: data.active }
+    const res = await fetch('/api/addons', {
+      method: isNew ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      setLiveAddons(prev => prev
+        ? (isNew ? [...prev, data] : prev.map(a => a.id === data.id ? data : a))
+        : [data]
+      )
     } else {
-      dispatch({ type: 'ADD_MENU_ADDON', mod, addon: data })
+      toast('Save failed — check connection', 'error')
     }
     setShowAddonModal(false); setEditAddon(null)
   }
 
-  const toggleAddon = (addon: Addon) => {
-    dispatch({ type: 'UPDATE_MENU_ADDON', mod, addon: { ...addon, active: !addon.active } })
+  const toggleAddon = async (addon: Addon) => {
+    const next = !addon.active
+    const res = await fetch('/api/addons', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: addon.id, active: next }),
+    })
+    if (res.ok) {
+      setLiveAddons(prev => prev?.map(a => a.id === addon.id ? { ...a, active: next } : a) ?? prev)
+    } else {
+      toast('Update failed', 'error')
+    }
   }
 
   // ── Flavour CRUD ───────────────────────────────────────────
@@ -937,7 +972,15 @@ export default function MenuPage() {
         <AddonModal addon={editAddon} onSave={saveAddon} onClose={() => { setShowAddonModal(false); setEditAddon(null) }} />
       )}
       {delAddonId && (
-        <DelConfirm name={addons.find(a => a.id === delAddonId)?.name ?? ''} onConfirm={() => { dispatch({ type: 'DELETE_MENU_ADDON', mod, id: delAddonId }); setDelAddonId(null) }} onCancel={() => setDelAddonId(null)} />
+        <DelConfirm name={addons.find(a => a.id === delAddonId)?.name ?? ''} onConfirm={async () => {
+          const res = await fetch(`/api/addons?id=${encodeURIComponent(delAddonId!)}`, { method: 'DELETE' })
+          if (res.ok || res.status === 204) {
+            setLiveAddons(prev => prev?.filter(a => a.id !== delAddonId) ?? prev)
+          } else {
+            toast('Delete failed', 'error')
+          }
+          setDelAddonId(null)
+        }} onCancel={() => setDelAddonId(null)} />
       )}
       {showFlavourModal && (
         <FlavourModal flavour={editFlavour} onSave={saveFlavour} onClose={() => { setShowFlavourModal(false); setEditFlavour(null) }} />

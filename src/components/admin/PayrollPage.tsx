@@ -59,7 +59,7 @@ const fmtHrs = (mins: number) => {
   return m === 0 ? `${h}h` : `${h}h ${m}m`
 }
 const fmtDec = (mins: number) => (mins / 60).toFixed(2)
-const todayStr = () => new Date().toISOString().slice(0, 10)
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 const nowHHMM = () => new Date().toTimeString().slice(0, 5)
 
 function minutesBetween(a: string, b: string): number {

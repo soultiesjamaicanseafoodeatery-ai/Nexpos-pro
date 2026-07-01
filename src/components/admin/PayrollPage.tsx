@@ -401,17 +401,15 @@ function EntryModal({ entry, users, onSave, onClose }: {
           <button className="mx" onClick={onClose}>×</button>
         </div>
         <div className="mb-c" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {!entry && (
-            <div>
-              <label style={lbl}>Staff Member</label>
-              <select style={inp} value={form.staffId} onChange={e => {
-                const u = users.find(x => x.id === e.target.value)
-                set('staffId', e.target.value); if (u) set('staffName', u.name)
-              }}>
-                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            </div>
-          )}
+          <div>
+            <label style={lbl}>Staff Member</label>
+            <select style={inp} value={form.staffId} onChange={e => {
+              const u = users.find(x => x.id === e.target.value)
+              set('staffId', e.target.value); if (u) set('staffName', u.name)
+            }}>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
           <div>
             <label style={lbl}>Date</label>
             <input style={inp} type="date" value={form.date} onChange={e => set('date', e.target.value)} />

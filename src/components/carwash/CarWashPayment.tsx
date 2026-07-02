@@ -190,7 +190,7 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
           {ticket}
         </div>
 
-        <div style={{ fontSize: 13, color: 'var(--txt3)' }}>Order added to Wash Queue as <strong>Waiting</strong></div>
+        <div style={{ fontSize: 13, color: 'var(--txt3)' }}>Order marked as <strong>Completed</strong></div>
 
         <div style={{ width: '100%', maxWidth: 420, background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', textAlign: 'left' }}>
           {[

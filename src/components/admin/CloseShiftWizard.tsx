@@ -15,6 +15,10 @@ const STEP_LABELS: Record<WStep,string> = {
 
 const fmtJ = (n: number) => 'J$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
 
+// A normal business shift shouldn't run longer than this — if it does,
+// End of Day was likely missed and this shift is mixing in a prior day's sales.
+const STALE_SHIFT_HOURS = 20
+
 interface CWData {
   authorizedUser: User | null
   openingFloat: string
@@ -92,6 +96,8 @@ export default function CloseShiftWizard() {
   // ── Shift transactions ────────────────────────────────────────
   const _todayMidnight = new Date(); _todayMidnight.setHours(0, 0, 0, 0)
   const shiftStart = savedShiftStart ?? currentShift?.start ?? _todayMidnight.toISOString()
+  const shiftAgeHours = currentShift ? (Date.now() - new Date(currentShift.start).getTime()) / 3600000 : 0
+  const shiftIsStale = shiftAgeHours > STALE_SHIFT_HOURS
   const shiftTxs = transactions.filter(tx => {
     if (tx.voided) return false
     if (typeof tx.ts !== 'string') return false
@@ -349,6 +355,14 @@ export default function CloseShiftWizard() {
       <Card>
         <CardHead title="System Validation" sub="Checking for open items before shift close" />
         <CardBody>
+          {shiftIsStale && currentShift && (
+            <div style={{ padding:'12px 14px', borderRadius:'var(--r2)', fontSize:12, color:'var(--red)', fontWeight:600,
+              background:'#7f1d1d18', border:'1px solid rgba(245,101,101,.3)', marginBottom:12 }}>
+              ⚠️ This shift started {new Date(currentShift.start).toLocaleString()} — {Math.floor(shiftAgeHours)}h ago, longer than a normal business day.
+              End of Day was likely never run on this device, so the totals below may include a previous day&apos;s sales mixed in with today&apos;s.
+              Double-check the numbers before counting cash, or use Force Close to reset the shift if the totals look wrong.
+            </div>
+          )}
           {valLoading ? (
             <div style={{ textAlign:'center', padding:32, color:'var(--txt3)', fontSize:13 }}>Checking system…</div>
           ) : (

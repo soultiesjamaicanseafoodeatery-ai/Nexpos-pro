@@ -14,6 +14,13 @@ function duration(start: string, end: string | null) {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`
 }
 
+// A normal business shift shouldn't run longer than this — if it does,
+// it likely spans a missed close and is mixing in a prior day's sales.
+const STALE_SHIFT_HOURS = 20
+function shiftAgeHours(start: string) {
+  return (Date.now() - new Date(start).getTime()) / 3600000
+}
+
 function isCashTx(tx: Transaction) {
   if (tx.voided) return false
   if (tx.payments && tx.payments.length > 0)
@@ -723,28 +730,39 @@ export default function ShiftsPage() {
       </div>
 
       {/* Active shift */}
-      {state.currentShift && (
-        <div style={{ background: '#14532d22', border: '1.5px solid var(--grn)', borderRadius: 'var(--r3)', padding: '14px 18px', marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--grn)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Active Shift</div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{state.currentShift.userName}</div>
-            <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2, textTransform: 'capitalize' }}>{state.currentShift.role} · {state.currentShift.modules.join(', ')}</div>
+      {state.currentShift && (() => {
+        const ageHrs = shiftAgeHours(state.currentShift.start)
+        const stale = ageHrs > STALE_SHIFT_HOURS
+        return (
+          <div style={{ background: stale ? '#7f1d1d22' : '#14532d22', border: `1.5px solid ${stale ? 'var(--red)' : 'var(--grn)'}`, borderRadius: 'var(--r3)', padding: '14px 18px', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: stale ? 'var(--red)' : 'var(--grn)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Active Shift</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{state.currentShift.userName}</div>
+                <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2, textTransform: 'capitalize' }}>{state.currentShift.role} · {state.currentShift.modules.join(', ')}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Started</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{new Date(state.currentShift.start).toLocaleTimeString()}</div>
+                <div style={{ fontSize: 11, fontWeight: stale ? 700 : 400, color: stale ? 'var(--red)' : 'var(--txt3)' }}>{duration(state.currentShift.start, null)} ago</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Transactions</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{state.currentShift.txCount}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Revenue</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--grn)' }}>{fmt(state.currentShift.revenue)}</div>
+              </div>
+            </div>
+            {stale && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(239,68,68,.25)', fontSize: 12, color: 'var(--red)', fontWeight: 600 }}>
+                ⚠️ This shift has been open {duration(state.currentShift.start, null)} — longer than a normal business day. It likely still includes a previous day&apos;s sales because End of Day was never run. Start End of Day below and use Force Close if needed to reset it before counting cash.
+              </div>
+            )}
           </div>
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Started</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{new Date(state.currentShift.start).toLocaleTimeString()}</div>
-            <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{duration(state.currentShift.start, null)} ago</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Transactions</div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{state.currentShift.txCount}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Revenue</div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--grn)' }}>{fmt(state.currentShift.revenue)}</div>
-          </div>
-        </div>
-      )}
+        )
+      })()}
 
       <button
         onClick={() => setShowEOD(true)}

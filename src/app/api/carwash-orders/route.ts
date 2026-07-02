@@ -10,10 +10,18 @@ const SB = () => ({
   Prefer: 'return=representation',
 })
 
+// Jamaica is UTC-5 year-round (no DST). The server runs in UTC, so
+// midnight Jamaica time = 05:00 UTC on the Jamaica calendar date.
+// Using server-local midnight here would roll "today" over at 7 PM
+// Jamaica time instead of 12 AM, causing carwash orders to roll into
+// the wrong business day.
+function jamaicaDayStart(): Date {
+  const jamaicaNow = new Date(Date.now() - 5 * 60 * 60 * 1000)
+  return new Date(Date.UTC(jamaicaNow.getUTCFullYear(), jamaicaNow.getUTCMonth(), jamaicaNow.getUTCDate(), 5, 0, 0, 0))
+}
+
 export async function GET() {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const from = today.toISOString()
+  const from = jamaicaDayStart().toISOString()
 
   const res = await fetch(
     `${SUPA_URL}/rest/v1/carwash_orders?created_at=gte.${encodeURIComponent(from)}&order=created_at.asc`,
@@ -27,10 +35,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json()
 
-  const dayStart = new Date()
-  dayStart.setHours(0, 0, 0, 0)
   const lastRes = await fetch(
-    `${SUPA_URL}/rest/v1/carwash_orders?select=ticket_no&created_at=gte.${encodeURIComponent(dayStart.toISOString())}&order=created_at.desc&limit=1`,
+    `${SUPA_URL}/rest/v1/carwash_orders?select=ticket_no&created_at=gte.${encodeURIComponent(jamaicaDayStart().toISOString())}&order=created_at.desc&limit=1`,
     { headers: SB() }
   )
   const lastData = await lastRes.json()

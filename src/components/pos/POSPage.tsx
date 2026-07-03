@@ -517,9 +517,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
   const handleAddOpenItem = (description: string, price: number) => {
     if (!currentUser) return
+    const id = crypto.randomUUID()
     const cartItem: CartItem = {
-      id: crypto.randomUUID(),
-      itemId: 'OPEN_ITEM',
+      id,
+      // Unique per add (not a shared 'OPEN_ITEM' sentinel) so the cart's
+      // merge-by-itemId logic in ADD_TO_CART never coincidentally matches
+      // two different Open Items and collapses them into one quantity.
+      itemId: `OPEN_ITEM-${id}`,
       name: description,
       price,
       qty: 1,

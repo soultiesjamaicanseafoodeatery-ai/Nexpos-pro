@@ -127,13 +127,13 @@ export default function ShiftsPage() {
   const allShifts    = [...state.shifts].sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime())
   const totalRevenue = allShifts.filter(s => s.end).reduce((sum, s) => sum + s.revenue, 0)
 
-  // ── Staff: transaction-based activity ─────────────────────────
-  const myAllTxs = isStaff && user
+  // ── My Shift: transaction-based activity (any logged-in role) ──
+  const myAllTxs = user
     ? [...state.transactions]
         .filter(tx => !tx.voided && tx.cashier === user.name)
         .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
     : []
-  const myOrdersAll = isStaff && user
+  const myOrdersAll = user
     ? [...state.transactions]
         .filter(tx => tx.cashier === user.name)
         .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())

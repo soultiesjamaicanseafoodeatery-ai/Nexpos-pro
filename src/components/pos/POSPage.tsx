@@ -17,6 +17,7 @@ import OpenItemModal from './OpenItemModal'
 import { MODULE_DATA } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
 import { storage } from '@/lib/utils/storage'
+import { jamaicaDateKey } from '@/lib/utils/businessDate'
 
 // ── Relational menu types (used by live state in POSPage) ─────
 interface FlavourRow { id: string; name: string; active: boolean }
@@ -31,9 +32,9 @@ const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = 
   carwash:    { bg: 'var(--blue-bg)',            color: 'var(--blue)',          label: 'Wash' },
 }
 
-// Daily-resetting order counter — resets each new calendar day
+// Daily-resetting order counter — resets each new Jamaica business day
 function nextDailyOrderNum(): string {
-  const today = new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD'
+  const today = jamaicaDateKey()
   const stored = storage.get('daily_order_counter') as { date: string; count: number } | null
   const count = (stored?.date === today ? stored.count : 0) + 1
   storage.set('daily_order_counter', { date: today, count })

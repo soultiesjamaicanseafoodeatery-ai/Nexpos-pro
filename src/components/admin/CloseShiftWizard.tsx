@@ -5,6 +5,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import { hashPin } from '@/lib/utils/hash'
 import type { User } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
 
 type WStep = 'auth' | 'validate' | 'cash' | 'payments' | 'gratuity' | 'sales' | 'exceptions' | 'employees' | 'print' | 'confirm' | 'done'
 const STEPS: WStep[] = ['auth','validate','cash','payments','gratuity','sales','exceptions','employees','print','confirm','done']
@@ -94,8 +95,7 @@ export default function CloseShiftWizard() {
   const [countedSubmitted, setCountedSubmitted] = useState(false)
 
   // ── Shift transactions ────────────────────────────────────────
-  const _todayMidnight = new Date(); _todayMidnight.setHours(0, 0, 0, 0)
-  const shiftStart = savedShiftStart ?? currentShift?.start ?? _todayMidnight.toISOString()
+  const shiftStart = savedShiftStart ?? currentShift?.start ?? jamaicaDayStart().toISOString()
   const shiftAgeHours = currentShift ? (Date.now() - new Date(currentShift.start).getTime()) / 3600000 : 0
   const shiftIsStale = shiftAgeHours > STALE_SHIFT_HOURS
   const shiftTxs = transactions.filter(tx => {

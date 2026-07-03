@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { buildZReport, smartPrint } from '@/lib/utils/ticketPrinter'
 import type { ZReportData, PrintWidth } from '@/lib/utils/ticketPrinter'
+import { jamaicaDateKey, isSameBusinessDay } from '@/lib/utils/businessDate'
 
 const JMD_DENOMS = [
   { label: '$5,000 Bill', value: 5000 },
@@ -16,18 +17,8 @@ const JMD_DENOMS = [
   { label: '$1 Coin',     value: 1    },
 ]
 
-// Jamaica is UTC-5 year-round (no DST). Business-day boundaries must be
-// computed from Jamaica's clock, not the viewing device's — comparing a
-// UTC-parsed reference date against a transaction's LOCAL date components
-// (as this used to do) silently shifts by a day on any non-UTC browser,
-// including devices physically outside Jamaica.
-function jamaicaDateKey(ts: string): string {
-  const d = new Date(new Date(ts).getTime() - 5 * 60 * 60 * 1000)
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
-}
-
 function sameDay(ts: string, isoDate: string) {
-  try { return jamaicaDateKey(ts) === isoDate } catch { return false }
+  return isSameBusinessDay(ts, isoDate)
 }
 
 interface Props { onClose: () => void }

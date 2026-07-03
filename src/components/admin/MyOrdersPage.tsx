@@ -3,10 +3,11 @@ import { useState, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { OrderTicket, HeldOrder, Transaction, CartItem } from '@/types'
 import { buildCustomerReceipt, smartPrint } from '@/lib/utils/ticketPrinter'
+import { jamaicaDateKey } from '@/lib/utils/businessDate'
 
 // ── Helpers ───────────────────────────────────────────────────
 function txDateKey(ts: string): string {
-  try { return new Date(ts).toISOString().slice(0, 10) } catch { return '' }
+  try { return jamaicaDateKey(ts) } catch { return '' }
 }
 
 function elapsedMin(ts: string): string {
@@ -267,7 +268,7 @@ export default function MyOrdersPage() {
   const fmt = (n: number) => sym + (n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const isManager = ['admin', 'manager'].includes(currentUser?.role ?? '')
-  const todayStr  = new Date().toISOString().slice(0, 10)
+  const todayStr  = jamaicaDateKey()
 
   const [tab,          setTab]          = useState<'active' | 'history'>('active')
   const [searchQ,      setSearchQ]      = useState('')
@@ -303,10 +304,8 @@ export default function MyOrdersPage() {
 
   // ── History: transactions ─────────────────────────────────────
   const dateRange = useMemo(() => {
-    const yest = new Date(); yest.setDate(yest.getDate() - 1)
-    const yestStr = yest.toISOString().slice(0, 10)
-    const week = new Date(); week.setDate(week.getDate() - 6)
-    const weekStr = week.toISOString().slice(0, 10)
+    const yestStr = jamaicaDateKey(Date.now() - 24 * 60 * 60 * 1000)
+    const weekStr = jamaicaDateKey(Date.now() - 6 * 24 * 60 * 60 * 1000)
     if (dateFilter === 'today')     return { from: todayStr, to: todayStr }
     if (dateFilter === 'yesterday') return { from: yestStr,  to: yestStr  }
     if (dateFilter === 'last7')     return { from: weekStr,  to: todayStr }

@@ -1,4 +1,5 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
+import { jamaicaDayStart } from '@/lib/utils/businessDate'
 
 const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^﻿/, '')
 const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').replace(/^﻿/, '')
@@ -9,16 +10,6 @@ const SB = () => ({
   'Content-Type': 'application/json',
   Prefer: 'return=representation',
 })
-
-// Jamaica is UTC-5 year-round (no DST). The server runs in UTC, so
-// midnight Jamaica time = 05:00 UTC on the Jamaica calendar date.
-// Using server-local midnight here would roll "today" over at 7 PM
-// Jamaica time instead of 12 AM, causing carwash orders to roll into
-// the wrong business day.
-function jamaicaDayStart(): Date {
-  const jamaicaNow = new Date(Date.now() - 5 * 60 * 60 * 1000)
-  return new Date(Date.UTC(jamaicaNow.getUTCFullYear(), jamaicaNow.getUTCMonth(), jamaicaNow.getUTCDate(), 5, 0, 0, 0))
-}
 
 export async function GET() {
   const from = jamaicaDayStart().toISOString()

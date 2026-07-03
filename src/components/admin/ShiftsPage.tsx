@@ -4,6 +4,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import EODWizard from './EODWizard'
 import type { Transaction, HeldOrder, POSState } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { jamaicaDateKey, isSameBusinessDay } from '@/lib/utils/businessDate'
 
 function duration(start: string, end: string | null) {
   const s = new Date(start).getTime()
@@ -34,18 +35,8 @@ function cashAmount(tx: Transaction) {
   return tx.total
 }
 
-// Jamaica is UTC-5 year-round (no DST). Business-day boundaries must be
-// computed from Jamaica's clock, not the viewing device's — comparing a
-// UTC-parsed reference date against a transaction's LOCAL date components
-// (as this used to do) silently shifts by a day on any non-UTC browser,
-// including devices physically outside Jamaica.
-function jamaicaDateKey(ts: string): string {
-  const d = new Date(new Date(ts).getTime() - 5 * 60 * 60 * 1000)
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
-}
-
 function sameDay(ts: string, isoDate: string) {
-  try { return jamaicaDateKey(ts) === isoDate } catch { return false }
+  return isSameBusinessDay(ts, isoDate)
 }
 
 function txDateKey(ts: string) {
@@ -125,6 +116,12 @@ export default function ShiftsPage() {
   const [actualCash,   setActualCash]   = useState('')
   const [clockOutStep, setClockOutStep] = useState<'idle' | 'confirm' | 'saving'>('idle')
   const [clockOutError, setClockOutError] = useState('')
+
+  // My Shift always defaults to the logged-in user's own shift, for every
+  // role. Admins/managers can switch to the terminal-wide view to run EOD
+  // or look up other staff via Shift History — but "mine" is always first.
+  const [viewMode, setViewMode] = useState<'mine' | 'terminal'>('mine')
+  const [shiftHistoryFilter, setShiftHistoryFilter] = useState('')
 
   // ── Admin/Manager: shift records ──────────────────────────────
   const allShifts    = [...state.shifts].sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime())
@@ -368,16 +365,24 @@ export default function ShiftsPage() {
     dispatch({ type: 'CLOCK_OUT' })
   }
 
-  // ── Staff view ────────────────────────────────────────────────
-  if (isStaff && user) {
+  // ── My Shift (personal view) — default for every role ──────────
+  if (user && (isStaff || viewMode === 'mine')) {
     return (
       <>
       <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
 
         {/* Header */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>My Shift</div>
-          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>Activity tracked per transaction</div>
+        <div style={{ marginBottom: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>My Shift</div>
+            <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>Activity tracked per transaction</div>
+          </div>
+          {!isStaff && (
+            <button onClick={() => setViewMode('terminal')}
+              style={{ padding: '8px 16px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)' }}>
+              Terminal Overview &amp; EOD →
+            </button>
+          )}
         </div>
 
         {/* Session card */}
@@ -721,16 +726,22 @@ export default function ShiftsPage() {
     )
   }
 
-  // ── Admin / Manager view (unchanged) ─────────────────────────
+  // ── Terminal Overview (admin/manager only) — EOD, active shift, history ──
   return (
     <div style={{ padding: '18px 20px', overflowY: 'auto', height: '100%', flex: 1 }}>
 
       {/* Page header */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>Shifts</div>
-        <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>
-          {allShifts.length} recorded · {fmt(totalRevenue)} total revenue
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-.4px' }}>Terminal Overview</div>
+          <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 3 }}>
+            {allShifts.length} recorded · {fmt(totalRevenue)} total revenue
+          </div>
         </div>
+        <button onClick={() => setViewMode('mine')}
+          style={{ padding: '8px 16px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt2)' }}>
+          ← My Shift
+        </button>
       </div>
 
       {/* Active shift */}
@@ -923,12 +934,24 @@ export default function ShiftsPage() {
       </div>
 
       {/* ── Shift History ─────────────────────────────────────── */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)', marginBottom: 8 }}>Shift History</div>
+      <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>Shift History</div>
+        <input
+          type="text"
+          value={shiftHistoryFilter}
+          onChange={e => setShiftHistoryFilter(e.target.value)}
+          placeholder="Filter by employee name…"
+          style={{ padding: '7px 12px', borderRadius: 'var(--r2)', fontSize: 12, border: '1px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', minWidth: 200 }}
+        />
       </div>
       <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
-        {allShifts.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>No shifts recorded yet.</div>
+        {(() => {
+          const q = shiftHistoryFilter.trim().toLowerCase()
+          const filteredShifts = q ? allShifts.filter(s => s.userName.toLowerCase().includes(q)) : allShifts
+          return filteredShifts.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>
+            {allShifts.length === 0 ? 'No shifts recorded yet.' : 'No shifts match that filter.'}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -940,7 +963,7 @@ export default function ShiftsPage() {
                 </tr>
               </thead>
               <tbody>
-                {allShifts.map(s => {
+                {filteredShifts.map(s => {
                   const isActive = !s.end
                   return (
                     <tr key={s.id} style={{ borderBottom: '1px solid var(--bdr2)' }}>
@@ -962,7 +985,8 @@ export default function ShiftsPage() {
               </tbody>
             </table>
           </div>
-        )}
+          )
+        })()}
       </div>
     </div>
   )

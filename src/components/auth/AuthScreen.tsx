@@ -8,6 +8,7 @@ import { hashPin } from '@/lib/utils/hash'
 
 const WEAK_PINS = ['1234', '2222', '3333', '4444', '5555', '6666', '0000', '1111', '9999', '1212']
 const GRACE_MS  = 40 * 60 * 1000  // 40-minute resume window after clock-out
+const FRESH_PIN_TIMEOUT_MS = 1500 // cap on the fresh-PIN network check before falling back to cached data
 
 const MOD_TAG_CLS: Record<string, string> = {
   restaurant: 'mod-rest',
@@ -167,12 +168,17 @@ export default function AuthScreen() {
     setPin(newPin)
 
     if (newPin.length === 4) {
-      setTimeout(async () => {
-        // Always fetch fresh user data from Supabase so PIN changes take effect immediately on all devices
+      (async () => {
+        // Always fetch fresh user data from Supabase so PIN changes take effect immediately on all
+        // devices — but cap the wait so a slow connection doesn't stall login; fall back to cached
+        // PIN data (same fallback already used when the request fails outright) if it's too slow.
         let freshPinHash: string | undefined = selectedUser.pin_hash
         let freshPin: string | undefined = selectedUser.pin
         try {
-          const rows: unknown = await fetch('/api/staff').then(r => r.ok ? r.json() : null)
+          const rows: unknown = await Promise.race([
+            fetch('/api/staff').then(r => r.ok ? r.json() : null),
+            new Promise<null>(resolve => setTimeout(() => resolve(null), FRESH_PIN_TIMEOUT_MS)),
+          ])
           if (Array.isArray(rows)) {
             const fresh = rows.find((r: Record<string, unknown>) => r.id === selectedUser.id)
             if (fresh) { freshPinHash = fresh.pin_hash as string | undefined; freshPin = fresh.pin as string | undefined }
@@ -201,7 +207,7 @@ export default function AuthScreen() {
               doLogin(selectedUser, false)
               if (wasWeakPin) setShowWeakPinWarning(true)
             }
-          }, 280)
+          }, 150)
         } else {
           const attempts = recordFailedAttempt(selectedUser.id)
           const lockout2 = isLockedOut(selectedUser.id)
@@ -216,7 +222,7 @@ export default function AuthScreen() {
             if (!lockout2.locked) setError('')
           }, 1000)
         }
-      }, 200)
+      })()
     }
   }, [selectedUser, pin, toast, doLogin])
 

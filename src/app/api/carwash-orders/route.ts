@@ -45,6 +45,11 @@ export async function POST(req: NextRequest) {
     .join(', ')
   const servicePrice = svcs.reduce((sum, s) => sum + Number(s.price) * (s.qty ?? 1), 0)
 
+  // Default stays 'completed' (dedicated Car Wash module: wash happens, then payment).
+  // Callers can pass status: 'waiting' when the wash hasn't happened yet
+  // (e.g. a car wash item bundled into a restaurant order, paid up front).
+  const status = body.status === 'waiting' ? 'waiting' : 'completed'
+
   const row = {
     id:            `CWO-${Date.now()}`,
     ticket_no,
@@ -58,8 +63,8 @@ export async function POST(req: NextRequest) {
     addons:        body.addons ?? [],
     addons_total:  Number(body.addonsTotal ?? 0),
     notes:         body.notes ?? '',
-    status:        'completed',
-    completed_at:  new Date().toISOString(),
+    status,
+    completed_at:  status === 'completed' ? new Date().toISOString() : null,
     payment_method: body.paymentMethod ?? 'cash',
     total:         Number(body.total ?? 0),
     employee_name: body.employeeName ?? '',

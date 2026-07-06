@@ -619,6 +619,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             paymentMethod: payData.method,
             total:         cwTotal,
             employeeName:  currentUser.name,
+            status:        'waiting',
           }),
         }).catch(() => {})
       }
@@ -763,6 +764,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
           paymentMethod: payData.method,
           total:         cwTotal,
           employeeName:  currentUser.name,
+          status:        'waiting',
         }),
       }).catch(() => {})
     }

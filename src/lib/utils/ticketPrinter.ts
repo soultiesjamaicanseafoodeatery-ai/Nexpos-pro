@@ -142,7 +142,7 @@ export function buildCustomerReceipt(
   // Order info
   const orderNum = String(tx.id).slice(-4).padStart(4, '0')
   L.push(row('Receipt #:', orderNum, w))
-  L.push(row('Date/Time:', sanitize(jamaicaDateTimeString(tx.ts)), w))
+  L.push(row('Date/Time:', sanitize(jamaicaDateTimeString(tx.id > 1e12 ? tx.id : tx.ts)), w))
   L.push(row('Cashier:', sanitize(tx.cashier), w))
   if (tx.tableNum)                         L.push(row('Table:', sanitize(tx.tableNum), w))
   if (tx.guestCount && tx.guestCount > 1)  L.push(row('Guests:', String(tx.guestCount), w))

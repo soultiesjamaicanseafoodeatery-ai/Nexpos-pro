@@ -13,6 +13,15 @@ export interface CwAddon {
   id: string; name: string; description: string; price: number; is_available: boolean
 }
 export type PayMethod = 'cash' | 'card' | 'mixed'
+export const VEHICLE_TYPES = ['Car', 'SUV', 'Pickup', 'Van', 'Truck'] as const
+
+export interface PaymentPrefill {
+  plate?: string
+  vehicleType?: string
+  customerName?: string
+  phone?: string
+  payMethod?: PayMethod
+}
 
 export interface HeldCarWash {
   id: string
@@ -56,7 +65,7 @@ export default function CarWashFlow() {
   const [step, setStep] = useState<'services' | 'payment'>('services')
   const [services, setServices] = useState<CwService[]>([])
   const [addons, setAddons] = useState<CwAddon[]>([])
-  const [resumeData, setResumeData] = useState<HeldCarWash | null>(null)
+  const [prefill, setPrefill] = useState<PaymentPrefill | null>(null)
   const [held, setHeld] = useState<HeldCarWash[]>([])
   const [showHeld, setShowHeld] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
@@ -79,7 +88,7 @@ export default function CarWashFlow() {
     return () => clearInterval(id)
   }, [loadHeld])
 
-  const reset = () => { setServices([]); setAddons([]); setResumeData(null); setStep('services') }
+  const reset = () => { setServices([]); setAddons([]); setPrefill(null); setStep('services') }
 
   const holdDraft = async (draft: {
     services: CwService[]; addons: CwAddon[]
@@ -117,7 +126,7 @@ export default function CarWashFlow() {
   const resumeHeld = (h: HeldCarWash) => {
     setServices(h.services)
     setAddons(h.addons)
-    setResumeData(h)
+    setPrefill(h)
     setStep('payment')
     setShowHeld(false)
     setHeld(list => list.filter(x => x.id !== h.id))
@@ -142,7 +151,7 @@ export default function CarWashFlow() {
         <CarWashPayment
           services={services}
           addons={addons}
-          initial={resumeData ?? undefined}
+          initial={prefill ?? undefined}
           onBack={() => setStep('services')}
           onComplete={reset}
           onHold={draft => holdDraft({ services, addons, ...draft })}
@@ -150,8 +159,8 @@ export default function CarWashFlow() {
         />
       ) : (
         <CarWashPackageSelect
-          onSelect={(svcs, adds) => { setServices(svcs); setAddons(adds); setResumeData(null); setStep('payment') }}
-          onHold={(svcs, adds) => holdDraft({ services: svcs, addons: adds })}
+          onSelect={(svcs, adds, plate, vehicleType) => { setServices(svcs); setAddons(adds); setPrefill({ plate, vehicleType }); setStep('payment') }}
+          onHold={(svcs, adds, plate, vehicleType) => holdDraft({ services: svcs, addons: adds, plate, vehicleType })}
           heldBadge={heldBadge}
         />
       )}

@@ -4,17 +4,16 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { Transaction } from '@/types'
-import type { CwService, CwAddon, HeldCarWash, PayMethod } from './CarWashFlow'
+import { VEHICLE_TYPES } from './CarWashFlow'
+import type { CwService, CwAddon, PaymentPrefill, PayMethod } from './CarWashFlow'
 
 const fmtJ = (n: number) =>
   'J$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-const VEHICLE_TYPES = ['Car', 'SUV', 'Pickup', 'Van', 'Truck'] as const
-
 interface Props {
   services: CwService[]
   addons: CwAddon[]
-  initial?: HeldCarWash
+  initial?: PaymentPrefill
   onBack: () => void
   onComplete: () => void
   onHold: (draft: { plate: string; vehicleType: string; customerName: string; phone: string; payMethod: PayMethod }) => void

@@ -2,16 +2,23 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
+import { VEHICLE_TYPES } from './CarWashFlow'
 import type { CwService, CwAddon } from './CarWashFlow'
 
 interface Props {
-  onSelect: (services: CwService[], addons: CwAddon[]) => void
-  onHold: (services: CwService[], addons: CwAddon[]) => void
+  onSelect: (services: CwService[], addons: CwAddon[], plate: string, vehicleType: string) => void
+  onHold: (services: CwService[], addons: CwAddon[], plate: string, vehicleType: string) => void
   heldBadge: ReactNode
 }
 
 const fmtJ = (n: number) =>
   'J$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+const inp: React.CSSProperties = {
+  width: '100%', background: 'var(--surf2)', border: '1.5px solid var(--bdr2)',
+  borderRadius: 'var(--r2)', padding: '10px 12px', fontSize: 14, color: 'var(--txt)',
+  boxSizing: 'border-box', outline: 'none',
+}
 
 export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Props) {
   const [services, setServices] = useState<CwService[]>([])
@@ -19,6 +26,8 @@ export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Pr
   const [selAddons, setSelAddons] = useState<CwAddon[]>([])
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [plate, setPlate] = useState('')
+  const [vehicleType, setVehicleType] = useState('Car')
 
   useEffect(() => {
     Promise.all([
@@ -87,6 +96,33 @@ export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Pr
 
       {/* Scrollable body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+
+        {/* Vehicle */}
+        <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', marginBottom: 20 }}>
+          <div style={{ padding: '10px 16px', background: 'var(--bg2)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid var(--bdr)' }}>
+            Vehicle
+          </div>
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input
+              type="text"
+              value={plate}
+              onChange={e => setPlate(e.target.value.toUpperCase())}
+              placeholder="License Plate (e.g. ABC-1234)"
+              style={{ ...inp, fontFamily: 'var(--mono)', fontWeight: 700, letterSpacing: '2px', fontSize: 15 }}
+            />
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {VEHICLE_TYPES.map(t => (
+                <button
+                  key={t}
+                  onClick={() => setVehicleType(t)}
+                  style={{ padding: '6px 12px', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '2px solid', borderColor: vehicleType === t ? 'var(--blue)' : 'var(--bdr)', background: vehicleType === t ? 'var(--blue-bg)' : 'var(--surf2)', color: vehicleType === t ? 'var(--blue)' : 'var(--txt2)', transition: 'all .12s' }}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
         {/* Services */}
         <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
@@ -224,7 +260,7 @@ export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Pr
         <div style={{ display: 'flex', gap: 8 }}>
           {anySelected && (
             <button
-              onClick={() => onHold(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons)}
+              onClick={() => onHold(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons, plate.trim(), vehicleType)}
               style={{
                 flex: '0 0 auto', padding: '15px 20px',
                 background: 'transparent', color: 'var(--txt2)',
@@ -237,7 +273,7 @@ export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Pr
           )}
           <button
             disabled={!anySelected}
-            onClick={() => onSelect(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons)}
+            onClick={() => onSelect(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons, plate.trim(), vehicleType)}
             style={{
               flex: 1, padding: '15px 0',
               background: anySelected ? 'var(--blue)' : 'var(--bdr)',

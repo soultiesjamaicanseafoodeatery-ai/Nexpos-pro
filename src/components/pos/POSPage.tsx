@@ -719,6 +719,30 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     if (hasCarwash) {
       const html = buildCarwashWorkOrder(ticketData, { width: pw })
       smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw, true)
+
+      // Also log a Wash Queue ticket so this shows up in the Car Wash module,
+      // not just as a paper work order — same table a wash entered through
+      // the dedicated Car Wash screen writes to.
+      const cwItems = cart.filter(ci => ci.module === 'carwash')
+      const cwPlate = cwItems.find(ci => ci.plate)?.plate ?? ''
+      const cwAddonsTotal = cwItems.reduce((s, ci) => s + ci.addons.reduce((a, ad) => a + ad.price, 0) * ci.qty, 0)
+      const cwTotal = cwItems.reduce((s, ci) => s + (ci.price + ci.addons.reduce((a, ad) => a + ad.price, 0)) * ci.qty, 0)
+      fetch('/api/carwash-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName:  customerName || '',
+          phone:         customerPhone || '',
+          vehicleType:   'Car',
+          plate:         cwPlate,
+          services:      cwItems.map(ci => ({ id: ci.itemId, name: ci.name, price: ci.price, qty: ci.qty })),
+          addons:        cwItems.flatMap(ci => ci.addons.map(a => ({ id: a.id, name: a.name, price: a.price }))),
+          addonsTotal:   cwAddonsTotal,
+          paymentMethod: payData.method,
+          total:         cwTotal,
+          employeeName:  currentUser.name,
+        }),
+      }).catch(() => {})
     }
     // Auto-print receipt (always, unless receipt preview modal is enabled in Settings)
     if (biz.printers?.receipt && !biz.printers?.receiptPreview) {

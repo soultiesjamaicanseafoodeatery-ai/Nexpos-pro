@@ -355,6 +355,84 @@ export function buildBarTicket(data: BOTData, opts: { width?: PrintWidth } = {})
   return `<pre>${L.join('\n')}</pre>`
 }
 
+// ── Car Wash Customer Receipt ──────────────────────────────────────────────────
+export interface CarwashReceiptData {
+  ticket: string
+  ts: string | number
+  plate?: string
+  vehicleType?: string
+  customerName?: string
+  phone?: string
+  services: { name: string; price: number; qty?: number }[]
+  addons: { name: string; price: number }[]
+  subtotal: number
+  taxAmount: number
+  total: number
+  payMethod: string
+  tendered?: number
+  change?: number
+  staffName?: string
+}
+
+export function buildCarwashReceipt(
+  data: CarwashReceiptData,
+  biz: BusinessConfig,
+  opts: { width?: PrintWidth } = {}
+): string {
+  const w = COLS[opts.width ?? 80]
+  const sym = biz.currencySymbol ?? 'J$'
+  const fmtN = (n: number) =>
+    sym + (n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const L: string[] = []
+
+  L.push(div('=', w))
+  L.push(center(sanitize(biz.name).toUpperCase(), w))
+  if (biz.address) L.push(center(sanitize(biz.address), w))
+  if (biz.phone)   L.push(center('Tel: ' + sanitize(biz.phone), w))
+  L.push(div('=', w))
+  L.push(center(data.ticket, w))
+  L.push(row('Date/Time:', sanitize(jamaicaDateTimeString(data.ts)), w))
+  if (data.staffName) L.push(row('Staff:', sanitize(data.staffName), w))
+  L.push(div('-', w))
+
+  if (data.plate || data.vehicleType || data.customerName || data.phone) {
+    if (data.plate)        L.push(row('Plate:', sanitize(data.plate).toUpperCase(), w))
+    if (data.vehicleType)  L.push(row('Vehicle:', sanitize(data.vehicleType), w))
+    if (data.customerName) L.push(row('Customer:', sanitize(data.customerName), w))
+    if (data.phone)        L.push(row('Phone:', sanitize(data.phone), w))
+    L.push(div('-', w))
+  }
+
+  L.push('SERVICES')
+  L.push(div('-', w))
+  for (const s of data.services) {
+    const qty = s.qty ?? 1
+    const lineTotal = s.price * qty
+    const prefix = qty > 1 ? `${qty}x ` : ''
+    itemWrap(prefix, sanitize(s.name), w - fmtN(lineTotal).length - 1).forEach((l, i) => {
+      L.push(i === 0 ? row(l, fmtN(lineTotal), w) : l)
+    })
+  }
+  for (const a of data.addons)
+    L.push(row('+ ' + sanitize(a.name), fmtN(a.price), w))
+  L.push(div('=', w))
+
+  L.push(row('Subtotal:', fmtN(data.subtotal), w))
+  if (data.taxAmount > 0) L.push(row('GCT (15%):', fmtN(data.taxAmount), w))
+  L.push(row('TOTAL:', fmtN(data.total), w))
+  L.push(div('=', w))
+
+  L.push(row('Payment:', data.payMethod.charAt(0).toUpperCase() + data.payMethod.slice(1), w))
+  if (data.tendered != null) L.push(row('Tendered:', fmtN(data.tendered), w))
+  if (data.change   != null) L.push(row('Change:', fmtN(data.change), w))
+  L.push(div('=', w))
+
+  L.push(center('Thank you!', w))
+  L.push(div('=', w))
+
+  return `<pre>${L.join('\n')}</pre>`
+}
+
 // ── Car Wash Work Order ───────────────────────────────────────────────────────
 export interface CWOData {
   orderNum: string

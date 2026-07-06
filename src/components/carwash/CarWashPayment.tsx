@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { Transaction } from '@/types'
+import { smartPrint, buildCarwashReceipt } from '@/lib/utils/ticketPrinter'
 import { VEHICLE_TYPES } from './CarWashFlow'
 import type { CwService, CwAddon, PaymentPrefill, PayMethod } from './CarWashFlow'
 
@@ -39,6 +40,7 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
   const [saving,       setSaving]       = useState(false)
   const [error,        setError]        = useState('')
   const [ticket,       setTicket]       = useState<string | null>(null)
+  const [completedAt,  setCompletedAt]  = useState('')
 
   const servicesTotal = services.reduce((s, svc) => s + svc.price * (svc.qty ?? 1), 0)
   const addonTotal    = addons.reduce((s, a) => s + a.price, 0)
@@ -77,6 +79,7 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
       const order = await res.json()
       setTicket(order.ticket_no)
       const nowTs = new Date()
+      setCompletedAt(nowTs.toISOString())
       const cwTx: Transaction = {
         id:          Date.now() + Math.floor(Math.random() * 1000),
         ts:          nowTs.toISOString(),
@@ -106,79 +109,23 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
     }
   }
 
-  // ── Print receipt via Blob URL (avoids about:blank / CSP issues) ──
+  // ── Print receipt — same silent QZ Tray path as every other receipt in the app ──
   const printReceipt = () => {
-    const bizName = biz?.name ?? 'Car Wash'
-    const printChange = payMethod === 'cash' && cashTendered && tendered >= total ? change : null
-
-    const infoRows = [
-      plate        ? `<div class="row"><span>Plate</span><span>${plate}</span></div>` : '',
-      vehicleType  ? `<div class="row"><span>Vehicle</span><span>${vehicleType}</span></div>` : '',
-      customerName ? `<div class="row"><span>Customer</span><span>${customerName}</span></div>` : '',
-      phone        ? `<div class="row"><span>Phone</span><span>${phone}</span></div>` : '',
-    ].filter(Boolean).join('')
-
-    const serviceRows = services
-      .map(s => {
-        const qty = s.qty ?? 1
-        const label = qty > 1 ? `${s.name} ×${qty}` : s.name
-        return `<div class="row"><span>${label}</span><span>${fmtJ(s.price * qty)}</span></div>`
-      })
-      .join('')
-
-    const addonRows = addons
-      .map(a => `<div class="row"><span>+ ${a.name}</span><span>${fmtJ(a.price)}</span></div>`)
-      .join('')
-
-    const changeRow = printChange !== null
-      ? `<div class="row"><span>Cash Tendered</span><span>${fmtJ(tendered)}</span></div>` +
-        `<div class="row total"><span>Change</span><span>${fmtJ(printChange)}</span></div>`
-      : ''
-
-    const html = [
-      '<!DOCTYPE html><html><head>',
-      `<title>${ticket ?? ''}</title>`,
-      '<style>',
-      '*{margin:0;padding:0;box-sizing:border-box}',
-      'body{font-family:"Courier New",monospace;font-size:12px;padding:16px;max-width:300px}',
-      '.c{text-align:center}.biz{font-size:15px;font-weight:700;margin-bottom:2px}',
-      '.d{border-top:1px dashed #000;margin:8px 0}.row{display:flex;justify-content:space-between;margin:3px 0}',
-      '.ticket{font-size:20px;font-weight:700;letter-spacing:2px;margin:8px 0}',
-      '.total{font-size:15px;font-weight:700}.cap{text-transform:capitalize}',
-      '</style></head><body>',
-      `<div class="c"><div class="biz">${bizName}</div>`,
-      `<div>${new Date().toLocaleString()}</div>`,
-      `<div class="ticket">${ticket}</div></div>`,
-      '<div class="d"></div>',
-      infoRows,
-      infoRows ? '<div class="d"></div>' : '',
-      serviceRows,
-      addonRows,
-      '<div class="d"></div>',
-      `<div class="row"><span>Subtotal</span><span>${fmtJ(subtotal)}</span></div>`,
-      taxAmount > 0 ? `<div class="row"><span>GCT (15%)</span><span>${fmtJ(taxAmount)}</span></div>` : '',
-      `<div class="row total"><span>TOTAL</span><span>${fmtJ(total)}</span></div>`,
-      `<div class="row"><span>Payment</span><span class="cap">${payMethod}</span></div>`,
-      changeRow,
-      currentUser?.name ? `<div class="row"><span>Staff</span><span>${currentUser.name}</span></div>` : '',
-      '<div class="d"></div>',
-      '<div class="c" style="margin-top:8px">Thank you!</div>',
-      '</body></html>',
-    ].join('')
-
-    const blob = new Blob([html], { type: 'text/html' })
-    const url  = URL.createObjectURL(blob)
-    const iframe = document.createElement('iframe')
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:340px;height:600px;visibility:hidden'
-    iframe.src = url
-    document.body.appendChild(iframe)
-    iframe.onload = () => {
-      iframe.contentWindow?.print()
-      setTimeout(() => {
-        try { document.body.removeChild(iframe) } catch { /* already removed */ }
-        URL.revokeObjectURL(url)
-      }, 1000)
-    }
+    if (!biz) return
+    const pw = (biz.printers?.width ?? 80) as 58 | 80
+    const printChange = (payMethod === 'cash' || payMethod === 'mixed') && cashTendered && tendered >= total ? change : undefined
+    const html = buildCarwashReceipt({
+      ticket: ticket ?? '',
+      ts: completedAt || new Date().toISOString(),
+      plate, vehicleType, customerName, phone,
+      services, addons,
+      subtotal, taxAmount, total,
+      payMethod,
+      tendered: printChange !== undefined ? tendered : undefined,
+      change: printChange,
+      staffName: currentUser?.name,
+    }, biz, { width: pw })
+    smartPrint(html, 'Car Wash Receipt', biz.printers?.receipt, pw)
   }
 
   // ── Success / receipt screen ──────────────────────────────

@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { NoSaleLog, NoSaleReason, User } from '@/types'
 import { NO_SALE_REASON_LABELS } from '@/types'
@@ -108,6 +108,34 @@ export default function NoSaleModal({ isOpen, onClose }: Props) {
     execute(mgr)
   }
 
+  const pressKey = useCallback((digit: string) => {
+    setPin(p => p.length < 4 ? p + digit : p)
+    setPinError('')
+  }, [])
+
+  const delKey = useCallback(() => {
+    setPin(p => p.slice(0, -1))
+    setPinError('')
+  }, [])
+
+  // Keyboard support — digits, Backspace, Enter, Escape (mirrors AuthScreen PIN pad)
+  useEffect(() => {
+    if (step !== 'pin') return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') {
+        pressKey(e.key)
+      } else if (e.key === 'Backspace') {
+        delKey()
+      } else if (e.key === 'Enter') {
+        if (pin.length === 4) onPinSubmit()
+      } else if (e.key === 'Escape') {
+        setStep('reason'); setPin(''); setPinError('')
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [step, pin, pressKey, delKey])
+
   if (!isOpen) return null
 
   const reasonDisabled = reason === 'other' && !reasonText.trim()
@@ -183,10 +211,7 @@ export default function NoSaleModal({ isOpen, onClose }: Props) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                 {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((k, idx) => (
                   k === '' ? <div key={idx} /> :
-                  <button key={idx} onClick={() => {
-                    if (k === '⌫') { setPin(p => p.slice(0,-1)); setPinError(''); }
-                    else if (pin.length < 4) { const next = pin + k; setPin(next); setPinError(''); if (next.length === 4) setTimeout(() => {}, 0); }
-                  }} style={{ padding: '14px 0', fontSize: k === '⌫' ? 18 : 20, fontWeight: 700, borderRadius: 'var(--r2)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', cursor: 'pointer', userSelect: 'none' }}>
+                  <button key={idx} onClick={() => { k === '⌫' ? delKey() : pressKey(k) }} style={{ padding: '14px 0', fontSize: k === '⌫' ? 18 : 20, fontWeight: 700, borderRadius: 'var(--r2)', border: '1.5px solid var(--bdr)', background: 'var(--surf)', color: 'var(--txt)', cursor: 'pointer', userSelect: 'none' }}>
                     {k}
                   </button>
                 ))}

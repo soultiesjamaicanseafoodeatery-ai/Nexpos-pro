@@ -1,16 +1,19 @@
 ﻿'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import type { ReactNode } from 'react'
 import type { CwService, CwAddon } from './CarWashFlow'
 
 interface Props {
   onSelect: (services: CwService[], addons: CwAddon[]) => void
+  onHold: (services: CwService[], addons: CwAddon[]) => void
+  heldBadge: ReactNode
 }
 
 const fmtJ = (n: number) =>
   'J$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export default function CarWashPackageSelect({ onSelect }: Props) {
+export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Props) {
   const [services, setServices] = useState<CwService[]>([])
   const [addons, setAddons] = useState<CwAddon[]>([])
   const [selAddons, setSelAddons] = useState<CwAddon[]>([])
@@ -74,9 +77,12 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--bdr)', flexShrink: 0 }}>
-        <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--txt)' }}>Car Wash</div>
-        <div style={{ fontSize: 13, color: 'var(--txt3)', marginTop: 2 }}>Select one or more services</div>
+      <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--bdr)', flexShrink: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--txt)' }}>Car Wash</div>
+          <div style={{ fontSize: 13, color: 'var(--txt3)', marginTop: 2 }}>Select one or more services</div>
+        </div>
+        {heldBadge}
       </div>
 
       {/* Scrollable body */}
@@ -215,20 +221,35 @@ export default function CarWashPackageSelect({ onSelect }: Props) {
             <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 15, color: 'var(--txt)' }}>{fmtJ(total)}</span>
           </div>
         )}
-        <button
-          disabled={!anySelected}
-          onClick={() => onSelect(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons)}
-          style={{
-            width: '100%', padding: '15px 0',
-            background: anySelected ? 'var(--blue)' : 'var(--bdr)',
-            color: anySelected ? '#fff' : 'var(--txt3)',
-            border: 'none', borderRadius: 'var(--r3)',
-            fontSize: 16, fontWeight: 900, cursor: anySelected ? 'pointer' : 'not-allowed',
-            transition: 'background .15s',
-          }}
-        >
-          {!anySelected ? 'Select at least one service' : 'Proceed to Payment →'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {anySelected && (
+            <button
+              onClick={() => onHold(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons)}
+              style={{
+                flex: '0 0 auto', padding: '15px 20px',
+                background: 'transparent', color: 'var(--txt2)',
+                border: '1.5px solid var(--bdr)', borderRadius: 'var(--r3)',
+                fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Hold for Later
+            </button>
+          )}
+          <button
+            disabled={!anySelected}
+            onClick={() => onSelect(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons)}
+            style={{
+              flex: 1, padding: '15px 0',
+              background: anySelected ? 'var(--blue)' : 'var(--bdr)',
+              color: anySelected ? '#fff' : 'var(--txt3)',
+              border: 'none', borderRadius: 'var(--r3)',
+              fontSize: 16, fontWeight: 900, cursor: anySelected ? 'pointer' : 'not-allowed',
+              transition: 'background .15s',
+            }}
+          >
+            {!anySelected ? 'Select at least one service' : 'Proceed to Payment →'}
+          </button>
+        </div>
       </div>
     </div>
   )

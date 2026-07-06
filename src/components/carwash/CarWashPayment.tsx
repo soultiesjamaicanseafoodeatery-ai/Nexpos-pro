@@ -1,21 +1,24 @@
 'use client'
 
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { Transaction } from '@/types'
-import type { CwService, CwAddon } from './CarWashFlow'
+import type { CwService, CwAddon, HeldCarWash, PayMethod } from './CarWashFlow'
 
 const fmtJ = (n: number) =>
   'J$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-type PayMethod = 'cash' | 'card' | 'mixed'
 const VEHICLE_TYPES = ['Car', 'SUV', 'Pickup', 'Van', 'Truck'] as const
 
 interface Props {
   services: CwService[]
   addons: CwAddon[]
+  initial?: HeldCarWash
   onBack: () => void
   onComplete: () => void
+  onHold: (draft: { plate: string; vehicleType: string; customerName: string; phone: string; payMethod: PayMethod }) => void
+  heldBadge: ReactNode
 }
 
 const inp: React.CSSProperties = {
@@ -24,16 +27,16 @@ const inp: React.CSSProperties = {
   boxSizing: 'border-box', outline: 'none',
 }
 
-export default function CarWashPayment({ services, addons, onBack, onComplete }: Props) {
+export default function CarWashPayment({ services, addons, initial, onBack, onComplete, onHold, heldBadge }: Props) {
   const { state, dispatch } = useApp()
   const { currentUser, biz } = state
 
-  const [payMethod,    setPayMethod]    = useState<PayMethod>('cash')
+  const [payMethod,    setPayMethod]    = useState<PayMethod>(initial?.payMethod ?? 'cash')
   const [cashTendered, setCashTendered] = useState('')
-  const [plate,        setPlate]        = useState('')
-  const [vehicleType,  setVehicleType]  = useState('Car')
-  const [customerName, setCustomerName] = useState('')
-  const [phone,        setPhone]        = useState('')
+  const [plate,        setPlate]        = useState(initial?.plate ?? '')
+  const [vehicleType,  setVehicleType]  = useState(initial?.vehicleType ?? 'Car')
+  const [customerName, setCustomerName] = useState(initial?.customerName ?? '')
+  const [phone,        setPhone]        = useState(initial?.phone ?? '')
   const [saving,       setSaving]       = useState(false)
   const [error,        setError]        = useState('')
   const [ticket,       setTicket]       = useState<string | null>(null)
@@ -247,6 +250,7 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
             {serviceNames}{addons.length > 0 ? ` + ${addons.length} add-on${addons.length !== 1 ? 's' : ''}` : ''}
           </div>
         </div>
+        {heldBadge}
         <div style={{ marginLeft: 'auto', fontSize: 22, fontWeight: 900, color: 'var(--blue)', fontFamily: 'var(--mono)' }}>{fmtJ(total)}</div>
       </div>
 
@@ -377,11 +381,18 @@ export default function CarWashPayment({ services, addons, onBack, onComplete }:
       </div>
 
       {/* Footer */}
-      <div style={{ padding: '14px 24px', borderTop: '1px solid var(--bdr)', background: 'var(--bg2)', flexShrink: 0 }}>
+      <div style={{ padding: '14px 24px', borderTop: '1px solid var(--bdr)', background: 'var(--bg2)', flexShrink: 0, display: 'flex', gap: 10 }}>
+        <button
+          onClick={() => onHold({ plate, vehicleType, customerName, phone, payMethod })}
+          disabled={saving}
+          style={{ flex: '0 0 auto', padding: '16px 22px', borderRadius: 'var(--r2)', fontSize: 15, fontWeight: 700, background: 'transparent', color: 'var(--txt2)', border: '1.5px solid var(--bdr)', cursor: saving ? 'not-allowed' : 'pointer' }}
+        >
+          Hold
+        </button>
         <button
           onClick={complete}
           disabled={saving}
-          style={{ width: '100%', padding: '16px', borderRadius: 'var(--r2)', fontSize: 17, fontWeight: 800, background: saving ? 'var(--surf2)' : '#16a34a', color: saving ? 'var(--txt3)' : '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', transition: 'background .15s' }}
+          style={{ flex: 1, padding: '16px', borderRadius: 'var(--r2)', fontSize: 17, fontWeight: 800, background: saving ? 'var(--surf2)' : '#16a34a', color: saving ? 'var(--txt3)' : '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', transition: 'background .15s' }}
         >
           {saving ? 'Processing…' : `✓  Complete Payment  ·  ${fmtJ(total)}`}
         </button>

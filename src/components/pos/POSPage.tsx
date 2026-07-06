@@ -600,6 +600,28 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       if (payData.method === 'cash' && biz.printers?.drawerEnabled && biz.printers?.receipt)
         qzOpenDrawer(biz.printers.receipt)
       audit('PAYMENT', `Order #${payingTicket.orderNum} — ${fmt(finalCalc.total, sym)} · ${payMethodLabel}`, 'success')
+      if (payingTicket.hasCarwash) {
+        const cwItems = payingTicket.items.filter(ci => ci.module === 'carwash')
+        const cwPlate = cwItems.find(ci => ci.plate)?.plate ?? ''
+        const cwAddonsTotal = cwItems.reduce((s, ci) => s + ci.addons.reduce((a, ad) => a + ad.price, 0) * ci.qty, 0)
+        const cwTotal = cwItems.reduce((s, ci) => s + (ci.price + ci.addons.reduce((a, ad) => a + ad.price, 0)) * ci.qty, 0)
+        fetch('/api/carwash-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName:  payingTicket.customerName || '',
+            phone:         '',
+            vehicleType:   'Car',
+            plate:         cwPlate,
+            services:      cwItems.map(ci => ({ id: ci.itemId, name: ci.name, price: ci.price, qty: ci.qty })),
+            addons:        cwItems.flatMap(ci => ci.addons.map(a => ({ id: a.id, name: a.name, price: a.price }))),
+            addonsTotal:   cwAddonsTotal,
+            paymentMethod: payData.method,
+            total:         cwTotal,
+            employeeName:  currentUser.name,
+          }),
+        }).catch(() => {})
+      }
       const pw2 = (biz.printers?.width ?? 80) as 58 | 80
       if (biz.printers?.receipt) {
         const receiptHTML = buildCustomerReceipt(tx, biz, { width: pw2 })

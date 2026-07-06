@@ -1,8 +1,7 @@
 ﻿'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import { storage } from '@/lib/utils/storage'
 import CarWashPackageSelect from './CarWashPackageSelect'
 import CarWashPayment from './CarWashPayment'
 
@@ -28,7 +27,20 @@ export interface HeldCarWash {
   savedBy: string
 }
 
-const HELD_KEY = 'carwash_held'
+function rowToHeld(r: Record<string, unknown>): HeldCarWash {
+  return {
+    id:           String(r.id),
+    services:     Array.isArray(r.services) ? (r.services as CwService[]) : [],
+    addons:       Array.isArray(r.addons) ? (r.addons as CwAddon[]) : [],
+    plate:        (r.plate as string) ?? '',
+    vehicleType:  (r.vehicle_type as string) ?? 'Car',
+    customerName: (r.customer_name as string) ?? '',
+    phone:        (r.phone as string) ?? '',
+    payMethod:    (r.payment_method as PayMethod) ?? 'cash',
+    savedAt:      (r.created_at as string) ?? new Date().toISOString(),
+    savedBy:      (r.saved_by as string) ?? '',
+  }
+}
 
 function timeAgo(iso: string) {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
@@ -49,40 +61,57 @@ export default function CarWashFlow() {
   const [showHeld, setShowHeld] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
-  useEffect(() => {
-    setHeld(storage.get<HeldCarWash[]>(HELD_KEY) ?? [])
+  const loadHeld = useCallback(async () => {
+    try {
+      const r = await fetch('/api/carwash-held')
+      if (r.ok) {
+        const rows = await r.json()
+        setHeld(Array.isArray(rows) ? rows.map(rowToHeld) : [])
+      }
+    } catch {
+      // keep showing the last known list if a poll fails
+    }
   }, [])
 
-  const persistHeld = (list: HeldCarWash[]) => {
-    setHeld(list)
-    storage.set(HELD_KEY, list)
-  }
+  useEffect(() => {
+    loadHeld()
+    const id = setInterval(loadHeld, 15000)
+    return () => clearInterval(id)
+  }, [loadHeld])
 
   const reset = () => { setServices([]); setAddons([]); setResumeData(null); setStep('services') }
 
-  const holdDraft = (draft: {
+  const holdDraft = async (draft: {
     services: CwService[]; addons: CwAddon[]
     plate?: string; vehicleType?: string; customerName?: string; phone?: string; payMethod?: PayMethod
   }) => {
-    const entry: HeldCarWash = {
-      id: crypto.randomUUID(),
-      services: draft.services,
-      addons: draft.addons,
-      plate: draft.plate ?? '',
-      vehicleType: draft.vehicleType ?? 'Car',
-      customerName: draft.customerName ?? '',
-      phone: draft.phone ?? '',
-      payMethod: draft.payMethod ?? 'cash',
-      savedAt: new Date().toISOString(),
-      savedBy: currentUser?.name ?? '',
+    try {
+      const res = await fetch('/api/carwash-held', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          services:      draft.services,
+          addons:        draft.addons,
+          plate:         draft.plate ?? '',
+          vehicleType:   draft.vehicleType ?? 'Car',
+          customerName:  draft.customerName ?? '',
+          phone:         draft.phone ?? '',
+          paymentMethod: draft.payMethod ?? 'cash',
+          savedBy:       currentUser?.name ?? '',
+        }),
+      })
+      if (!res.ok) { console.error('[CarWash] Hold failed:', await res.text()); return }
+      reset()
+      loadHeld()
+    } catch (e) {
+      console.error('[CarWash] Hold failed:', e)
     }
-    persistHeld([entry, ...held])
-    reset()
   }
 
   const removeHeld = (id: string) => {
-    persistHeld(held.filter(h => h.id !== id))
     setConfirmDelete(null)
+    setHeld(list => list.filter(h => h.id !== id))
+    fetch(`/api/carwash-held?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {})
   }
 
   const resumeHeld = (h: HeldCarWash) => {
@@ -91,7 +120,8 @@ export default function CarWashFlow() {
     setResumeData(h)
     setStep('payment')
     setShowHeld(false)
-    persistHeld(held.filter(x => x.id !== h.id))
+    setHeld(list => list.filter(x => x.id !== h.id))
+    fetch(`/api/carwash-held?id=${encodeURIComponent(h.id)}`, { method: 'DELETE' }).catch(() => {})
   }
 
   const heldBadge = (

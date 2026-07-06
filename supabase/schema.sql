@@ -58,6 +58,26 @@ create table if not exists carwash_orders (
 alter table carwash_orders disable row level security;
 grant all on carwash_orders to anon, authenticated;
 
+-- ─── Car Wash Held Drafts (cross-device hold/resume) ─────────────────────────
+-- Lets a wash-bay tablet hold a service selection, and any other terminal
+-- (e.g. the restaurant register) resume it to take payment.
+
+create table if not exists carwash_held (
+  id             text        primary key,
+  services       jsonb       not null default '[]',
+  addons         jsonb       not null default '[]',
+  plate          text        not null default '',
+  vehicle_type   text        not null default 'Car',
+  customer_name  text        not null default '',
+  phone          text        not null default '',
+  payment_method text        not null default 'cash',
+  saved_by       text        not null default '',
+  created_at     timestamptz not null default now()
+);
+
+alter table carwash_held disable row level security;
+grant all on carwash_held to anon, authenticated;
+
 -- ─── Outside (Online) Bookings ────────────────────────────────────────────────
 
 create table if not exists outside_orders (

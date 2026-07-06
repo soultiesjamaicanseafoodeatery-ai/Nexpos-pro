@@ -5,6 +5,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import { supabase } from '@/lib/supabase'
 import type { Transaction, VoidReason, VoidLog, RefundLog } from '@/types'
 import { buildCustomerReceipt, smartPrint } from '@/lib/utils/ticketPrinter'
+import { jamaicaDateTimeString } from '@/lib/utils/businessDate'
 import VoidReasonModal from '@/components/pos/VoidReasonModal'
 import RefundModal from '@/components/pos/RefundModal'
 
@@ -125,7 +126,7 @@ export default function TransactionsPage() {
     const headers = ['Order #', 'Date/Time', 'Module', 'Cashier', 'Customer', 'Items', 'Subtotal', 'Discount', 'GCT', 'Total', 'Payment', 'Voided']
     const rows = filtered.map(tx => [
       tx.orderNum ?? String(tx.id ?? ''),
-      tx.ts ?? '',
+      tx.ts ? jamaicaDateTimeString(tx.ts) : '',
       tx.mod ?? '',
       tx.cashier ?? '',
       tx.customer ?? '',
@@ -211,7 +212,7 @@ export default function TransactionsPage() {
                 {txs.map(tx => (
                   <tr key={tx.id} style={{ opacity: tx.voided ? .5 : 1 }}>
                     <td style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--txt3)' }}>{tx.orderNum ? `#${tx.orderNum}` : `#${String(tx.id).slice(-6)}`}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{tx.ts}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{jamaicaDateTimeString(tx.ts)}</td>
                     <td>
                       <span style={{ color: MOD_COLOR[tx.mod], fontWeight: 700 }}>
                         {MOD_ICON[tx.mod]} {tx.mod.charAt(0).toUpperCase()+tx.mod.slice(1)}

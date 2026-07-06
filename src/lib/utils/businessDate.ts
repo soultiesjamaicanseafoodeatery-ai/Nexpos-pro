@@ -33,3 +33,22 @@ export function jamaicaDayStart(ts: string | number | Date = new Date()): Date {
   const jamaicaNow = new Date(toMs(ts) - JAMAICA_OFFSET_MS)
   return new Date(Date.UTC(jamaicaNow.getUTCFullYear(), jamaicaNow.getUTCMonth(), jamaicaNow.getUTCDate(), 5, 0, 0, 0))
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/**
+ * Human-readable Jamaica date/time for display (e.g. "Jul 5, 2026, 7:05 PM").
+ * Uses the same offset math as jamaicaDateKey instead of the viewing device's
+ * timezone, so it reads correctly regardless of where staff/owner are logged in from.
+ */
+export function jamaicaDateTimeString(ts: string | number | Date): string {
+  const d = new Date(toMs(ts) - JAMAICA_OFFSET_MS)
+  const month = MONTHS[d.getUTCMonth()]
+  const day = d.getUTCDate()
+  const year = d.getUTCFullYear()
+  let hours = d.getUTCHours()
+  const minutes = String(d.getUTCMinutes()).padStart(2, '0')
+  const ampm = hours >= 12 ? 'PM' : 'AM'
+  hours = hours % 12 || 12
+  return `${month} ${day}, ${year}, ${hours}:${minutes} ${ampm}`
+}

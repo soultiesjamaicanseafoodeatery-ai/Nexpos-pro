@@ -6,6 +6,8 @@ import { hashPin } from '@/lib/utils/hash'
 import type { User } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
+import { buildZReport, smartPrint } from '@/lib/utils/ticketPrinter'
+import type { ZReportData } from '@/lib/utils/ticketPrinter'
 
 type WStep = 'auth' | 'validate' | 'cash' | 'payments' | 'gratuity' | 'sales' | 'exceptions' | 'employees' | 'print' | 'confirm' | 'done'
 const STEPS: WStep[] = ['auth','validate','cash','payments','gratuity','sales','exceptions','employees','print','confirm','done']
@@ -88,6 +90,7 @@ export default function CloseShiftWizard() {
   const countedCashRef  = useRef<HTMLInputElement>(null)
   const [countedHasValue, setCountedHasValue] = useState(false)
   const [closing,  setClosing]  = useState(false)
+  const [printingZ, setPrintingZ] = useState(false)
   const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
   const [cwActioning, setCwActioning] = useState<string | null>(null)
   const [savedShiftStart, setSavedShiftStart] = useState<string | null>(null)
@@ -1026,14 +1029,70 @@ export default function CloseShiftWizard() {
     )
   }
 
+  const handlePrintZReport = async () => {
+    setPrintingZ(true)
+    try {
+      const voidedInWindow = transactions
+        .filter(tx => { try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false } })
+        .filter(tx => tx.voided)
+      const voidTotal = voidedInWindow.reduce((s, tx) => s + tx.total, 0)
+      const refundCount = shiftTxs.filter(tx => tx.refunded).length
+      const totalServiceCharge = shiftTxs.reduce((s, tx) => s + (tx.serviceCharge ?? 0), 0)
+      const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
+
+      const zData: ZReportData = {
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+        closedBy: by,
+        openingFloat: floatNum,
+        restaurantSales: modMap.restaurant?.total ?? 0,
+        barSales: modMap.bar?.total ?? 0,
+        carwashSales: modMap.carwash?.total ?? 0,
+        totalSales,
+        cashSales: payMap['Cash'] ?? 0,
+        cardSales: payMap['Card'] ?? 0,
+        giftCardSales: 0,
+        tabSales: 0,
+        otherSales: payMap['Other'] ?? 0,
+        totalDiscounts: totalDisc,
+        totalVoids: voidTotal,
+        totalRefunds,
+        voidCount: voidedInWindow.length,
+        refundCount,
+        totalGCT: totalTax,
+        totalServiceCharge,
+        totalGratuity: totalGrat,
+        restaurantCount: modMap.restaurant?.count ?? 0,
+        barCount: modMap.bar?.count ?? 0,
+        carwashCount: modMap.carwash?.count ?? 0,
+        totalCount: shiftTxs.length,
+        expectedCash: expected,
+        actualCash: countedNum,
+        variance: variance ?? 0,
+        gctRegNo: biz.gctRegNo,
+        trn: biz.trn,
+        sym,
+      }
+      const html = buildZReport(zData, { width: (biz.printers?.width ?? 80) as 58 | 80 })
+      await smartPrint(html, 'Z-Report', biz.printers?.receipt, (biz.printers?.width ?? 80) as 58 | 80, false)
+    } finally {
+      setPrintingZ(false)
+    }
+  }
+
   const renderPrint = () => (
     <Card>
       <CardHead title="Print Reports" sub="Print or export shift reports before closing" />
       <CardBody>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           <div style={{ padding:'16px', background:'var(--surf)', borderRadius:'var(--r2)', border:'1px solid var(--bdr)', fontSize:13, color:'var(--txt3)', textAlign:'center', lineHeight:1.6 }}>
-            Shift reports are automatically saved to Shifts history.<br/>Use your receipt printer via the Topbar printer icon to print summaries.
+            Prints a Z-Report (End of Day summary) to your receipt printer.<br/>Shift reports are also automatically saved to Shifts history either way.
           </div>
+          <button onClick={handlePrintZReport} disabled={printingZ} style={{
+            width:'100%', padding:'14px 0', borderRadius:'var(--r2)', fontSize:15, fontWeight:800, cursor: printingZ ? 'not-allowed' : 'pointer',
+            background: printingZ ? 'var(--surf2)' : 'var(--blue)', color: printingZ ? 'var(--txt3)' : '#fff', border:'none',
+          }}>
+            {printingZ ? 'Printing…' : '🖨️ Print Z-Report'}
+          </button>
         </div>
       </CardBody>
       <CardFoot>

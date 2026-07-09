@@ -5,7 +5,7 @@ export function getTaxConfig(): TaxConfig {
   return MODULE_DATA.restaurant?.taxConfig ?? {
     name: 'GCT', rate: 0.15, enabled: true,
     taxableOrderTypes: ['dine-in'],
-    serviceChargeRate: 0.10, serviceChargeEnabled: true,
+    serviceChargeRate: 0.10, serviceChargeEnabled: false,
   }
 }
 

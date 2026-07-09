@@ -23,7 +23,7 @@ export const SEED_USERS: User[] = [
 export const MODULE_DATA: Record<string, ModuleData> = {
   restaurant: {
     label:'Restaurant', icon:'🍽️', color:'var(--ora)', cobText:'#1a0800', selCls:'s-o', aoCls:'o',
-    taxConfig:{ name:'GCT', rate:0.15, enabled:true, taxableOrderTypes:['dine-in'], serviceChargeRate:0.10, serviceChargeEnabled:true },
+    taxConfig:{ name:'GCT', rate:0.15, enabled:true, taxableOrderTypes:['dine-in'], serviceChargeRate:0.10, serviceChargeEnabled:false },
     taxRate:0.15,
     categories:['All','APPETIZER','LUNCH','MEAT','PASTA & BURGERS','SEAFOOD','SIDES','SOUPS','VEGGIE'],
     tables:['T1','T2','T3','T4','T5','T6','T7','T8'],

@@ -159,8 +159,8 @@ export default function CarWashFlow() {
         />
       ) : (
         <CarWashPackageSelect
-          onSelect={(svcs, adds, plate, vehicleType) => { setServices(svcs); setAddons(adds); setPrefill({ plate, vehicleType }); setStep('payment') }}
-          onHold={(svcs, adds, plate, vehicleType) => holdDraft({ services: svcs, addons: adds, plate, vehicleType })}
+          onSelect={(svcs, adds, plate, vehicleType, customerName, phone) => { setServices(svcs); setAddons(adds); setPrefill({ plate, vehicleType, customerName, phone }); setStep('payment') }}
+          onHold={(svcs, adds, plate, vehicleType, customerName, phone) => holdDraft({ services: svcs, addons: adds, plate, vehicleType, customerName, phone })}
           heldBadge={heldBadge}
         />
       )}

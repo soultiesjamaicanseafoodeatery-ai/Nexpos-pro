@@ -258,7 +258,7 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
           <div style={{ marginLeft: 'auto', fontSize: 22, fontWeight: 900, color: 'var(--blue)', fontFamily: 'var(--mono)' }}>{fmtJ(total)}</div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
           <div style={{ width: '100%', maxWidth: 380 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10, textAlign: 'center' }}>
               Select Payment Method

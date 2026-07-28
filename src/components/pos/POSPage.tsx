@@ -7,6 +7,7 @@ import { VOID_REASON_LABELS } from '@/types'
 import { calcCart, fmt } from '@/lib/utils/tax'
 import { buildCustomerReceipt, buildKitchenTicket, buildCarwashWorkOrder, buildVoidTicket, printTicket, smartPrint } from '@/lib/utils/ticketPrinter'
 import { qzOpenDrawer } from '@/lib/utils/qzTray'
+import { shouldOpenDrawer } from '@/lib/utils/payments'
 import OutsideOrders from './OutsideOrders'
 import PaymentModal from './PaymentModal'
 import TicketModal from './TicketModal'
@@ -597,7 +598,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       setLastTx(tx)
       setLastTicket(paidTicket)
       setSplitTarget(null)
-      if (payData.method === 'cash' && biz.printers?.drawerEnabled && biz.printers?.receipt)
+      if (shouldOpenDrawer(payData.method, payData.payments) && biz.printers?.drawerEnabled && biz.printers?.receipt)
         qzOpenDrawer(biz.printers.receipt)
       audit('PAYMENT', `Order #${payingTicket.orderNum} — ${fmt(finalCalc.total, sym)} · ${payMethodLabel}`, 'success')
       if (payingTicket.hasCarwash) {
@@ -769,8 +770,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       const receiptHTML = buildCustomerReceipt(tx, biz, { width: pw })
       smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw, true)
     }
-    // Open cash drawer after cash payment
-    if (payData.method === 'cash' && biz.printers?.drawerEnabled && biz.printers?.receipt)
+    // Open cash drawer whenever the completed payment has a cash component (pure cash or a split that includes cash)
+    if (shouldOpenDrawer(payData.method, payData.payments) && biz.printers?.drawerEnabled && biz.printers?.receipt)
       qzOpenDrawer(biz.printers.receipt)
 
     dispatch({ type: 'ADD_TRANSACTION', tx })

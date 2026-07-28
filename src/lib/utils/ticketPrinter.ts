@@ -371,6 +371,7 @@ export interface CarwashReceiptData {
   payMethod: string
   tendered?: number
   change?: number
+  payments?: { method: string; amount: number }[]
   staffName?: string
 }
 
@@ -423,6 +424,10 @@ export function buildCarwashReceipt(
   L.push(div('=', w))
 
   L.push(row('Payment:', data.payMethod.charAt(0).toUpperCase() + data.payMethod.slice(1), w))
+  if (data.payments && data.payments.length > 1) {
+    for (const p of data.payments)
+      L.push(row('  ' + p.method.charAt(0).toUpperCase() + p.method.slice(1) + ':', fmtN(p.amount), w))
+  }
   if (data.tendered != null) L.push(row('Tendered:', fmtN(data.tendered), w))
   if (data.change   != null) L.push(row('Change:', fmtN(data.change), w))
   L.push(div('=', w))

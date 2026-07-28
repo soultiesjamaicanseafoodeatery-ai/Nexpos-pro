@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
 import { buildZReport, smartPrint } from '@/lib/utils/ticketPrinter'
 import type { ZReportData } from '@/lib/utils/ticketPrinter'
+import { getPaymentBreakdown, mergeBreakdowns } from '@/lib/utils/payments'
 
 type WStep = 'auth' | 'validate' | 'cash' | 'payments' | 'gratuity' | 'sales' | 'exceptions' | 'employees' | 'print' | 'confirm' | 'done'
 const STEPS: WStep[] = ['auth','validate','cash','payments','gratuity','sales','exceptions','employees','print','confirm','done']
@@ -117,14 +118,16 @@ export default function CloseShiftWizard() {
   })
 
   // ── Payment breakdown ─────────────────────────────────────────
-  const payMap: Record<string,number> = {}
-  shiftTxs.filter(tx => !tx.refunded).forEach(tx => {
-    const entries = (tx.payments && tx.payments.length > 0) ? tx.payments : [{ method: tx.pay, amount: tx.total }]
-    entries.forEach(p => {
-      const k = /cash/i.test(p.method) ? 'Cash' : /card|visa|master|debit|credit/i.test(p.method) ? 'Card' : 'Other'
-      payMap[k] = (payMap[k] ?? 0) + p.amount
-    })
-  })
+  const payBreakdown = mergeBreakdowns(
+    shiftTxs.filter(tx => !tx.refunded).map(tx => getPaymentBreakdown(tx.pay, tx.total, tx.payments, tx.changeDue))
+  )
+  // payMap keeps the 3-bucket shape the on-screen summary tile already uses (Cash/Card/Other);
+  // the printed Z-report below uses the full 5-way breakdown instead of this simplified view.
+  const payMap: Record<string,number> = {
+    Cash:  payBreakdown.cash,
+    Card:  payBreakdown.debit + payBreakdown.credit,
+    Other: payBreakdown.gift + payBreakdown.house + payBreakdown.unknown,
+  }
 
   const totalSales   = shiftTxs.reduce((s,tx)=>s+tx.total, 0)
   const totalRefunds = transactions
@@ -1048,11 +1051,11 @@ export default function CloseShiftWizard() {
         barSales: modMap.bar?.total ?? 0,
         carwashSales: modMap.carwash?.total ?? 0,
         totalSales,
-        cashSales: payMap['Cash'] ?? 0,
-        cardSales: payMap['Card'] ?? 0,
-        giftCardSales: 0,
-        tabSales: 0,
-        otherSales: payMap['Other'] ?? 0,
+        cashSales: payBreakdown.cash,
+        cardSales: payBreakdown.debit + payBreakdown.credit,
+        giftCardSales: payBreakdown.gift,
+        tabSales: payBreakdown.house,
+        otherSales: payBreakdown.unknown,
         totalDiscounts: totalDisc,
         totalVoids: voidTotal,
         totalRefunds,

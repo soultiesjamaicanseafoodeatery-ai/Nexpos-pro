@@ -5,6 +5,7 @@ import EODWizard from './EODWizard'
 import type { Transaction, HeldOrder, POSState } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { jamaicaDateKey, isSameBusinessDay } from '@/lib/utils/businessDate'
+import { getPaymentBreakdown } from '@/lib/utils/payments'
 
 function duration(start: string, end: string | null) {
   const s = new Date(start).getTime()
@@ -24,15 +25,11 @@ function shiftAgeHours(start: string) {
 
 function isCashTx(tx: Transaction) {
   if (tx.voided) return false
-  if (tx.payments && tx.payments.length > 0)
-    return tx.payments.some(p => p.method.toLowerCase().includes('cash'))
-  return tx.pay.toLowerCase().includes('cash')
+  return getPaymentBreakdown(tx.pay, tx.total, tx.payments, tx.changeDue).cash > 0
 }
 
 function cashAmount(tx: Transaction) {
-  if (tx.payments && tx.payments.length > 0)
-    return tx.payments.filter(p => p.method.toLowerCase().includes('cash')).reduce((s, p) => s + p.amount, 0)
-  return tx.total
+  return getPaymentBreakdown(tx.pay, tx.total, tx.payments, tx.changeDue).cash
 }
 
 function sameDay(ts: string, isoDate: string) {
@@ -210,22 +207,15 @@ export default function ShiftsPage() {
   })()
 
   // ── Staff: payment breakdown (today) ─────────────────────────
-  const payTotals = { cash: 0, debit: 0, credit: 0, gift: 0, house: 0 }
+  const payTotals = { cash: 0, debit: 0, credit: 0, gift: 0, house: 0, unknown: 0 }
   for (const tx of myTodayTxs) {
-    const add = (method: string, amount: number) => {
-      const m = method.toLowerCase()
-      if      (m.includes('cash'))   payTotals.cash   += amount
-      else if (m.includes('debit'))  payTotals.debit  += amount
-      else if (m.includes('credit')) payTotals.credit += amount
-      else if (m.includes('gift'))   payTotals.gift   += amount
-      else if (m.includes('house'))  payTotals.house  += amount
-      else                            payTotals.cash   += amount
-    }
-    if (tx.payments && tx.payments.length > 0) {
-      tx.payments.forEach(p => add(p.method, p.amount))
-    } else {
-      add(tx.pay, tx.total)
-    }
+    const b = getPaymentBreakdown(tx.pay, tx.total, tx.payments, tx.changeDue)
+    payTotals.cash    += b.cash
+    payTotals.debit   += b.debit
+    payTotals.credit  += b.credit
+    payTotals.gift    += b.gift
+    payTotals.house   += b.house
+    payTotals.unknown += b.unknown
   }
 
   // ── Staff: order breakdown (today) ───────────────────────────
@@ -289,6 +279,7 @@ export default function ShiftsPage() {
       ...(payTotals.credit > 0 ? [`Credit:    ${fmt(payTotals.credit)}`] : []),
       ...(payTotals.gift   > 0 ? [`Gift Card: ${fmt(payTotals.gift)}`]   : []),
       ...(payTotals.house  > 0 ? [`House Acc: ${fmt(payTotals.house)}`]  : []),
+      ...(payTotals.unknown > 0 ? [`Unknown:   ${fmt(payTotals.unknown)}`] : []),
       '----------------------------',
     ].join('\n')
     const win = window.open('', '_blank', 'width=400,height=600')
@@ -466,6 +457,7 @@ export default function ShiftsPage() {
             { label: 'Credit Card',   value: payTotals.credit },
             { label: 'Gift Card',     value: payTotals.gift   },
             { label: 'House Account', value: payTotals.house  },
+            { label: 'Unknown',        value: payTotals.unknown },
           ] as const).map(({ label, value }, i, arr) => (
             <InfoRow
               key={label}
@@ -686,6 +678,7 @@ export default function ShiftsPage() {
                   {payTotals.credit > 0 && <InfoRow label="Credit Card"   value={fmt(payTotals.credit)} mono />}
                   {payTotals.gift   > 0 && <InfoRow label="Gift Card"     value={fmt(payTotals.gift)}   mono />}
                   {payTotals.house  > 0 && <InfoRow label="House Account" value={fmt(payTotals.house)}  mono last />}
+                  {payTotals.unknown > 0 && <InfoRow label="Unknown"        value={fmt(payTotals.unknown)} mono last />}
                   {Object.values(payTotals).every(v => v === 0) && (
                     <InfoRow label="No payments recorded this session" value="—" last />
                   )}

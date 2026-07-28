@@ -6,12 +6,17 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import type { Transaction } from '@/types'
 import { smartPrint, buildCarwashReceipt } from '@/lib/utils/ticketPrinter'
 import { qzOpenDrawer } from '@/lib/utils/qzTray'
+import { shouldOpenDrawer } from '@/lib/utils/payments'
 import type { CwService, CwAddon, PaymentPrefill, PayMethod } from './CarWashFlow'
 
 const fmtJ = (n: number) =>
   'J$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const QUICK_AMTS = [500, 1000, 2000, 5000, 10000, 20000]
+
+type SplitMethod = 'cash' | 'debit' | 'credit'
+interface SplitRow { method: SplitMethod; amount: string }
+interface PaymentComponent { method: string; amount: number }
 
 interface Props {
   services: CwService[]
@@ -33,9 +38,10 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
   const { state, dispatch } = useApp()
   const { currentUser, biz } = state
 
-  const [step,         setStep]         = useState<'method' | 'cash' | 'card'>('method')
+  const [step,         setStep]         = useState<'method' | 'cash' | 'card' | 'split'>('method')
   const [payMethod,    setPayMethod]    = useState<PayMethod>(initial?.payMethod ?? 'cash')
   const [cashTendered, setCashTendered] = useState('')
+  const [splits,       setSplits]       = useState<SplitRow[]>([{ method: 'cash', amount: '' }])
   const plate        = initial?.plate ?? ''
   const vehicleType  = initial?.vehicleType ?? 'Car'
   const customerName = initial?.customerName ?? ''
@@ -44,6 +50,14 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
   const [error,        setError]        = useState('')
   const [ticket,       setTicket]       = useState<string | null>(null)
   const [completedAt,  setCompletedAt]  = useState('')
+
+  // What was actually charged on the completed transaction — used for the success screen
+  // and manual reprints, since `cashTendered`/`splits` are input state that doesn't apply
+  // uniformly across the cash/card/split paths.
+  const [completedPayMethod, setCompletedPayMethod] = useState<PayMethod>('cash')
+  const [completedPayments,  setCompletedPayments]  = useState<PaymentComponent[] | undefined>(undefined)
+  const [completedTender,    setCompletedTender]    = useState<number | undefined>(undefined)
+  const [completedChange,    setCompletedChange]    = useState<number | undefined>(undefined)
 
   const servicesTotal = services.reduce((s, svc) => s + svc.price * (svc.qty ?? 1), 0)
   const addonTotal    = addons.reduce((s, a) => s + a.price, 0)
@@ -57,10 +71,35 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
     .map(s => (s.qty ?? 1) > 1 ? `${s.name} ×${s.qty}` : s.name)
     .join(', ')
 
+  const splitTotal = splits.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
+  const splitDiff  = Math.round((total - splitTotal) * 100) / 100
+  const splitBalanced = Math.abs(splitDiff) <= 0.01
+
   // ── Complete payment ──────────────────────────────────────
   const complete = async () => {
     setSaving(true); setError('')
     try {
+      // Build the payment breakdown up front so a bad split is rejected before anything is saved.
+      let paymentsForTx: PaymentComponent[] | undefined
+      let tenderForTx: number | undefined
+      let changeForTx: number | undefined
+
+      if (payMethod === 'split') {
+        const entries = splits
+          .filter(p => (parseFloat(p.amount) || 0) > 0)
+          .map(p => ({ method: p.method, amount: Math.round((parseFloat(p.amount) || 0) * 100) / 100 }))
+        const sum = entries.reduce((s, p) => s + p.amount, 0)
+        if (entries.length === 0 || Math.abs(sum - total) > 0.01) {
+          throw new Error(`Split amounts (${fmtJ(sum)}) must equal the total (${fmtJ(total)})`)
+        }
+        paymentsForTx = entries
+      } else if (payMethod === 'cash') {
+        if (tendered < total - 0.005) throw new Error('Cash tendered is less than the total due')
+        tenderForTx = tendered
+        changeForTx = change
+      }
+      // debit/credit: single-method payment, no tender/change, no payments breakdown needed
+
       const res = await fetch('/api/carwash-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -83,7 +122,11 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
       setTicket(order.ticket_no)
       const nowTs = new Date()
       setCompletedAt(nowTs.toISOString())
-      const tenderedForCash = (payMethod === 'cash' || payMethod === 'mixed') && tendered >= total
+      setCompletedPayMethod(payMethod)
+      setCompletedPayments(paymentsForTx)
+      setCompletedTender(tenderForTx)
+      setCompletedChange(changeForTx)
+
       const cwTx: Transaction = {
         id:          Date.now() + Math.floor(Math.random() * 1000),
         ts:          nowTs.toISOString(),
@@ -104,11 +147,12 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
         gratuity:    0,
         items:       [],
         orderNum:    order.ticket_no,
-        tender:      tenderedForCash ? tendered : undefined,
-        changeDue:   tenderedForCash ? change : undefined,
+        tender:      tenderForTx,
+        changeDue:   changeForTx,
+        payments:    paymentsForTx,
       }
       dispatch({ type: 'ADD_TRANSACTION', tx: cwTx })
-      if ((payMethod === 'cash' || payMethod === 'mixed') && biz?.printers?.drawerEnabled && biz?.printers?.receipt)
+      if (shouldOpenDrawer(payMethod, paymentsForTx) && biz?.printers?.drawerEnabled && biz?.printers?.receipt)
         qzOpenDrawer(biz.printers.receipt)
       if (biz?.printers?.receipt) {
         const pw = (biz.printers?.width ?? 80) as 58 | 80
@@ -119,8 +163,9 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
           services, addons,
           subtotal, taxAmount, total,
           payMethod,
-          tendered: tenderedForCash ? tendered : undefined,
-          change: tenderedForCash ? change : undefined,
+          tendered: tenderForTx,
+          change: changeForTx,
+          payments: paymentsForTx,
           staffName: currentUser?.name,
         }, biz, { width: pw })
         smartPrint(html, 'Car Wash Receipt', biz.printers.receipt, pw, true)
@@ -136,20 +181,23 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
   const printReceipt = () => {
     if (!biz) return
     const pw = (biz.printers?.width ?? 80) as 58 | 80
-    const printChange = (payMethod === 'cash' || payMethod === 'mixed') && cashTendered && tendered >= total ? change : undefined
     const html = buildCarwashReceipt({
       ticket: ticket ?? '',
       ts: completedAt || new Date().toISOString(),
       plate, vehicleType, customerName, phone,
       services, addons,
       subtotal, taxAmount, total,
-      payMethod,
-      tendered: printChange !== undefined ? tendered : undefined,
-      change: printChange,
+      payMethod: completedPayMethod,
+      tendered: completedTender,
+      change: completedChange,
+      payments: completedPayments,
       staffName: currentUser?.name,
     }, biz, { width: pw })
     smartPrint(html, 'Car Wash Receipt', biz.printers?.receipt, pw)
   }
+
+  const payMethodLabel = (m: string) =>
+    m === 'debit' ? 'Debit Card' : m === 'credit' ? 'Credit Card' : m === 'split' ? 'Split' : 'Cash'
 
   // ── Success / receipt screen ──────────────────────────────
   if (ticket) {
@@ -175,8 +223,10 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
             })),
             ...addons.map(a => ({ l: `+ ${a.name}`, v: fmtJ(a.price) })),
             { l: 'Total',   v: fmtJ(total),   bold: true },
-            { l: 'Payment', v: payMethod[0].toUpperCase() + payMethod.slice(1) },
-            ...(change >= 0 && cashTendered && (payMethod === 'cash' || payMethod === 'mixed') ? [{ l: 'Change', v: fmtJ(change), bold: true }] : []),
+            { l: 'Payment', v: payMethodLabel(completedPayMethod) },
+            ...(completedPayments ?? []).map(p => ({ l: '  ' + payMethodLabel(p.method), v: fmtJ(p.amount) })),
+            ...(completedTender != null ? [{ l: 'Tendered', v: fmtJ(completedTender) }] : []),
+            ...(completedChange != null && completedChange > 0 ? [{ l: 'Change', v: fmtJ(completedChange), bold: true }] : []),
             ...(currentUser?.name ? [{ l: 'Staff', v: currentUser.name }] : []),
           ].map((row, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', borderBottom: '1px solid var(--bdr2)' }}>
@@ -239,9 +289,9 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
   // ── Step: choose payment method ────────────────────────────
   if (step === 'method') {
     const METHODS: { key: PayMethod; label: string; icon: string; color: string }[] = [
-      { key: 'cash',  label: 'Cash',  icon: '💵', color: 'var(--grn)' },
-      { key: 'card',  label: 'Card',  icon: '💳', color: 'var(--blue)' },
-      { key: 'mixed', label: 'Mixed', icon: '🔀', color: 'var(--pur)' },
+      { key: 'cash',   label: 'Cash',        icon: '💵', color: 'var(--grn)' },
+      { key: 'debit',  label: 'Debit Card',  icon: '💳', color: 'var(--blue)' },
+      { key: 'credit', label: 'Credit Card', icon: '💳', color: 'var(--pur)' },
     ]
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
@@ -263,11 +313,11 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10, textAlign: 'center' }}>
               Select Payment Method
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
               {METHODS.map(({ key, label, icon, color }) => (
                 <button
                   key={key}
-                  onClick={() => { setPayMethod(key); setStep(key === 'card' ? 'card' : 'cash') }}
+                  onClick={() => { setPayMethod(key); setStep(key === 'cash' ? 'cash' : 'card') }}
                   style={{
                     padding: '16px 10px', borderRadius: 'var(--r3)',
                     border: `2px solid ${color}44`, background: `${color}11`,
@@ -281,6 +331,16 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => { setPayMethod('split'); setStep('split') }}
+              style={{
+                width: '100%', padding: '13px 12px', borderRadius: 'var(--r3)',
+                border: '2px dashed var(--bdr)', background: 'transparent', color: 'var(--txt2)',
+                cursor: 'pointer', fontWeight: 700, fontSize: 13,
+              }}
+            >
+              + Split / Multi-Tender Payment
+            </button>
           </div>
         </div>
 
@@ -293,19 +353,20 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
     )
   }
 
-  // ── Step: card confirmation ─────────────────────────────────
+  // ── Step: debit/credit confirmation ──────────────────────────
   if (step === 'card') {
+    const label = payMethodLabel(payMethod)
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
         <div style={headerBar}>
           <button onClick={() => setStep('method')} style={backBtnStyle}>Back</button>
-          <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>Card Payment</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>{label}</span>
           <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--blue)', fontFamily: 'var(--mono)' }}>{fmtJ(total)}</div>
         </div>
         <OrderSummaryCard />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '28px 24px', textAlign: 'center' }}>
           <div style={{ fontSize: 52 }}>💳</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>Run Card on terminal</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>Run {label} on terminal</div>
           <div style={{ background: 'var(--blue-bg)', border: '2px solid rgba(79,142,247,.3)', borderRadius: 'var(--r3)', padding: '16px 32px' }}>
             <div style={{ fontSize: 11, color: 'var(--txt3)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.5px' }}>Amount to charge</div>
             <div style={{ fontFamily: 'var(--mono)', fontSize: 32, fontWeight: 800, color: 'var(--blue)' }}>{fmtJ(total)}</div>
@@ -323,20 +384,112 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
             disabled={saving}
             style={{ flex: 1, padding: '16px', borderRadius: 'var(--r2)', fontSize: 17, fontWeight: 800, background: saving ? 'var(--surf2)' : '#16a34a', color: saving ? 'var(--txt3)' : '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', transition: 'background .15s' }}
           >
-            {saving ? 'Processing…' : `Confirm Card Payment — ${fmtJ(total)}`}
+            {saving ? 'Processing…' : `Confirm ${label} — ${fmtJ(total)}`}
           </button>
         </div>
       </div>
     )
   }
 
-  // ── Step: cash / mixed tendering ────────────────────────────
+  // ── Step: split / multi-tender ───────────────────────────────
+  if (step === 'split') {
+    const SPLIT_METHODS: { value: SplitMethod; label: string }[] = [
+      { value: 'cash',   label: 'Cash' },
+      { value: 'debit',  label: 'Debit Card' },
+      { value: 'credit', label: 'Credit Card' },
+    ]
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
+        <div style={headerBar}>
+          <button onClick={() => { setSplits([{ method: 'cash', amount: '' }]); setStep('method') }} style={backBtnStyle}>Back</button>
+          <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>Split Payment</span>
+          <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--blue)', fontFamily: 'var(--mono)' }}>{fmtJ(total)}</div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+            <OrderSummaryCard />
+
+            {/* Running total */}
+            <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: 'var(--txt3)' }}>Total Due</span>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, color: 'var(--txt)' }}>{fmtJ(total)}</span>
+              </div>
+              <div style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: 'var(--txt3)' }}>Entered</span>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, color: splitBalanced ? 'var(--grn)' : 'var(--ora)' }}>{fmtJ(splitTotal)}</span>
+              </div>
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--bdr)', background: splitBalanced ? 'rgba(34,197,94,.08)' : 'rgba(245,158,11,.08)', display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: splitBalanced ? 'var(--grn)' : 'var(--ora)' }}>
+                  {splitBalanced ? '✓ Balanced' : splitDiff > 0 ? 'Remaining' : 'Over by'}
+                </span>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 15, color: splitBalanced ? 'var(--grn)' : 'var(--ora)' }}>
+                  {splitBalanced ? '' : fmtJ(Math.abs(splitDiff))}
+                </span>
+              </div>
+            </div>
+
+            {/* Payment rows */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {splits.map((sp, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select
+                    value={sp.method}
+                    onChange={e => setSplits(prev => prev.map((p, j) => j === i ? { ...p, method: e.target.value as SplitMethod } : p))}
+                    style={{ background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', padding: '10px 8px', fontSize: 12, color: 'var(--txt)', flex: '0 0 134px' }}
+                  >
+                    {SPLIT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                  <input
+                    type="number" min={0} step="0.01" value={sp.amount}
+                    onChange={e => setSplits(prev => prev.map((p, j) => j === i ? { ...p, amount: e.target.value } : p))}
+                    placeholder="Amount"
+                    style={{ flex: 1, background: 'var(--surf2)', border: '1px solid var(--bdr)', borderRadius: 'var(--r)', padding: '10px', fontSize: 13, color: 'var(--txt)' }}
+                  />
+                  {splits.length > 1 && (
+                    <button onClick={() => setSplits(prev => prev.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 20, padding: '0 4px' }}>×</button>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={() => setSplits(prev => [...prev, { method: 'cash', amount: splitDiff > 0.005 ? splitDiff.toFixed(2) : '' }])}
+                style={{ padding: '9px 0', borderRadius: 'var(--r)', border: '1.5px dashed var(--bdr)', background: 'transparent', color: 'var(--txt3)', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+              >
+                + Add Payment Method
+              </button>
+            </div>
+
+            {error && (
+              <div style={{ background: 'rgba(239,68,68,.1)', color: '#ef4444', padding: '10px 14px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 600, border: '1px solid rgba(239,68,68,.2)' }}>
+                {error}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={footerBar}>
+          <button onClick={holdNow} disabled={saving} style={holdBtnStyle}>Hold</button>
+          <button
+            onClick={complete}
+            disabled={saving || !splitBalanced}
+            style={{ flex: 1, padding: '16px', borderRadius: 'var(--r2)', fontSize: 17, fontWeight: 800, background: (saving || !splitBalanced) ? 'var(--surf2)' : '#16a34a', color: (saving || !splitBalanced) ? 'var(--txt3)' : '#fff', border: 'none', cursor: (saving || !splitBalanced) ? 'not-allowed' : 'pointer', transition: 'background .15s' }}
+          >
+            {saving ? 'Processing…' : splitBalanced ? '✓  Complete Payment' : splitDiff > 0 ? `Remaining: ${fmtJ(splitDiff)}` : `Over by ${fmtJ(-splitDiff)}`}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Step: cash tendering ──────────────────────────────────────
   const tenderOk = tendered >= total - 0.005
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
       <div style={headerBar}>
         <button onClick={() => { setCashTendered(''); setStep('method') }} style={backBtnStyle}>Back</button>
-        <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>{payMethod === 'mixed' ? 'Mixed Payment' : 'Cash Payment'}</span>
+        <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--txt)', flex: 1 }}>Cash Payment</span>
         <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--blue)', fontFamily: 'var(--mono)' }}>{fmtJ(total)}</div>
       </div>
 

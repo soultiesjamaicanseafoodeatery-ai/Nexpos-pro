@@ -12,7 +12,7 @@ export interface CwService {
 export interface CwAddon {
   id: string; name: string; description: string; price: number; is_available: boolean
 }
-export type PayMethod = 'cash' | 'card' | 'mixed'
+export type PayMethod = 'cash' | 'debit' | 'credit' | 'split'
 export const VEHICLE_TYPES = ['Car', 'SUV', 'Pickup', 'Van', 'Truck'] as const
 
 export interface PaymentPrefill {

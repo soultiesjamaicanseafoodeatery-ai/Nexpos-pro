@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
+import { getPaymentBreakdown, mergeBreakdowns } from '@/lib/utils/payments'
 
 type Tab = 'overview' | 'server' | 'menu' | 'financial'
 type DateRange = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'
@@ -66,8 +67,7 @@ export default function ReportsPage() {
   const byMod: Record<string, { count: number; rev: number }> = { restaurant: {count:0,rev:0}, bar: {count:0,rev:0}, carwash: {count:0,rev:0} }
   txs.forEach(t => { byMod[t.mod] && (byMod[t.mod].count++, byMod[t.mod].rev += t.total) })
 
-  const byPay: Record<string, number> = {}
-  txs.forEach(t => { byPay[t.pay] = (byPay[t.pay] ?? 0) + t.total })
+  const byPay = mergeBreakdowns(txs.map(t => getPaymentBreakdown(t.pay, t.total, t.payments, t.changeDue)))
 
   // Server/Cashier breakdown
   const byServer = useMemo(() => {

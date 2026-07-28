@@ -6,8 +6,8 @@ import { VEHICLE_TYPES } from './CarWashFlow'
 import type { CwService, CwAddon } from './CarWashFlow'
 
 interface Props {
-  onSelect: (services: CwService[], addons: CwAddon[], plate: string, vehicleType: string) => void
-  onHold: (services: CwService[], addons: CwAddon[], plate: string, vehicleType: string) => void
+  onSelect: (services: CwService[], addons: CwAddon[], plate: string, vehicleType: string, customerName: string, phone: string) => void
+  onHold: (services: CwService[], addons: CwAddon[], plate: string, vehicleType: string, customerName: string, phone: string) => void
   heldBadge: ReactNode
 }
 
@@ -28,6 +28,8 @@ export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Pr
   const [loading, setLoading] = useState(true)
   const [plate, setPlate] = useState('')
   const [vehicleType, setVehicleType] = useState('Car')
+  const [customerName, setCustomerName] = useState('')
+  const [phone, setPhone] = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -121,6 +123,17 @@ export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Pr
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+
+        {/* Customer */}
+        <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', marginBottom: 20 }}>
+          <div style={{ padding: '10px 16px', background: 'var(--bg2)', fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid var(--bdr)' }}>
+            Customer — Optional
+          </div>
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer Name" style={inp} />
+            <input type="tel"  value={phone}        onChange={e => setPhone(e.target.value)}        placeholder="Phone Number"   style={inp} />
           </div>
         </div>
 
@@ -260,7 +273,7 @@ export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Pr
         <div style={{ display: 'flex', gap: 8 }}>
           {anySelected && (
             <button
-              onClick={() => onHold(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons, plate.trim(), vehicleType)}
+              onClick={() => onHold(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons, plate.trim(), vehicleType, customerName.trim(), phone.trim())}
               style={{
                 flex: '0 0 auto', padding: '15px 20px',
                 background: 'transparent', color: 'var(--txt2)',
@@ -273,7 +286,7 @@ export default function CarWashPackageSelect({ onSelect, onHold, heldBadge }: Pr
           )}
           <button
             disabled={!anySelected}
-            onClick={() => onSelect(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons, plate.trim(), vehicleType)}
+            onClick={() => onSelect(selServices.map(s => ({ ...s, qty: quantities[s.id] ?? 1 })), selAddons, plate.trim(), vehicleType, customerName.trim(), phone.trim())}
             style={{
               flex: 1, padding: '15px 0',
               background: anySelected ? 'var(--blue)' : 'var(--bdr)',

@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { getPaymentBreakdown, mergeBreakdowns } from '@/lib/utils/payments'
+import { parseTs } from '@/lib/utils/businessDate'
 
 type Tab = 'overview' | 'server' | 'menu' | 'financial'
 type DateRange = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'
@@ -49,7 +50,7 @@ export default function ReportsPage() {
     const base = transactions.filter(t => !t.voided)
     if (!rangeStart && !rangeEnd) return base
     return base.filter(t => {
-      const ts = new Date(t.ts)
+      const ts = new Date(parseTs(t.ts))
       if (rangeStart && ts < rangeStart) return false
       if (rangeEnd && ts > rangeEnd) return false
       return true

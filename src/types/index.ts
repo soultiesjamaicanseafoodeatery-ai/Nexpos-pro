@@ -232,6 +232,11 @@ export interface Transaction {
   note?: string
   items?: CartItem[]
   orderNum?: string
+  // The active personal clock-in session's ID at the moment this transaction was created
+  // (see AuthScreen.tsx/useAppStore.tsx) — undefined for transactions created before this
+  // field existed, or if no personal shift session was active. Never backfilled onto
+  // historical data; My Shift falls back to cashier+business-date matching when absent.
+  shiftId?: string
 }
 
 export interface HeldOrder {

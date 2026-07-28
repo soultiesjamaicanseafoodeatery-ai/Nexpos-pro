@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { storage } from '@/lib/utils/storage'
+import { parseTs } from '@/lib/utils/businessDate'
 
 interface Target {
   module: 'restaurant' | 'bar' | 'carwash' | 'overall'
@@ -24,7 +25,7 @@ function periodRevenue(txs: { ts: string; total: number; mod: string; voided?: b
     .filter(t => {
       if (t.voided) return false
       if (mod !== 'overall' && t.mod !== mod) return false
-      const d = new Date(t.ts)
+      const d = new Date(parseTs(t.ts))
       if (isNaN(d.getTime())) return false
       if (period === 'daily')   return d.toDateString() === now.toDateString()
       if (period === 'weekly') {

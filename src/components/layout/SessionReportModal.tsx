@@ -1,6 +1,7 @@
 'use client'
 import React, { useMemo, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
+import { parseTs } from '@/lib/utils/businessDate'
 
 interface Props {
   clockinAt: string  // ISO string of when this employee clocked in
@@ -25,7 +26,7 @@ export default function SessionReportModal({ clockinAt, onClockOut, onCancel }: 
   const shiftTxs = useMemo(() =>
     state.transactions.filter(tx =>
       tx.userId === currentUser?.id &&
-      new Date(tx.ts) >= shiftStart
+      new Date(parseTs(tx.ts)) >= shiftStart
     ),
     [state.transactions, currentUser, shiftStart]
   )

@@ -125,6 +125,10 @@ export default function AuthScreen() {
       try {
         if (!localStorage.getItem(`personal_clockin_${user.id}`)) {
           localStorage.setItem(`personal_clockin_${user.id}`, now)
+          // New personal shift session — a fresh UUID identifies every transaction rung up
+          // during this clock-in→clock-out session, distinct from the shared terminal/business
+          // shift (`state.currentShift`, below) and never reused once this session ends.
+          localStorage.setItem(`personal_shiftid_${user.id}`, crypto.randomUUID())
         }
       } catch {}
     }

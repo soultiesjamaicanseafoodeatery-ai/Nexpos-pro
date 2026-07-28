@@ -620,13 +620,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const dispatch = useCallback((action: Action): void => {
     // ADD_TRANSACTION: write to Supabase first, then update local state
     if (action.type === 'ADD_TRANSACTION') {
+      // Stamp the active personal clock-in session's shift ID here — the single choke
+      // point every module's transaction ultimately passes through — rather than
+      // duplicating this lookup in Restaurant/Bar/Car Wash/etc. Only stamps if the
+      // caller hasn't already set one (none currently do) and a personal session is
+      // actually active for this user; never invents an ID otherwise.
+      let tx = action.tx
+      if (!tx.shiftId && tx.userId) {
+        let activeShiftId: string | null = null
+        try {
+          const clockedIn = localStorage.getItem(`personal_clockin_${tx.userId}`)
+          if (clockedIn) activeShiftId = localStorage.getItem(`personal_shiftid_${tx.userId}`)
+        } catch {}
+        if (activeShiftId) {
+          tx = { ...tx, shiftId: activeShiftId }
+        } else {
+          console.warn(`[shift] Transaction ${tx.id} (user ${tx.userId}) saved with no active personal shiftId — My Shift will fall back to cashier+date matching for it`)
+        }
+      }
       ;(async () => {
         try {
           const { error } = await supabase.from('transactions').upsert({
-            id:      action.tx.id,
-            mod:     action.tx.mod,
-            cashier: action.tx.cashier,
-            data:    action.tx,
+            id:      tx.id,
+            mod:     tx.mod,
+            cashier: tx.cashier,
+            data:    tx,
           })
           if (error) throw error
         } catch {
@@ -636,7 +654,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setTimeout(() => rawDispatch({ type: 'REMOVE_TOAST', id: warnId }), 6000)
         }
         // Update local state after Supabase attempt (success or fail)
-        rawDispatch(action)
+        rawDispatch({ ...action, tx })
       })()
       return
     }

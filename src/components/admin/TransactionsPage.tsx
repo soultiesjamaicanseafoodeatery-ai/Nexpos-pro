@@ -5,7 +5,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import { supabase } from '@/lib/supabase'
 import type { Transaction, VoidReason, VoidLog, RefundLog } from '@/types'
 import { buildCustomerReceipt, smartPrint } from '@/lib/utils/ticketPrinter'
-import { jamaicaDateTimeString } from '@/lib/utils/businessDate'
+import { jamaicaDateTimeString, parseTs } from '@/lib/utils/businessDate'
 import VoidReasonModal from '@/components/pos/VoidReasonModal'
 import RefundModal from '@/components/pos/RefundModal'
 
@@ -55,7 +55,7 @@ export default function TransactionsPage() {
     if (dateFilter !== 'all') {
       const now  = new Date()
       const tod  = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-      const txTime = t.id > 1e12 ? t.id : Date.parse(t.ts)
+      const txTime = t.id > 1e12 ? t.id : parseTs(t.ts)
       if (dateFilter === 'today'     && (txTime < tod || txTime >= tod + 86400000)) return false
       if (dateFilter === 'yesterday' && (txTime < tod - 86400000 || txTime >= tod)) return false
       if (dateFilter === 'week'      && txTime < tod - 6 * 86400000) return false

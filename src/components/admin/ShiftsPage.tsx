@@ -4,7 +4,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import EODWizard from './EODWizard'
 import type { Transaction, HeldOrder, POSState } from '@/types'
 import { supabase } from '@/lib/supabase'
-import { jamaicaDateKey, isSameBusinessDay } from '@/lib/utils/businessDate'
+import { jamaicaDateKey, isSameBusinessDay, parseTs } from '@/lib/utils/businessDate'
 import { getPaymentBreakdown } from '@/lib/utils/payments'
 
 function duration(start: string, end: string | null) {
@@ -128,14 +128,29 @@ export default function ShiftsPage() {
   const myAllTxs = user
     ? [...state.transactions]
         .filter(tx => !tx.voided && tx.cashier === user.name)
-        .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+        .sort((a, b) => parseTs(b.ts) - parseTs(a.ts))
     : []
   const myOrdersAll = user
     ? [...state.transactions]
         .filter(tx => tx.cashier === user.name)
-        .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+        .sort((a, b) => parseTs(b.ts) - parseTs(a.ts))
     : []
-  const myTodayTxs    = myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr)
+  // Current session's shift ID, if this user is actively clocked in right now. Transactions
+  // created since this fix ships carry their own shiftId (see useAppStore.tsx); preferring an
+  // exact shiftId match — rather than cashier+date alone — is what correctly separates two
+  // same-day sessions (clock out, then back in) instead of merging them into one.
+  const activeShiftId: string | null = (() => {
+    try {
+      const ci = localStorage.getItem(`personal_clockin_${user?.id ?? ''}`)
+      return ci ? localStorage.getItem(`personal_shiftid_${user?.id ?? ''}`) : null
+    } catch { return null }
+  })()
+  const myTodayTxs = activeShiftId
+    // Current session's own transactions, plus any same-day transaction that predates
+    // this feature (no shiftId at all) — never another shiftId's transactions.
+    ? myAllTxs.filter(tx => tx.shiftId === activeShiftId || (!tx.shiftId && txDateKey(tx.ts) === todayStr))
+    // Not currently clocked in (or shiftId unavailable) — fall back to the historical method.
+    : myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr)
   const myTodayRevenue = myTodayTxs.reduce((s, tx) => s + tx.total, 0)
 
   // Group all transactions by date for activity table
@@ -617,7 +632,7 @@ export default function ShiftsPage() {
                         {ordersToShow.map(tx => (
                           <tr key={tx.id} style={{ borderBottom: '1px solid var(--bdr2)', opacity: tx.voided ? 0.5 : 1 }}>
                             <td style={{ padding: '8px 12px', color: 'var(--txt3)', fontFamily: 'var(--mono)', fontSize: 11, whiteSpace: 'nowrap' }}>
-                              {(() => { try { return new Date(tx.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) } catch { return tx.ts } })()}
+                              {(() => { try { return new Date(parseTs(tx.ts)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) } catch { return tx.ts } })()}
                             </td>
                             <td style={{ padding: '8px 12px', color: 'var(--txt2)', fontFamily: 'var(--mono)', fontSize: 11 }}>
                               {tx.orderNum ?? `#${tx.id}`}

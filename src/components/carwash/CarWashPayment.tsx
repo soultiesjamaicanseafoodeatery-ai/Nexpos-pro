@@ -263,20 +263,20 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10, textAlign: 'center' }}>
               Select Payment Method
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {METHODS.map(({ key, label, icon, color }) => (
                 <button
                   key={key}
                   onClick={() => { setPayMethod(key); setStep(key === 'card' ? 'card' : 'cash') }}
                   style={{
-                    padding: '18px 20px', borderRadius: 'var(--r3)',
+                    padding: '16px 10px', borderRadius: 'var(--r3)',
                     border: `2px solid ${color}44`, background: `${color}11`,
                     color: 'var(--txt)', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 14,
-                    fontWeight: 700, fontSize: 16, transition: 'all .12s',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                    fontWeight: 700, fontSize: 12, transition: 'all .12s',
                   }}
                 >
-                  <span style={{ fontSize: 26 }}>{icon}</span>
+                  <span style={{ fontSize: 24 }}>{icon}</span>
                   <span style={{ color }}>{label}</span>
                 </button>
               ))}

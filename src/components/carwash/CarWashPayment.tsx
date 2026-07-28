@@ -5,11 +5,14 @@ import type { ReactNode } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { Transaction } from '@/types'
 import { smartPrint, buildCarwashReceipt } from '@/lib/utils/ticketPrinter'
+import { qzOpenDrawer } from '@/lib/utils/qzTray'
 import { VEHICLE_TYPES } from './CarWashFlow'
 import type { CwService, CwAddon, PaymentPrefill, PayMethod } from './CarWashFlow'
 
 const fmtJ = (n: number) =>
   'J$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+const QUICK_AMTS = [500, 1000, 2000, 5000, 10000, 20000]
 
 interface Props {
   services: CwService[]
@@ -102,6 +105,8 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
         orderNum:    order.ticket_no,
       }
       dispatch({ type: 'ADD_TRANSACTION', tx: cwTx })
+      if ((payMethod === 'cash' || payMethod === 'mixed') && biz?.printers?.drawerEnabled && biz?.printers?.receipt)
+        qzOpenDrawer(biz.printers.receipt)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -295,6 +300,33 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
                 Cash Tendered
               </div>
               <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: 'var(--txt3)' }}>Total Due</span>
+                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, color: 'var(--txt)' }}>{fmtJ(total)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: 'var(--txt3)' }}>Cash Received</span>
+                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, color: tendered >= total && cashTendered ? 'var(--grn)' : tendered > 0 ? 'var(--ora)' : 'var(--txt3)' }}>
+                    {tendered > 0 ? fmtJ(tendered) : '—'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  <button
+                    onClick={() => setCashTendered(total.toFixed(2))}
+                    style={{ padding: '7px 14px', borderRadius: 'var(--r)', border: `1.5px solid ${tendered === total ? 'var(--blue)' : 'var(--bdr)'}`, background: tendered === total ? 'var(--blue-bg)' : 'var(--surf2)', color: tendered === total ? 'var(--blue)' : 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Exact
+                  </button>
+                  {QUICK_AMTS.filter(a => a >= Math.floor(total)).map(a => (
+                    <button
+                      key={a}
+                      onClick={() => setCashTendered(String(a))}
+                      style={{ padding: '7px 14px', borderRadius: 'var(--r)', border: `1.5px solid ${tendered === a ? 'var(--blue)' : 'var(--bdr)'}`, background: tendered === a ? 'var(--blue-bg)' : 'var(--surf2)', color: tendered === a ? 'var(--blue)' : 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      {a >= 1000 ? `${(a / 1000).toFixed(0)}K` : a}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -305,8 +337,8 @@ export default function CarWashPayment({ services, addons, initial, onBack, onCo
                 />
                 {cashTendered && tendered >= total && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(34,197,94,.08)', borderRadius: 'var(--r2)', border: '1px solid rgba(34,197,94,.3)' }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--txt)' }}>Change</span>
-                    <span style={{ fontSize: 20, fontWeight: 900, fontFamily: 'var(--mono)', color: 'var(--grn)' }}>{fmtJ(change)}</span>
+                    <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--txt)' }}>Change Due</span>
+                    <span style={{ fontSize: 28, fontWeight: 900, fontFamily: 'var(--mono)', color: 'var(--grn)' }}>{fmtJ(change)}</span>
                   </div>
                 )}
                 {cashTendered && tendered < total && (

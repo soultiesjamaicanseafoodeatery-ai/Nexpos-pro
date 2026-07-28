@@ -44,10 +44,6 @@ export default function TicketModal({ isOpen, onClose, ticket, tx, biz }: Props)
         const kHtml = buildKitchenTicket(orderData, { width: 58 })
         if (kHtml) await smartPrint(kHtml, 'Kitchen Ticket', biz.printers?.kitchen, 58).catch(() => {})
       }
-      if (ticket.hasBar) {
-        const bHtml = buildBarTicket(orderData, { width: pw })
-        if (bHtml) await smartPrint(bHtml, 'Bar Ticket', biz.printers?.bar || biz.printers?.kitchen, pw).catch(() => {})
-      }
       if (ticket.hasCarwash) {
         const cHtml = buildCarwashWorkOrder(orderData, { width: pw })
         if (cHtml) await smartPrint(cHtml, 'Car Wash Work Order', biz.printers?.receipt, pw).catch(() => {})

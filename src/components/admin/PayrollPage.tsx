@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { supabase } from '@/lib/supabase'
 import { hashPin } from '@/lib/utils/hash'
+import { jamaicaDateKey } from '@/lib/utils/businessDate'
 
 // ── Types ────────────────────────────────────────────────────────
 interface PayrollProfile {
@@ -663,6 +664,47 @@ export default function PayrollPage() {
   useEffect(() => { try { localStorage.setItem('payroll_runs',          JSON.stringify(payrollRuns)) } catch {} }, [payrollRuns])
   useEffect(() => { try { localStorage.setItem('payroll_period_locks',  JSON.stringify(periodLocks)) } catch {} }, [periodLocks])
 
+  // Period locks are written to Supabase (saveLock/doUnlock, below) but enforcement
+  // (isDateLocked) reads only local state — so a lock made on another device, or lost
+  // to a localStorage clear on this one, would silently appear unlocked here. On
+  // mount, pull the shared Supabase copy and merge it in, keyed by runId (the field
+  // both sides agree on — Supabase's own row id is unrelated to the local "PL-..." id).
+  // Supabase's lock status always wins for a runId it knows about; any local-only lock
+  // Supabase doesn't have yet (e.g. its own write never reached Supabase) is preserved
+  // as-is rather than dropped. A failed/offline fetch just logs a warning and leaves
+  // local state untouched — never blocks the page.
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('payroll_period_locks').select('*')
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error || !data) {
+          console.warn('[payroll] Could not fetch period locks from Supabase — falling back to local locks only', error)
+          return
+        }
+        setPeriodLocks(prev => {
+          const byRunId = new Map(prev.map(l => [l.runId, l] as const))
+          for (const row of data as Record<string, unknown>[]) {
+            const runId = row.run_id as string
+            if (!runId) continue
+            byRunId.set(runId, {
+              id:          String(row.id),
+              runId,
+              periodStart: row.period_start as string,
+              periodEnd:   row.period_end as string,
+              lockedBy:    row.locked_by as string,
+              lockedAt:    row.locked_at as string,
+              isLocked:    !!row.is_locked,
+              unlockedBy:  (row.unlocked_by as string) ?? undefined,
+              unlockedAt:  (row.unlocked_at as string) ?? undefined,
+            })
+          }
+          return Array.from(byRunId.values())
+        })
+      })
+    return () => { cancelled = true }
+  }, [])
+
   // ── Tab ─────────────────────────────────────────────────────────
   const [tab, setTab] = useState<'profiles' | 'timeclock' | 'process' | 'reports' | 'corrections'>('profiles')
 
@@ -874,8 +916,12 @@ export default function PayrollPage() {
         ? transactions
             .filter(tx =>
               tx.userId === profile.staffId &&
-              tx.ts.slice(0, 10) >= periodStart &&
-              tx.ts.slice(0, 10) <= periodEnd &&
+              // Jamaica business date, not a raw slice of tx.ts — periodStart/periodEnd are
+              // already "YYYY-MM-DD" business-date boundaries, and a raw .slice(0,10) silently
+              // mishandles the legacy "MM/DD HH:MM AM/PM" recovered transactions (no year, not
+              // ISO-prefixed), excluding their gratuity from tips payouts entirely.
+              jamaicaDateKey(tx.ts) >= periodStart &&
+              jamaicaDateKey(tx.ts) <= periodEnd &&
               !tx.voided
             )
             .reduce((sum, tx) => sum + (tx.gratuity ?? 0), 0)

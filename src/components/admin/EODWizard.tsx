@@ -4,6 +4,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import { buildZReport, smartPrint } from '@/lib/utils/ticketPrinter'
 import type { ZReportData, PrintWidth } from '@/lib/utils/ticketPrinter'
 import { jamaicaDateKey, isSameBusinessDay } from '@/lib/utils/businessDate'
+import { getPaymentBreakdown, mergeBreakdowns } from '@/lib/utils/payments'
 
 const JMD_DENOMS = [
   { label: '$5,000 Bill', value: 5000 },
@@ -49,17 +50,17 @@ export default function EODWizard({ onClose }: Props) {
   const cwSales   = cwTxs.reduce(  (s: number, t: any) => s + t.total, 0)
   const totalSales = validTxs.reduce((s: number, t: any) => s + t.total, 0)
 
-  function getMethod(tx: any, method: string): number {
-    if (Array.isArray(tx.payments) && tx.payments.length > 0)
-      return tx.payments
-        .filter((p: any) => String(p.method).toLowerCase().includes(method))
-        .reduce((s: number, p: any) => s + (p.amount ?? 0), 0)
-    return String(tx.pay ?? '').toLowerCase().includes(method) ? (tx.total ?? 0) : 0
-  }
-  const cashSales     = validTxs.reduce((s: number, tx: any) => s + getMethod(tx, 'cash'), 0)
-  const cardSales     = validTxs.reduce((s: number, tx: any) => s + getMethod(tx, 'card'), 0)
-  const giftCardSales = validTxs.reduce((s: number, tx: any) => s + getMethod(tx, 'gift'), 0)
-  const tabSales      = validTxs.reduce((s: number, tx: any) => s + getMethod(tx, 'tab'),  0)
+  // Shared canonical breakdown (same helper CloseShiftWizard/ShiftsPage/Reports use) —
+  // the previous local getMethod() matched raw method strings by substring (e.g.
+  // ".includes('card')"), which never matched the 'debit'/'credit' vocabulary used
+  // everywhere else in the app, silently excluding those sales from cardSales here.
+  const eodBreakdown = mergeBreakdowns(
+    validTxs.map((tx: any) => getPaymentBreakdown(tx.pay, tx.total, tx.payments, tx.changeDue))
+  )
+  const cashSales     = eodBreakdown.cash
+  const cardSales     = eodBreakdown.debit + eodBreakdown.credit
+  const giftCardSales = eodBreakdown.gift
+  const tabSales      = eodBreakdown.house
 
   const totalDiscounts = validTxs.reduce((s: number, tx: any) => s + (tx.disc ?? 0), 0)
   const voidedTxs      = dayTxs.filter((tx: any) => tx.voided)
@@ -106,7 +107,10 @@ export default function EODWizard({ onClose }: Props) {
     setPrinting(true)
     try {
       const html = buildZReport(buildReportData(), { width: 80 })
-      const printerName = (state.biz as any).printerName as string | undefined
+      // Was reading a nonexistent `biz.printerName` field (always undefined), so this
+      // never reached QZ Tray and always fell back to the browser print dialog.
+      // `biz.printers.receipt` is the same field every other receipt/report print uses.
+      const printerName = state.biz.printers?.receipt
       await smartPrint(html, 'Z-Report', printerName, 80 as PrintWidth, false)
     } finally {
       setPrinting(false)

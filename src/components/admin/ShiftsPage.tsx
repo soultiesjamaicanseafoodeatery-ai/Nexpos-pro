@@ -147,8 +147,13 @@ export default function ShiftsPage() {
   })()
   const myTodayTxs = activeShiftId
     // Current session's own transactions, plus any same-day transaction that predates
-    // this feature (no shiftId at all) — never another shiftId's transactions.
-    ? myAllTxs.filter(tx => tx.shiftId === activeShiftId || (!tx.shiftId && txDateKey(tx.ts) === todayStr))
+    // this feature (no shiftId at all) — never another shiftId's transactions. Always
+    // bounded to today's Jamaica business date: a shiftId match alone is not enough,
+    // because a session left open past midnight (no Clock Out) would otherwise keep
+    // matching its own transactions forever, while the no-shiftId legacy fallback
+    // — bounded by todayStr — stops matching the same instant, splitting one shift's
+    // revenue in half the moment the calendar day rolls over.
+    ? myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr && (tx.shiftId === activeShiftId || !tx.shiftId))
     // Not currently clocked in (or shiftId unavailable) — fall back to the historical method.
     : myAllTxs.filter(tx => txDateKey(tx.ts) === todayStr)
   const myTodayRevenue = myTodayTxs.reduce((s, tx) => s + tx.total, 0)

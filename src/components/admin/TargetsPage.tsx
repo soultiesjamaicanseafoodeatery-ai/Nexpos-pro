@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { storage } from '@/lib/utils/storage'
-import { parseTs } from '@/lib/utils/businessDate'
+import { parseTs, jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
 
 interface Target {
   module: 'restaurant' | 'bar' | 'carwash' | 'overall'
@@ -19,20 +19,24 @@ const DEFAULT_TARGETS: Target[] = [
   { module: 'carwash',    period: 'daily',   value: 10000 },
 ]
 
+// Jamaica business-day boundaries — not the viewing device's local timezone —
+// same bug class already fixed in ReportsPage.tsx/PayrollPage.tsx.
 function periodRevenue(txs: { ts: string; total: number; mod: string; voided?: boolean }[], mod: string, period: 'daily' | 'weekly' | 'monthly') {
-  const now = new Date()
+  const today = jamaicaDayStart()
+  const dayMs = 24 * 60 * 60 * 1000
+  const todayKey = jamaicaDateKey()
+  const weekStart = new Date(today.getTime() - (today.getUTCDay()) * dayMs)
+  const [ty, tm] = todayKey.split('-').map(Number)
   return txs
     .filter(t => {
       if (t.voided) return false
       if (mod !== 'overall' && t.mod !== mod) return false
-      const d = new Date(parseTs(t.ts))
-      if (isNaN(d.getTime())) return false
-      if (period === 'daily')   return d.toDateString() === now.toDateString()
-      if (period === 'weekly') {
-        const start = new Date(now); start.setDate(now.getDate() - now.getDay())
-        return d >= start
-      }
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      const ms = parseTs(t.ts)
+      if (isNaN(ms)) return false
+      if (period === 'daily')  return jamaicaDateKey(ms) === todayKey
+      if (period === 'weekly') return ms >= weekStart.getTime()
+      const [y, m] = jamaicaDateKey(ms).split('-').map(Number)
+      return y === ty && m === tm
     })
     .reduce((s, t) => s + t.total, 0)
 }

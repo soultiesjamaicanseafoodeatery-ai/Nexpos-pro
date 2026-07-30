@@ -1,7 +1,12 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const url  = process.env.NEXT_PUBLIC_SUPABASE_URL  ?? ''
-const akey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+// Strip a leading UTF-8 BOM — some environments' env vars have picked one up
+// (same corruption pattern `src/app/api/staff/route.ts` already guards against
+// for its own Supabase key). An un-stripped BOM makes the Headers API throw
+// ("String contains non ISO-8859-1 code point") the moment supabase-js tries
+// to send it as the apikey header, breaking every client-side Supabase call.
+const url  = (process.env.NEXT_PUBLIC_SUPABASE_URL  ?? '').replace(/^﻿/, '')
+const akey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').replace(/^﻿/, '')
 
 export const supabase: SupabaseClient = (url && akey)
   ? createClient(url, akey)

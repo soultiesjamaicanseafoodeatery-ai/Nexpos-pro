@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { VoidLog } from '@/types'
 import { VOID_REASON_LABELS } from '@/types'
+import { jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
 
 const MOD_COLOR: Record<string, string> = { restaurant: 'var(--ora)', bar: 'var(--pur)', carwash: 'var(--blue)', mixed: 'var(--txt3)' }
 
@@ -11,19 +12,16 @@ function fmt(n: number, sym: string) {
   return sym + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// Jamaica business-day boundaries, not the viewing device's local timezone —
+// same bug class already fixed in ReportsPage.tsx/PayrollPage.tsx/TargetsPage.tsx.
 function isToday(ts: string) {
-  const d = new Date(ts)
-  const now = new Date()
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+  return jamaicaDateKey(ts) === jamaicaDateKey()
 }
 
 function isThisWeek(ts: string) {
-  const d = new Date(ts)
-  const now = new Date()
-  const weekStart = new Date(now)
-  weekStart.setDate(now.getDate() - now.getDay())
-  weekStart.setHours(0, 0, 0, 0)
-  return d >= weekStart
+  const today = jamaicaDayStart()
+  const weekStart = new Date(today.getTime() - today.getUTCDay() * 24 * 60 * 60 * 1000)
+  return new Date(ts).getTime() >= weekStart.getTime()
 }
 
 export default function VoidReport() {

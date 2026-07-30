@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { supabase } from '@/lib/supabase'
 import { hashPin } from '@/lib/utils/hash'
-import { jamaicaDateKey } from '@/lib/utils/businessDate'
+import { jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
 
 // ── Types ────────────────────────────────────────────────────────
 interface PayrollProfile {
@@ -60,7 +60,7 @@ const fmtHrs = (mins: number) => {
   return m === 0 ? `${h}h` : `${h}h ${m}m`
 }
 const fmtDec = (mins: number) => (mins / 60).toFixed(2)
-const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
+const todayStr = () => jamaicaDateKey()
 const nowHHMM = () => new Date().toTimeString().slice(0, 5)
 
 function minutesBetween(a: string, b: string): number {
@@ -71,22 +71,28 @@ function minutesBetween(a: string, b: string): number {
   return d
 }
 
+// Jamaica business-day boundaries throughout — jamaicaDayStart()'s instant stays
+// pinned to Jamaica midnight (05:00 UTC) across whole-day arithmetic since Jamaica
+// has no DST, so getUTCDay()/date-math here never drifts with the viewing device's
+// timezone the way plain `new Date()`/getDay()/getDate() did (same bug class as
+// ReportsPage.tsx's date-range picker).
 function periodRange(type: 'weekly' | 'biweekly' | 'monthly'): [string, string] {
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const today = jamaicaDayStart()
+  const dayMs = 24 * 60 * 60 * 1000
+  const fmt = (d: Date) => jamaicaDateKey(d)
   if (type === 'weekly') {
-    const day = now.getDay()
-    const mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1))
-    const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+    const dow = today.getUTCDay()
+    const mon = new Date(today.getTime() - (dow === 0 ? 6 : dow - 1) * dayMs)
+    const sun = new Date(mon.getTime() + 6 * dayMs)
     return [fmt(mon), fmt(sun)]
   }
   if (type === 'biweekly') {
-    const start = new Date(now); start.setDate(now.getDate() - 13)
-    return [fmt(start), fmt(now)]
+    const start = new Date(today.getTime() - 13 * dayMs)
+    return [fmt(start), fmt(today)]
   }
-  const start = new Date(now.getFullYear(), now.getMonth(), 1)
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const [y, m] = jamaicaDateKey().split('-').map(Number)
+  const start = jamaicaDayStart(new Date(Date.UTC(y, m - 1, 1, 12)))
+  const end   = jamaicaDayStart(new Date(Date.UTC(y, m, 0, 12)))
   return [fmt(start), fmt(end)]
 }
 

@@ -90,21 +90,37 @@ export async function smartPrint(
   buzz = false,
 ): Promise<void> {
   if (!html) return
+
+  // Pre-open the fallback window synchronously, in the same tick as the caller's
+  // click — before the async QZ connect/sign round-trip below runs. Browsers tie
+  // window.open's popup allowance to the user gesture that triggered the current
+  // call stack; the old code called window.open only after awaiting that full
+  // round-trip (real network time), by which point the gesture had expired and
+  // the popup opened blocked/stuck on about:blank. Pre-opening unconditionally
+  // (not just when QZ looks disconnected) also covers the case where QZ reports
+  // connected but this specific print still fails — that path must never leave
+  // a blank page either. Non-silent calls are all low-frequency, staff-initiated
+  // actions (manual reprints/tests), not the payment hot path (always
+  // silentOnly=true), so the brief flash on the success case is an acceptable
+  // trade for never leaving about:blank.
+  const fallbackWin = (!silentOnly && typeof window !== 'undefined')
+    ? window.open('', '_blank', 'width=440,height=720,menubar=no,toolbar=no')
+    : null
+
   if (printerName?.trim()) {
     const { qzPrintRaw } = await import('./qzTray')
     const text = html.replace(/<\/?pre>/g, '')
     const ok = await qzPrintRaw(printerName.trim(), text, buzz)
-    if (ok) return
+    if (ok) { fallbackWin?.close(); return }
   }
   if (!silentOnly) {
-    printTicket(html, title)
+    if (fallbackWin) writeTicketWindow(fallbackWin, html, title)
+    else printTicket(html, title) // popup pre-open failed/unavailable — best-effort direct attempt
   }
 }
 
-// ── Print helper — opens browser window and triggers print dialog ─────────────
-export function printTicket(html: string, title = 'Ticket'): void {
-  const win = window.open('', '_blank', 'width=440,height=720,menubar=no,toolbar=no')
-  if (!win) return
+function writeTicketWindow(win: Window, html: string, title: string): void {
+  win.document.open()
   win.document.write(
     `<!DOCTYPE html><html><head><title>${esc(title)}</title><style>
     *{margin:0;padding:0;box-sizing:border-box}
@@ -116,6 +132,13 @@ export function printTicket(html: string, title = 'Ticket'): void {
     </body></html>`
   )
   win.document.close()
+}
+
+// ── Print helper — opens browser window and triggers print dialog ─────────────
+export function printTicket(html: string, title = 'Ticket'): void {
+  const win = window.open('', '_blank', 'width=440,height=720,menubar=no,toolbar=no')
+  if (!win) return
+  writeTicketWindow(win, html, title)
 }
 
 // ── Customer Receipt ──────────────────────────────────────────────────────────

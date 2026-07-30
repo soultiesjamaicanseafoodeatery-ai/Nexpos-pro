@@ -5,7 +5,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import { supabase } from '@/lib/supabase'
 import type { Transaction, VoidReason, VoidLog, RefundLog } from '@/types'
 import { buildCustomerReceipt, smartPrint } from '@/lib/utils/ticketPrinter'
-import { jamaicaDateTimeString, parseTs } from '@/lib/utils/businessDate'
+import { jamaicaDateTimeString, parseTs, jamaicaDayStart, jamaicaDateKey } from '@/lib/utils/businessDate'
 import VoidReasonModal from '@/components/pos/VoidReasonModal'
 import RefundModal from '@/components/pos/RefundModal'
 
@@ -53,14 +53,16 @@ export default function TransactionsPage() {
   const filtered = txList.filter(t => {
     if (filter !== 'all' && t.mod !== filter) return false
     if (dateFilter !== 'all') {
-      const now  = new Date()
-      const tod  = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+      // Jamaica business-day boundaries, not the viewing device's local timezone —
+      // same bug class already fixed in ReportsPage.tsx/PayrollPage.tsx/TargetsPage.tsx.
+      const tod  = jamaicaDayStart().getTime()
       const txTime = t.id > 1e12 ? t.id : parseTs(t.ts)
       if (dateFilter === 'today'     && (txTime < tod || txTime >= tod + 86400000)) return false
       if (dateFilter === 'yesterday' && (txTime < tod - 86400000 || txTime >= tod)) return false
       if (dateFilter === 'week'      && txTime < tod - 6 * 86400000) return false
       if (dateFilter === 'month') {
-        const mStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+        const [y, m] = jamaicaDateKey().split('-').map(Number)
+        const mStart = jamaicaDayStart(new Date(Date.UTC(y, m - 1, 1, 12))).getTime()
         if (txTime < mStart) return false
       }
     }
@@ -119,7 +121,7 @@ export default function TransactionsPage() {
 
   const handleReprint = async (tx: Parameters<typeof buildCustomerReceipt>[0]) => {
     const html = buildCustomerReceipt(tx, state.biz, { width: 80 })
-    await smartPrint(html, 'Receipt Reprint', (state.biz as any).printerName, 80 as any, false)
+    await smartPrint(html, 'Receipt Reprint', state.biz.printers?.receipt, (state.biz.printers?.width ?? 80) as 58 | 80, false)
   }
 
   const exportCSV = () => {

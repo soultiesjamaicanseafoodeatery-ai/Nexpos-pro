@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { getPaymentBreakdown, mergeBreakdowns } from '@/lib/utils/payments'
-import { parseTs } from '@/lib/utils/businessDate'
+import { parseTs, jamaicaDayStart, jamaicaDateKey } from '@/lib/utils/businessDate'
 
 type Tab = 'overview' | 'server' | 'menu' | 'financial'
 type DateRange = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'
@@ -19,21 +19,27 @@ export default function ReportsPage() {
   const [customEnd, setCustomEnd] = useState('')
 
   const { rangeStart, rangeEnd, rangeLabel } = useMemo(() => {
-    const now = new Date()
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    // Jamaica business-day boundaries, not the viewing device's local timezone —
+    // otherwise "Today"/"Week"/"Month" disagree with every other screen (My Shift,
+    // Reports' own transaction list via parseTs, Close Shift, etc.) whenever staff
+    // or the owner is logged in from outside Jamaica. See businessDate.ts.
+    const today = jamaicaDayStart()
+    const dayMs = 24 * 60 * 60 * 1000
     switch (dateRange) {
       case 'today':
         return { rangeStart: today, rangeEnd: null, rangeLabel: 'Today' }
       case 'yesterday': {
-        const y = new Date(today); y.setDate(y.getDate() - 1)
+        const y = new Date(today.getTime() - dayMs)
         return { rangeStart: y, rangeEnd: today, rangeLabel: 'Yesterday' }
       }
       case 'week': {
-        const w = new Date(today); w.setDate(w.getDate() - 6)
+        const w = new Date(today.getTime() - 6 * dayMs)
         return { rangeStart: w, rangeEnd: null, rangeLabel: 'Last 7 Days' }
       }
-      case 'month':
-        return { rangeStart: new Date(now.getFullYear(), now.getMonth(), 1), rangeEnd: null, rangeLabel: 'This Month' }
+      case 'month': {
+        const [y, m] = jamaicaDateKey().split('-').map(Number)
+        return { rangeStart: jamaicaDayStart(new Date(Date.UTC(y, m - 1, 1, 12))), rangeEnd: null, rangeLabel: 'This Month' }
+      }
       case 'custom': {
         const s = customStart ? new Date(customStart) : null
         const e = customEnd ? new Date(customEnd + 'T23:59:59.999') : null

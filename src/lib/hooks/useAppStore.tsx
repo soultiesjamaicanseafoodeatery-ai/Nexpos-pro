@@ -731,6 +731,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { supabase.removeChannel(ch) }
   }, [refreshStaff])
 
+  // Business config (incl. printer settings) — initial load + realtime sync.
+  // Without this, a terminal whose localStorage was ever cleared (browser reset,
+  // profile wipe, new device) silently falls back to DEFAULT_BIZ_CONFIG — no
+  // printer names, drawerEnabled false — even though Settings already saved a
+  // valid config to Supabase. SettingsPage writes to this table; until now
+  // nothing read it back (unlike staff/held_orders/transactions below).
+  const bizFetched = useRef(false)
+  useEffect(() => {
+    if (bizFetched.current) return
+    bizFetched.current = true
+    ;(async () => {
+      try {
+        const { data } = await supabase.from('business_config').select('data').eq('id', 'main').maybeSingle()
+        if (data?.data) rawDispatch({ type: 'SET_BIZ', biz: data.data as BusinessConfig })
+      } catch {}
+    })()
+
+    const ch = supabase
+      .channel('biz-config-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_config' }, ({ new: row }) => {
+        const biz = (row as { data?: BusinessConfig } | null)?.data
+        if (biz) rawDispatch({ type: 'SET_BIZ', biz })
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
   // Online/offline detection
   useEffect(() => {
     const on  = () => rawDispatch({ type: 'SET_ONLINE', online: true })

@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { hashPin } from '@/lib/utils/hash'
-import type { User } from '@/types'
+import type { User, Transaction } from '@/types'
 import { supabase } from '@/lib/supabase'
-import { jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
 import { buildZReport, smartPrint } from '@/lib/utils/ticketPrinter'
 import type { ZReportData } from '@/lib/utils/ticketPrinter'
 import { getPaymentBreakdown, mergeBreakdowns } from '@/lib/utils/payments'
@@ -31,6 +30,16 @@ interface CWData {
   override: boolean
 }
 interface Validation { heldOrders: number; openTickets: number; activeWashes: number; openTables: number }
+// Snapshot of the done-screen's numbers, captured at the moment of a successful
+// close — renderDone() must not read the reactive shiftTxs/currentShift-derived
+// values, since currentShift becomes null the instant the close succeeds (its
+// job is done), which would otherwise silently swap the displayed totals for
+// whatever a null/absent shift falls back to.
+interface ClosedSnapshot {
+  shiftId: string; closedAt: string; closedBy: string
+  restaurantTotal: number; barTotal: number; carwashTotal: number; openItemTotal: number
+  grandTotal: number; orderCount: number; variance: number | null
+}
 interface CwOrder { id: string; ticket_no: string; customer_name: string; plate: string; service_name: string; service_price: number; addons_total: number; total: number; payment_method: string; status: string }
 
 const SummaryRow = ({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) => (
@@ -74,7 +83,7 @@ const CardFoot = ({ children }: { children: React.ReactNode }) => (
 
 export default function CloseShiftWizard() {
   const { state, dispatch, toast, audit } = useApp()
-  const { currentUser, currentShift, users, transactions, heldOrders, orderTickets, isOnline, biz } = state
+  const { currentUser, currentShift, users, heldOrders, orderTickets, isOnline, biz } = state
   const sym = biz.currencySymbol ?? 'J$'
 
   const [step,    setStep]    = useState<WStep>('auth')
@@ -94,15 +103,80 @@ export default function CloseShiftWizard() {
   const [printingZ, setPrintingZ] = useState(false)
   const [cwOrders, setCwOrders] = useState<CwOrder[]>([])
   const [cwActioning, setCwActioning] = useState<string | null>(null)
-  const [savedShiftStart, setSavedShiftStart] = useState<string | null>(null)
-  const [savedShiftId,    setSavedShiftId]    = useState<string | null>(null)
+  const [closedSnapshot, setClosedSnapshot] = useState<ClosedSnapshot | null>(null)
+  const [closeError, setCloseError] = useState('')
   const [countedSubmitted, setCountedSubmitted] = useState(false)
 
+  // ── Fresh transaction fetch ────────────────────────────────────
+  // The ambient state.transactions array (populated once at app startup, no
+  // realtime sync) can go stale on a device that's been sitting open while
+  // another terminal records sales. Close Shift totals must never be computed
+  // from that ambient array — instead we pull a fresh copy directly from
+  // Supabase the moment this wizard mounts, and every total below derives
+  // from that fresh set. A fetch failure blocks progress instead of silently
+  // falling back to whatever stale data happened to already be in memory.
+  const [freshTxs, setFreshTxs] = useState<Transaction[] | null>(null)
+  const [freshTxLoading, setFreshTxLoading] = useState(true)
+  const [freshTxError, setFreshTxError] = useState('')
+
+  useEffect(() => {
+    if (!currentShift) { setFreshTxLoading(false); return }
+    let cancelled = false
+    setFreshTxLoading(true)
+    setFreshTxError('')
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('data')
+          .order('id', { ascending: false })
+          .limit(50000)
+        if (error) throw error
+        if (cancelled) return
+        setFreshTxs(((data ?? []) as { data: Transaction }[]).map(r => r.data))
+      } catch {
+        if (!cancelled) setFreshTxError('Could not load current transaction data from the database. Close Shift totals cannot be safely calculated right now — check your connection and try again.')
+      } finally {
+        if (!cancelled) setFreshTxLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [currentShift?.id])
+
+  const retryFreshFetch = useCallback(() => {
+    setFreshTxs(null)
+    setFreshTxLoading(true)
+    setFreshTxError('')
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('data')
+          .order('id', { ascending: false })
+          .limit(50000)
+        if (error) throw error
+        setFreshTxs(((data ?? []) as { data: Transaction }[]).map(r => r.data))
+      } catch {
+        setFreshTxError('Could not load current transaction data from the database. Close Shift totals cannot be safely calculated right now — check your connection and try again.')
+      } finally {
+        setFreshTxLoading(false)
+      }
+    })()
+  }, [])
+
   // ── Shift transactions ────────────────────────────────────────
-  const shiftStart = savedShiftStart ?? currentShift?.start ?? jamaicaDayStart().toISOString()
+  // currentShift is now Supabase-authoritative (business_shifts, identical on
+  // every device — see useAppStore.tsx) — no device-local fallback, and no
+  // Unix-epoch fallback. If there's no active shift, shiftStart is null and
+  // shiftTxs is empty; the wizard shows a blocking "No Active Shift" screen
+  // instead of silently computing a total from an arbitrary date.
+  // All totals below derive from freshTxs (the fresh Supabase fetch above),
+  // never from the ambient state.transactions array.
+  const shiftStart = currentShift?.start ?? null
   const shiftAgeHours = currentShift ? (Date.now() - new Date(currentShift.start).getTime()) / 3600000 : 0
   const shiftIsStale = shiftAgeHours > STALE_SHIFT_HOURS
-  const shiftTxs = transactions.filter(tx => {
+  const freshSourceTxs = freshTxs ?? []
+  const shiftTxs = !shiftStart ? [] : freshSourceTxs.filter(tx => {
     if (tx.voided) return false
     if (typeof tx.ts !== 'string') return false
     if (!tx.ts.includes('T')) {
@@ -130,7 +204,7 @@ export default function CloseShiftWizard() {
   }
 
   const totalSales   = shiftTxs.reduce((s,tx)=>s+tx.total, 0)
-  const totalRefunds = transactions
+  const totalRefunds = !shiftStart ? 0 : freshSourceTxs
     .filter(tx => tx.refunded && new Date(tx.ts) >= new Date(shiftStart))
     .reduce((s,tx)=>s+(tx.refundAmount??0), 0)
   const totalDisc  = shiftTxs.reduce((s,tx)=>s+(tx.disc??0), 0)
@@ -240,16 +314,62 @@ export default function CloseShiftWizard() {
   }, [step, heldOrders.length, orderTickets])
 
   // ── Execute close ─────────────────────────────────────────────
+  // Idempotent/safe against a second device: the conditional UPDATE below only
+  // succeeds if this shift is still 'open' in Supabase at the moment of the
+  // write. If another device closed it first (or it's otherwise no longer
+  // open), the update matches zero rows and this device stops with a clear
+  // error instead of recording a duplicate/conflicting closure.
   const doClose = async () => {
+    if (!currentShift) { setCloseError('No active shift to close — it may have already been closed from another device.'); return }
+    if (freshTxs === null) { setCloseError('Current transaction data has not finished loading — cannot close on stale data.'); return }
     setClosing(true)
+    setCloseError('')
     const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
-    // Capture shift data before dispatch nulls out currentShift
-    setSavedShiftStart(currentShift?.start ?? new Date(0).toISOString())
-    setSavedShiftId(currentShift?.id ?? null)
-    dispatch({ type: 'CLOSE_SHIFT_FORMAL', closedBy: by, closedAt: new Date().toISOString(),
+    const closedAt = new Date().toISOString()
+
+    const cwTotal = modMap['carwash']?.total ?? 0
+    const snapshot: ClosedSnapshot = {
+      shiftId: currentShift.id, closedAt, closedBy: by,
+      restaurantTotal: modMap['restaurant']?.total ?? 0,
+      barTotal: modMap['bar']?.total ?? 0,
+      carwashTotal: cwTotal,
+      openItemTotal,
+      grandTotal: netSales,
+      orderCount: shiftTxs.length,
+      variance,
+    }
+
+    try {
+      const { data: rows, error } = await supabase
+        .from('business_shifts')
+        .update({
+          status: 'closed', closed_at: closedAt, closed_by: by,
+          opening_float: floatNum, counted_cash: countedNum, cash_variance: variance ?? 0,
+          variance_note: data.varianceNote, was_overridden: data.override,
+          revenue: netSales, tx_count: shiftTxs.length, is_formal_close: true,
+        })
+        .eq('id', currentShift.id)
+        .eq('status', 'open')
+        .select()
+
+      if (error) throw error
+      if (!rows || rows.length === 0) {
+        setCloseError('This shift was already closed — likely from another device. Refresh to see the current state.')
+        setClosing(false)
+        return
+      }
+    } catch {
+      setCloseError('Could not reach the database to close this shift. Check your connection and try again.')
+      setClosing(false)
+      return
+    }
+
+    dispatch({ type: 'CLOSE_SHIFT_FORMAL', closedBy: by, closedAt,
       openingFloat: floatNum, countedCash: countedNum, variance: variance ?? 0,
-      varianceNote: data.varianceNote, wasOverridden: data.override })
+      varianceNote: data.varianceNote, wasOverridden: data.override,
+      revenue: netSales, txCount: shiftTxs.length })
     audit('SHIFT_CLOSED', `Closed by ${by} — Net Sales ${fmtJ(netSales)}, Cash variance: ${variance != null ? fmtJ(variance) : 'N/A'}`, 'success')
+    setClosedSnapshot(snapshot)
     setClosing(false)
     setStep('done')
   }
@@ -768,7 +888,7 @@ export default function CloseShiftWizard() {
   }
 
   const renderExceptions = () => {
-    const allInWindow = transactions.filter(tx => {
+    const allInWindow = !shiftStart ? [] : freshSourceTxs.filter(tx => {
       try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false }
     })
     const voidedTxs   = allInWindow.filter(tx => tx.voided)
@@ -1035,8 +1155,8 @@ export default function CloseShiftWizard() {
   const handlePrintZReport = async () => {
     setPrintingZ(true)
     try {
-      const voidedInWindow = transactions
-        .filter(tx => { try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false } })
+      const voidedInWindow = (!shiftStart ? [] : freshSourceTxs
+        .filter(tx => { try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false } }))
         .filter(tx => tx.voided)
       const voidTotal = voidedInWindow.reduce((s, tx) => s + tx.total, 0)
       const refundCount = shiftTxs.filter(tx => tx.refunded).length
@@ -1146,6 +1266,11 @@ export default function CloseShiftWizard() {
             <div style={{ padding:'12px 14px', borderRadius:'var(--r2)', fontSize:12, color:'var(--txt3)', background:'var(--surf)', border:'1px solid var(--bdr)' }}>
               All transactions will be locked, the shift will be marked closed, and a record will be saved to shift history.
             </div>
+            {closeError && (
+              <div style={{ padding:'10px 14px', borderRadius:'var(--r2)', fontSize:12, color:'var(--red)', background:'#7f1d1d18', border:'1px solid rgba(245,101,101,.3)' }}>
+                ⚠️ {closeError}
+              </div>
+            )}
           </div>
         </CardBody>
         <CardFoot>
@@ -1159,9 +1284,13 @@ export default function CloseShiftWizard() {
   }
 
   const renderDone = () => {
-    const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
-    const cwTotal   = modMap['carwash']?.total ?? 0
-    const grandDone = netSales
+    // Renders from the snapshot captured at the moment of close, not the reactive
+    // shiftTxs/currentShift-derived values — currentShift is null by this point
+    // (the shift we just closed no longer being "active" is correct), and those
+    // derived values would otherwise silently reflect that instead of what was
+    // actually just closed.
+    if (!closedSnapshot) return null
+    const s = closedSnapshot
     return (
       <Card>
         <div style={{ padding:'36px 24px 20px', textAlign:'center', borderBottom:'1px solid var(--bdr)' }}>
@@ -1170,18 +1299,18 @@ export default function CloseShiftWizard() {
           <div style={{ fontSize:13, color:'var(--txt3)', marginTop:6 }}>All data has been locked and saved</div>
         </div>
         <CardBody>
-          <SummaryRow label="Shift ID"         value={savedShiftId ?? currentShift?.id ?? '—'} />
-          <SummaryRow label="Close Time"        value={new Date().toLocaleString()} />
-          <SummaryRow label="Closed By"         value={by} />
-          <SummaryRow label="Restaurant Sales"  value={fmtJ(modMap['restaurant']?.total ?? 0)} color="var(--ora)" />
-          <SummaryRow label="Bar Sales"         value={fmtJ(modMap['bar']?.total ?? 0)} color="var(--pur)" />
-          <SummaryRow label="Car Wash Sales"    value={fmtJ(cwTotal)} color="var(--blue)" />
-          {openItemTotal > 0 && <SummaryRow label="Open Item Sales" value={fmtJ(openItemTotal)} color="var(--ora)" />}
-          <SummaryRow label="Grand Total"       value={fmtJ(grandDone)} bold color="var(--grn)" />
-          <SummaryRow label="Total Orders"      value={String(shiftTxs.length)} />
-          {variance !== null && (
-            <SummaryRow label="Cash Variance" value={(variance>=0?'+':'')+fmtJ(variance)}
-              color={variance===0?'var(--grn)':variance>0?'var(--blue)':'var(--red)'} />
+          <SummaryRow label="Shift ID"         value={s.shiftId} />
+          <SummaryRow label="Close Time"        value={new Date(s.closedAt).toLocaleString()} />
+          <SummaryRow label="Closed By"         value={s.closedBy} />
+          <SummaryRow label="Restaurant Sales"  value={fmtJ(s.restaurantTotal)} color="var(--ora)" />
+          <SummaryRow label="Bar Sales"         value={fmtJ(s.barTotal)} color="var(--pur)" />
+          <SummaryRow label="Car Wash Sales"    value={fmtJ(s.carwashTotal)} color="var(--blue)" />
+          {s.openItemTotal > 0 && <SummaryRow label="Open Item Sales" value={fmtJ(s.openItemTotal)} color="var(--ora)" />}
+          <SummaryRow label="Grand Total"       value={fmtJ(s.grandTotal)} bold color="var(--grn)" />
+          <SummaryRow label="Total Orders"      value={String(s.orderCount)} />
+          {s.variance !== null && (
+            <SummaryRow label="Cash Variance" value={(s.variance>=0?'+':'')+fmtJ(s.variance)}
+              color={s.variance===0?'var(--grn)':s.variance>0?'var(--blue)':'var(--red)'} />
           )}
           <div style={{ padding:'12px 14px', borderRadius:'var(--r2)', marginTop:12,
             background: isOnline ? '#14532d18' : '#78350f18',
@@ -1213,6 +1342,59 @@ export default function CloseShiftWizard() {
     print:     renderPrint,
     confirm:   renderConfirm,
     done:      renderDone,
+  }
+
+  // No authoritative open shift (per Supabase business_shifts) — stop here rather
+  // than let any step silently compute a total against an arbitrary/missing
+  // boundary. Reactive: if another device closes the shift while this wizard is
+  // already open, the realtime update sets currentShift null and this screen
+  // takes over immediately, regardless of which step was showing. Not shown on
+  // 'done' — currentShift is expected to be null right after this device's own
+  // successful close.
+  if (!currentShift && step !== 'done') {
+    return (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.88)', zIndex:9999,
+        display:'flex', alignItems:'center', justifyContent:'center', padding:24, backdropFilter:'blur(6px)' }}>
+        <Card>
+          <div style={{ padding:'36px 24px 20px', textAlign:'center', borderBottom:'1px solid var(--bdr)' }}>
+            <div style={{ fontSize:44, marginBottom:12 }}>⏸️</div>
+            <div style={{ fontSize:18, fontWeight:800, color:'var(--txt)' }}>No Active Shift</div>
+            <div style={{ fontSize:13, color:'var(--txt3)', marginTop:8, maxWidth:360, lineHeight:1.5 }}>
+              There is no open business shift to close right now — it may have already been closed, including from another device.
+            </div>
+          </div>
+          <CardFoot>
+            <Btn primary onClick={cancel}>Close</Btn>
+          </CardFoot>
+        </Card>
+      </div>
+    )
+  }
+
+  // Block any totals-bearing step until the fresh Supabase transaction fetch
+  // for this shift has completed. Never fall through to stale/empty data —
+  // if the fetch failed, offer Retry rather than silently proceeding.
+  if (currentShift && step !== 'auth' && step !== 'done' && (freshTxLoading || freshTxError)) {
+    return (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.88)', zIndex:9999,
+        display:'flex', alignItems:'center', justifyContent:'center', padding:24, backdropFilter:'blur(6px)' }}>
+        <Card>
+          <div style={{ padding:'36px 24px 20px', textAlign:'center', borderBottom:'1px solid var(--bdr)' }}>
+            <div style={{ fontSize:44, marginBottom:12 }}>{freshTxError ? '⚠️' : '⏳'}</div>
+            <div style={{ fontSize:18, fontWeight:800, color: freshTxError ? 'var(--red)' : 'var(--txt)' }}>
+              {freshTxError ? 'Could Not Load Transactions' : 'Loading Current Transaction Data…'}
+            </div>
+            <div style={{ fontSize:13, color:'var(--txt3)', marginTop:8, maxWidth:360, lineHeight:1.5 }}>
+              {freshTxError || 'Fetching the latest transactions from the database so Close Shift totals reflect every sale, including any rung in on another device.'}
+            </div>
+          </div>
+          <CardFoot>
+            <Btn onClick={cancel}>Cancel</Btn>
+            {freshTxError && <Btn primary onClick={retryFreshFetch}>Retry</Btn>}
+          </CardFoot>
+        </Card>
+      </div>
+    )
   }
 
   return (

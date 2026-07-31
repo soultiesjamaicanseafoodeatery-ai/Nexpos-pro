@@ -134,7 +134,7 @@ type Action =
   | { type: 'SET_UI_MODE'; mode: 'pos' | 'admin' }
   | { type: 'SHOW_EOD' }
   | { type: 'HIDE_EOD' }
-  | { type: 'CLOSE_SHIFT_FORMAL'; closedBy: string; closedAt: string; openingFloat: number; countedCash: number; variance: number; varianceNote: string; wasOverridden?: boolean }
+  | { type: 'CLOSE_SHIFT_FORMAL'; closedBy: string; closedAt: string; openingFloat: number; countedCash: number; variance: number; varianceNote: string; wasOverridden?: boolean; revenue: number; txCount: number }
   | { type: 'ADD_MENU_ITEM';       mod: ModuleKey; item: MenuItem }
   | { type: 'UPDATE_MENU_ITEM';    mod: ModuleKey; item: MenuItem }
   | { type: 'DELETE_MENU_ITEM';    mod: ModuleKey; id: string }
@@ -146,6 +146,7 @@ type Action =
   | { type: 'SYNC_HELD_ORDERS';    orders: HeldOrder[] }
   | { type: 'TRANSFER_ORDER'; ticketId: string; toUserName: string }
   | { type: 'UPSERT_HELD_ORDER';   order:  HeldOrder  }
+  | { type: 'SET_CURRENT_SHIFT'; shift: Shift | null }
   | { type: 'ADD_FLEET_ACCOUNT';    account: FleetAccount }
   | { type: 'UPDATE_FLEET_ACCOUNT'; account: FleetAccount }
   | { type: 'DELETE_FLEET_ACCOUNT'; id: string }
@@ -163,7 +164,14 @@ const defaultPOS = (): POSState => ({
 function initState(): AppState {
   return {
     currentUser: storage.get<User>('current_user') ?? null,
-    currentShift: storage.get<Shift>('current_shift') ?? null,
+    // Supabase (`business_shifts`) is the sole authoritative source for the active
+    // business shift — never localStorage. Starts null; populated moments after
+    // mount by the fetch-on-load + realtime effect below, same convention as
+    // business_config/held_orders/order_tickets. A stale/absent localStorage value
+    // here was the root cause of a real incident (a remote device's own stale
+    // shift-start silently producing a wildly wrong Close Shift total) — see
+    // CloseShiftWizard.tsx and the business_shifts sync effect for the fix.
+    currentShift: null,
     users: storage.get<User[]>('users') ?? SEED_USERS,
     activeModule: 'restaurant',
     activePage: 'pos',
@@ -218,10 +226,22 @@ function reducer(state: AppState, action: Action): AppState {
         // Another employee joining an active business shift — no new shift record needed
         return { ...state, currentUser: action.user, activePage: 'pos' }
       }
-      storage.set('current_shift', action.shift)
+      // Tentatively adopt the candidate shift locally for instant feedback — the
+      // dispatch wrapper below reconciles this against Supabase (business_shifts)
+      // immediately after, and corrects local state via SET_CURRENT_SHIFT if this
+      // device lost a race to another device opening the shift at the same moment.
       const shifts = [action.shift, ...state.shifts]
       storage.set('shifts', shifts)
       return { ...state, currentUser: action.user, currentShift: action.shift, shifts, activePage: 'pos' }
+    }
+    case 'SET_CURRENT_SHIFT': {
+      const shifts = action.shift
+        ? (state.shifts.some(s => s.id === action.shift!.id)
+            ? state.shifts.map(s => s.id === action.shift!.id ? action.shift! : s)
+            : [action.shift, ...state.shifts])
+        : state.shifts
+      storage.set('shifts', shifts)
+      return { ...state, currentShift: action.shift, shifts }
     }
     case 'LOGOUT': {
       // Lock screen only — keeps the business shift alive for the next employee
@@ -285,9 +305,11 @@ function reducer(state: AppState, action: Action): AppState {
     case 'ADD_TRANSACTION': {
       const transactions = [action.tx, ...state.transactions].slice(0, 50000)
       storage.set('tx', transactions)
-      const currentShift = state.currentShift
-        ? { ...state.currentShift, txCount: state.currentShift.txCount + 1, revenue: state.currentShift.revenue + action.tx.total }
-        : null
+      // currentShift.txCount/.revenue are no longer incremented here — they were a
+      // local-only running counter (itself cross-device-inconsistent) that nothing
+      // reads anymore; Close Shift and the Active Shift display both now compute
+      // totals fresh from state.transactions against the Supabase-authoritative
+      // shift start instead.
       // Auto-deduct inventory on sale
       if (action.tx.items && action.tx.items.length > 0) {
         const inv = storage.get<Array<{ id: string; name: string; quantity: number; lowStockThreshold: number }>>('inventory') ?? []
@@ -303,7 +325,7 @@ function reducer(state: AppState, action: Action): AppState {
           if (changed) storage.set('inventory', updatedInv)
         }
       }
-      return { ...state, transactions, currentShift }
+      return { ...state, transactions }
     }
     case 'VOID_TRANSACTION': {
       const transactions = state.transactions.map(t =>
@@ -485,12 +507,11 @@ function reducer(state: AppState, action: Action): AppState {
               openingFloat: action.openingFloat, countedCash: action.countedCash,
               cashVariance: action.variance, varianceNote: action.varianceNote,
               wasOverridden: action.wasOverridden ?? false, isFormalClose: true,
-              revenue: state.currentShift!.revenue,
-              txCount: state.currentShift!.txCount }
+              revenue: action.revenue,
+              txCount: action.txCount }
           : s
       )
       storage.set('shifts', shifts)
-      storage.set('current_shift', null)
       // Held orders survive shift boundaries - next shift inherits open tables
       return { ...state, currentShift: null, shifts }
     }
@@ -593,6 +614,31 @@ function rowToHeld(r: Record<string, unknown>): HeldOrder {
   }
 }
 
+// ── Supabase business-shift row helpers ───────────────────────────────────────
+// business_shifts is the sole authoritative source for the active business
+// shift (see CloseShiftWizard.tsx) — every device reads/writes the same row.
+function rowToShift(r: Record<string, unknown>): Shift {
+  return {
+    id: r.id as string,
+    userId: r.started_by_id as string,
+    userName: r.started_by_name as string,
+    role: r.role as UserRole,
+    modules: (r.modules as ModuleKey[]) ?? [],
+    start: r.started_at as string,
+    end: (r.closed_at as string | null) ?? null,
+    txCount: Number(r.tx_count ?? 0),
+    revenue: Number(r.revenue ?? 0),
+    closedBy: (r.closed_by as string | undefined) ?? undefined,
+    closedAt: (r.closed_at as string | undefined) ?? undefined,
+    openingFloat: r.opening_float != null ? Number(r.opening_float) : undefined,
+    countedCash: r.counted_cash != null ? Number(r.counted_cash) : undefined,
+    cashVariance: r.cash_variance != null ? Number(r.cash_variance) : undefined,
+    varianceNote: (r.variance_note as string | undefined) ?? undefined,
+    wasOverridden: (r.was_overridden as boolean | undefined) ?? undefined,
+    isFormalClose: (r.is_formal_close as boolean | undefined) ?? undefined,
+  }
+}
+
 // ── Context ───────────────────────────────────────────────────────────────────────────────
 interface AppContextValue {
   state: AppState
@@ -659,8 +705,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // Capture before rawDispatch (stateRef only updates after a render commits,
+    // so this reflects pre-action state regardless of where it's read in this
+    // synchronous function body).
+    const hadNoOpenShiftBeforeLogin = action.type === 'LOGIN' && stateRef.current.currentShift === null
+
     // All other actions update local state immediately
     rawDispatch(action)
+
+    // LOGIN, when no shift was open locally: this device believes it's starting a
+    // new business shift. Confirm that with Supabase rather than trusting local
+    // state alone — the `business_shifts_one_open` unique index guarantees exactly
+    // one open shift can ever exist. If another device already opened one at
+    // (near-)the same moment, adopt that one instead of silently diverging.
+    if (action.type === 'LOGIN' && hadNoOpenShiftBeforeLogin) {
+      ;(async () => {
+        const shift = action.shift
+        const { error } = await supabase.from('business_shifts').insert({
+          id: shift.id, started_by_id: shift.userId, started_by_name: shift.userName,
+          role: shift.role, modules: shift.modules, started_at: shift.start, status: 'open',
+        })
+        if (error) {
+          // Lost the race (or some other open shift already exists) — adopt the
+          // real authoritative one from Supabase instead of keeping our local guess.
+          try {
+            const { data } = await supabase.from('business_shifts').select('*').eq('status', 'open').limit(1).maybeSingle()
+            rawDispatch({ type: 'SET_CURRENT_SHIFT', shift: data ? rowToShift(data) : null })
+          } catch {}
+        }
+      })()
+    }
 
     // VOID_TRANSACTION: update the stored record in Supabase
     if (action.type === 'VOID_TRANSACTION') {
@@ -802,6 +876,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'held_orders' }, ({ old: row }) => {
         if (pendingDeletes.current.has((row as { id: string }).id)) return
         rawDispatch({ type: 'REMOVE_HELD_ORDER', id: (row as { id: string }).id })
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  // Active business shift (Close Shift / EOD boundary) — Supabase is the sole
+  // authoritative source, identical on every device. Fixes the incident where a
+  // remote device's own stale/absent localStorage shift-start silently produced
+  // a wildly wrong Close Shift total (~J$600,000 vs an actual ~J$6,000) — see
+  // CloseShiftWizard.tsx. Initial load + realtime keeps every device in sync,
+  // including immediately reflecting a close performed on another device.
+  const shiftFetched = useRef(false)
+  useEffect(() => {
+    if (shiftFetched.current) return
+    shiftFetched.current = true
+    ;(async () => {
+      try {
+        const { data } = await supabase.from('business_shifts').select('*').eq('status', 'open').limit(1).maybeSingle()
+        rawDispatch({ type: 'SET_CURRENT_SHIFT', shift: data ? rowToShift(data) : null })
+      } catch {}
+    })()
+
+    const ch = supabase
+      .channel('business-shift-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_shifts' }, ({ new: row }) => {
+        const r = row as Record<string, unknown> | null
+        if (!r || Object.keys(r).length === 0) return // DELETE payloads (unused here) have empty `new`
+        if (r.status === 'open') {
+          rawDispatch({ type: 'SET_CURRENT_SHIFT', shift: rowToShift(r) })
+        } else if (stateRef.current.currentShift?.id === r.id) {
+          // This device's active shift was closed — from this device or another.
+          rawDispatch({ type: 'SET_CURRENT_SHIFT', shift: null })
+        }
       })
       .subscribe()
 

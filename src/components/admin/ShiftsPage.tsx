@@ -761,6 +761,13 @@ export default function ShiftsPage() {
       {state.currentShift && (() => {
         const ageHrs = shiftAgeHours(state.currentShift.start)
         const stale = ageHrs > STALE_SHIFT_HOURS
+        // Computed live from state.transactions (Supabase-synced) rather than a
+        // stored running counter — the counter was local-only and never reflected
+        // what other devices/terminals had rung up on the same shift.
+        const shiftStartMs = new Date(state.currentShift.start).getTime()
+        const liveShiftTxs = state.transactions.filter(tx => !tx.voided && parseTs(tx.ts) >= shiftStartMs)
+        const liveTxCount = liveShiftTxs.length
+        const liveRevenue = liveShiftTxs.reduce((s, tx) => s + tx.total, 0)
         return (
           <div style={{ background: stale ? '#7f1d1d22' : '#14532d22', border: `1.5px solid ${stale ? 'var(--red)' : 'var(--grn)'}`, borderRadius: 'var(--r3)', padding: '14px 18px', marginBottom: 16 }}>
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
@@ -776,11 +783,11 @@ export default function ShiftsPage() {
               </div>
               <div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Transactions</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{state.currentShift.txCount}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)' }}>{liveTxCount}</div>
               </div>
               <div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Revenue</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--grn)' }}>{fmt(state.currentShift.revenue)}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--grn)' }}>{fmt(liveRevenue)}</div>
               </div>
             </div>
             {stale && (

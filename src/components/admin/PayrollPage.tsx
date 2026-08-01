@@ -2,7 +2,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { supabase } from '@/lib/supabase'
-import { hashPin } from '@/lib/utils/hash'
 import { jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -461,7 +460,7 @@ function EntryModal({ entry, users, onSave, onClose }: {
 // ── Correction Modal ──────────────────────────────────────────────
 function CorrectionModal({ entry, currentUser, isLocked, isAdmin, onSave, onClose }: {
   entry: TimeEntry
-  currentUser: { id: string; name: string; role: string; pin_hash: string } | null
+  currentUser: { id: string; name: string; role: string } | null
   isLocked: boolean
   isAdmin: boolean
   onSave: (newEntry: TimeEntry, correction: ShiftCorrection) => void
@@ -495,8 +494,16 @@ function CorrectionModal({ entry, currentUser, isLocked, isAdmin, onSave, onClos
     if (!currentUser)    return
     setSaving(true)
     try {
-      const hashed = await hashPin(pin)
-      if (hashed !== currentUser.pin_hash) {
+      // Server-verifies this is really currentUser's own PIN — the browser
+      // never sees pin_hash. id is pinned to the already-logged-in user, so
+      // this can only ever confirm "you are who your session says", not
+      // authorize as anyone else.
+      const res = await fetch('/api/auth/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentUser.id, pin }),
+      })
+      if (!res.ok) {
         setPinError('Incorrect PIN — please try again')
         setSaving(false)
         return
@@ -1506,7 +1513,7 @@ export default function PayrollPage() {
       {correctEntry && (
         <CorrectionModal
           entry={correctEntry}
-          currentUser={currentUser as { id: string; name: string; role: string; pin_hash: string } | null}
+          currentUser={currentUser as { id: string; name: string; role: string } | null}
           isLocked={isDateLocked(correctEntry.date)}
           isAdmin={isAdmin}
           onSave={saveCorrection}

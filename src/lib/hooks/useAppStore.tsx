@@ -16,7 +16,7 @@ interface DbStaffRow {
   name: string
   ini: string
   role: string
-  pin_hash: string
+  has_pin?: boolean // /api/staff GET never returns pin_hash itself — see that route
   color: string
   allowed_modules: string[] | string | null | undefined
   active: boolean
@@ -44,7 +44,7 @@ function dbStaffToUser(row: DbStaffRow): User {
     id: row.id,
     name: row.name,
     ini: row.ini,
-    pin_hash: row.pin_hash,
+    has_pin: row.has_pin,
     role: (['admin', 'manager', 'staff'] as string[]).includes(row.role) ? row.role as UserRole : 'staff',
     color: row.color,
     allowedModules,
@@ -100,6 +100,7 @@ interface AppState {
 type Action =
   | { type: 'LOGIN'; user: User; shift: Shift }
   | { type: 'LOGOUT' }
+  | { type: 'RESTORE_SESSION'; user: User | null }
   | { type: 'CLOCK_OUT' }
   | { type: 'SET_MODULE'; mod: ModuleKey }
   | { type: 'SET_PAGE'; page: string }
@@ -247,6 +248,18 @@ function reducer(state: AppState, action: Action): AppState {
       // Lock screen only — keeps the business shift alive for the next employee
       storage.set('current_user', null)
       return { ...state, currentUser: null, cart: [], cartPayMethod: 'cash', cartOrderType: 'dine-in', uiMode: 'pos' }
+    }
+    // Startup session check (see the effect below) — localStorage's cached
+    // currentUser is only ever an optimistic guess for instant UI; this
+    // reconciles it against what the server's session cookie actually proves.
+    // A null user here means the cookie was missing/invalid/expired, and the
+    // browser must not stay "logged in" just because localStorage said so.
+    case 'RESTORE_SESSION': {
+      storage.set('current_user', action.user)
+      if (!action.user) {
+        return { ...state, currentUser: null, cart: [], cartPayMethod: 'cash', cartOrderType: 'dine-in', uiMode: 'pos' }
+      }
+      return { ...state, currentUser: action.user }
     }
     case 'CLOCK_OUT': {
       // Personal clock-out — end this employee's session, business shift stays alive
@@ -664,6 +677,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Supabase-aware dispatch — Supabase is the single source of truth for all transactions
   const dispatch = useCallback((action: Action): void => {
+    // LOGOUT clears the server-side session cookie too — this is a lock screen
+    // (the business shift and personal clock-in stay alive), but the next person
+    // to use this terminal must re-enter a PIN and get their own fresh session,
+    // not silently inherit whatever cookie was left behind.
+    if (action.type === 'LOGOUT') {
+      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    }
+
     // ADD_TRANSACTION: write to Supabase first, then update local state
     if (action.type === 'ADD_TRANSACTION') {
       // Stamp the active personal clock-in session's shift ID here — the single choke
@@ -795,6 +816,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     staffFetched.current = true
     refreshStaff()
   }, [refreshStaff])
+
+  // Startup session check — localStorage's cached currentUser is only an
+  // optimistic guess used for instant UI on load; it is never proof of
+  // authentication. Ask the server whether the session cookie is actually
+  // valid, and reconcile local state either way (see RESTORE_SESSION above).
+  const sessionChecked = useRef(false)
+  useEffect(() => {
+    if (sessionChecked.current) return
+    sessionChecked.current = true
+    ;(async () => {
+      try {
+        const res = await fetch('/api/auth/session')
+        if (res.ok) {
+          const { user } = await res.json()
+          rawDispatch({ type: 'RESTORE_SESSION', user: user ?? null })
+        } else if (stateRef.current.currentUser) {
+          // No valid session, but localStorage/optimistic state thought otherwise.
+          rawDispatch({ type: 'RESTORE_SESSION', user: null })
+        }
+      } catch {
+        // Network failure — leave the optimistic local state as-is rather than
+        // forcing a lockout while offline; every real API call is still
+        // independently gated server-side regardless of what the UI shows.
+      }
+    })()
+  }, [])
 
   // Realtime staff sync — re-fetch whenever any staff row changes on any device
   useEffect(() => {

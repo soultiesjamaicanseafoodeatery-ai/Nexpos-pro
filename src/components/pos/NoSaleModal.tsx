@@ -17,7 +17,7 @@ interface Props {
 
 export default function NoSaleModal({ isOpen, onClose }: Props) {
   const { state, dispatch, audit } = useApp()
-  const { currentUser, biz, users, currentShift, activeModule } = state
+  const { currentUser, biz, currentShift, activeModule } = state
 
   const [step, setStep]             = useState<Step>('reason')
   const [reason, setReason]         = useState<NoSaleReason>('making_change')
@@ -33,18 +33,21 @@ export default function NoSaleModal({ isOpen, onClose }: Props) {
   }
   const handleClose = () => { reset(); onClose() }
 
-  const hashPin = async (p: string): Promise<string> => {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p))
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
-  }
-
+  // Server-verifies the PIN against any active admin/manager staff record — the
+  // browser never sees pin_hash. Requires the requesting terminal to already have
+  // a valid POS session (see /api/auth/verify-pin), same as before this only
+  // worked from an already-authenticated device.
   const findMgr = async (p: string): Promise<User | null> => {
-    const eligible = users.filter(u => u.active && (u.role === 'admin' || u.role === 'manager'))
-    const hash = await hashPin(p)
-    return eligible.find(u =>
-      (u.pin_hash && u.pin_hash.toLowerCase() === hash.toLowerCase()) ||
-      (u.pin && u.pin === p)
-    ) ?? null
+    try {
+      const res = await fetch('/api/auth/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: p, pool: 'privileged' }),
+      })
+      if (!res.ok) return null
+      const u = await res.json()
+      return { id: u.id, name: u.name, ini: u.ini, role: u.role, color: u.color, allowedModules: u.allowedModules ?? ['restaurant'], active: true }
+    } catch { return null }
   }
 
   const execute = async (approver: User) => {

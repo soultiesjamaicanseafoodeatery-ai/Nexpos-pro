@@ -4,11 +4,9 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import type { User, Shift } from '@/types'
 import { ROLES } from '@/lib/data/seed'
-import { hashPin } from '@/lib/utils/hash'
 
 const WEAK_PINS = ['1234', '2222', '3333', '4444', '5555', '6666', '0000', '1111', '9999', '1212']
 const GRACE_MS  = 40 * 60 * 1000  // 40-minute resume window after clock-out
-const FRESH_PIN_TIMEOUT_MS = 1500 // cap on the fresh-PIN network check before falling back to cached data
 
 const MOD_TAG_CLS: Record<string, string> = {
   restaurant: 'mod-rest',
@@ -173,42 +171,40 @@ export default function AuthScreen() {
 
     if (newPin.length === 4) {
       (async () => {
-        // Always fetch fresh user data from Supabase so PIN changes take effect immediately on all
-        // devices — but cap the wait so a slow connection doesn't stall login; fall back to cached
-        // PIN data (same fallback already used when the request fails outright) if it's too slow.
-        let freshPinHash: string | undefined = selectedUser.pin_hash
-        let freshPin: string | undefined = selectedUser.pin
+        // PIN verification happens server-side now — the browser never sees
+        // pin_hash. /api/auth/login looks up the staff record itself, hashes
+        // and compares the PIN, and on success issues a signed httpOnly
+        // session cookie plus the same safe user fields the UI already used.
+        let ok = false
+        let authedUser: User = selectedUser
         try {
-          const rows: unknown = await Promise.race([
-            fetch('/api/staff').then(r => r.ok ? r.json() : null),
-            new Promise<null>(resolve => setTimeout(() => resolve(null), FRESH_PIN_TIMEOUT_MS)),
-          ])
-          if (Array.isArray(rows)) {
-            const fresh = rows.find((r: Record<string, unknown>) => r.id === selectedUser.id)
-            if (fresh) { freshPinHash = fresh.pin_hash as string | undefined; freshPin = fresh.pin as string | undefined }
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: selectedUser.id, pin: newPin }),
+          })
+          if (res.ok) {
+            const u = await res.json()
+            authedUser = {
+              id: u.id, name: u.name, ini: u.ini, role: u.role, color: u.color,
+              allowedModules: u.allowedModules ?? ['restaurant'], active: u.active, staffId: u.staffId,
+            }
+            ok = true
           }
-        } catch { /* use cached if network fails */ }
+        } catch { /* network failure — treat as incorrect/unavailable below */ }
 
-        let correct = false
-        if (freshPinHash) {
-          const h = await hashPin(newPin)
-          correct = h === freshPinHash
-        } else {
-          correct = newPin === (freshPin ?? '')
-        }
-
-        if (correct) {
+        if (ok) {
           setPinState('success')
           const wasWeakPin = WEAK_PINS.includes(newPin)
           setTimeout(() => {
             // Check if this user clocked out recently — offer to resume
-            const rec = getGraceRecord(selectedUser.id)
+            const rec = getGraceRecord(authedUser.id)
             if (rec) {
-              setPendingUser(selectedUser)
+              setPendingUser(authedUser)
               setGraceRecord(rec)
               if (wasWeakPin) setShowWeakPinWarning(true)
             } else {
-              doLogin(selectedUser, false)
+              doLogin(authedUser, false)
               if (wasWeakPin) setShowWeakPinWarning(true)
             }
           }, 150)

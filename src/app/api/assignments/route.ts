@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStaff, requireRole, isErrorResponse } from '@/lib/utils/serverAuth'
 
 const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^﻿/, '')
 const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').replace(/^﻿/, '')
@@ -10,7 +11,9 @@ const SB = () => ({
 })
 
 // Returns { [item_id]: { flavour_ids, side_ids, addon_ids, sizes } }
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireStaff(req)
+  if (isErrorResponse(auth)) return auth
   const [flvRes, sideRes, addonRes, sizeRes] = await Promise.all([
     fetch(`${SUPA_URL}/rest/v1/item_flavours?select=item_id,flavour_id`, { headers: SB() }),
     fetch(`${SUPA_URL}/rest/v1/item_sides?select=item_id,side_id`, { headers: SB() }),
@@ -40,6 +43,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireRole(req, ['admin', 'manager'])
+  if (isErrorResponse(auth)) return auth
   const body = await req.json()
   const { item_id, flavour_ids = [], side_ids = [], addon_ids = [], sizes = [] } = body
   if (!item_id) return NextResponse.json({ error: 'item_id required' }, { status: 400 })

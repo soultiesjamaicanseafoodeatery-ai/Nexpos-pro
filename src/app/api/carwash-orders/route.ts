@@ -1,5 +1,6 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { jamaicaDayStart } from '@/lib/utils/businessDate'
+import { requireStaff, isErrorResponse } from '@/lib/utils/serverAuth'
 
 const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^﻿/, '')
 const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').replace(/^﻿/, '')
@@ -11,7 +12,9 @@ const SB = () => ({
   Prefer: 'return=representation',
 })
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireStaff(req)
+  if (isErrorResponse(auth)) return auth
   const from = jamaicaDayStart().toISOString()
 
   const res = await fetch(
@@ -24,6 +27,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req)
+  if (isErrorResponse(auth)) return auth
   const body = await req.json()
 
   const lastRes = await fetch(
@@ -81,6 +86,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const auth = await requireStaff(req)
+  if (isErrorResponse(auth)) return auth
   const body = await req.json()
   const { id, ...rest } = body
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })

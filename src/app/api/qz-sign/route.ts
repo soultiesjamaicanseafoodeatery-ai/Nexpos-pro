@@ -1,7 +1,26 @@
 export const dynamic = 'force-dynamic'
 
 import { createSign, createPrivateKey } from 'crypto'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { getSessionStaffId } from '@/lib/utils/serverAuth'
+
+// Coarse allowlist for the app's own known domains — a secondary, defense-in-depth
+// layer on top of the session check below (Origin/Referer are caller-supplied and
+// spoofable by a non-browser client, but a spoofed header alone still can't produce
+// a valid signed session cookie, so the two checks together are meaningfully
+// stronger than either alone).
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false
+  try {
+    const host = new URL(origin).host
+    if (host.endsWith('.soultiesseafoodjm.com')) return true
+    if (host === 'nexpos-pro.vercel.app') return true
+    if (host.endsWith('-soultiesseafood-s-projects.vercel.app')) return true
+    const allowed = process.env.NEXT_PUBLIC_ALLOWED_HOST
+    if (allowed && host === allowed) return true
+    return false
+  } catch { return false }
+}
 
 function normalizePem(raw: string): string {
   let pem = raw.replace(/\\n/g, '\n').trim()
@@ -25,8 +44,19 @@ function normalizePem(raw: string): string {
   return pem
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    // Signing format, payload, and QZ Tray behavior are unchanged below — the
+    // only new behavior is rejecting callers with no valid POS session or an
+    // unrecognized Origin, before any signing happens.
+    if (!getSessionStaffId(req)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+    const origin = req.headers.get('origin') ?? req.headers.get('referer')
+    if (!isAllowedOrigin(origin)) {
+      return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 })
+    }
+
     const { data } = await req.json()
     if (!data || typeof data !== 'string') {
       return NextResponse.json({ error: 'Missing data' }, { status: 400 })

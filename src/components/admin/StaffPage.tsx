@@ -83,7 +83,7 @@ function StaffModal({
     if (!form.name.trim()) { setErr('Name is required'); return }
     if (!form.ini.trim()) { setErr('Initials are required'); return }
     if (form.allowedModules.length === 0) { setErr('Select at least one module'); return }
-    const isDemo = editUser && !editUser.pin_hash
+    const isDemo = editUser && !editUser.has_pin
     if (!editUser || isDemo) {
       if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) {
         setErr(isDemo ? 'A new PIN is required to save this account' : 'PIN must be exactly 4 digits')
@@ -163,7 +163,7 @@ function StaffModal({
 
           {/* PIN */}
           <div>
-            <label style={label}>{!editUser ? 'PIN *' : editUser.pin_hash ? 'New PIN (leave blank to keep current)' : 'PIN * (required to activate this account)'}</label>
+            <label style={label}>{!editUser ? 'PIN *' : editUser.has_pin ? 'New PIN (leave blank to keep current)' : 'PIN * (required to activate this account)'}</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <input
                 style={inputStyle}
@@ -249,8 +249,8 @@ export default function StaffPage() {
       if (!res.ok) { setSupabaseStatus('error'); return }
       const rows = await res.json()
       if (Array.isArray(rows) && rows.length > 0) {
-        const updated: User[] = rows.map((r: { id: string; name: string; ini: string; pin_hash: string; role: UserRole; color: string; allowed_modules: string[]; active: boolean; staff_id?: string }) => ({
-          id: r.id, name: r.name, ini: r.ini, pin_hash: r.pin_hash,
+        const updated: User[] = rows.map((r: { id: string; name: string; ini: string; has_pin?: boolean; role: UserRole; color: string; allowed_modules: string[]; active: boolean; staff_id?: string }) => ({
+          id: r.id, name: r.name, ini: r.ini, has_pin: r.has_pin,
           role: r.role as UserRole, color: r.color,
           allowedModules: (r.allowed_modules ?? ['restaurant']) as ModuleKey[],
           active: r.active, staffId: r.staff_id ?? undefined,
@@ -420,7 +420,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                       <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: `${u.color}22`, color: u.color, flexShrink: 0 }}>{u.ini}</div>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>{u.name}{isSelf && <span style={{ fontSize: 10, marginLeft: 6, color: 'var(--blue)' }}>(you)</span>}</div>
-                        {!u.pin_hash && <div style={{ fontSize: 10, color: 'var(--ora)', marginTop: 1 }}>⚠ Local only</div>}
+                        {!u.has_pin && <div style={{ fontSize: 10, color: 'var(--ora)', marginTop: 1 }}>⚠ Local only</div>}
                       </div>
                     </div>
                   </td>

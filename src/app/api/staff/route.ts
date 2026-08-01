@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { requireRole, isErrorResponse } from '@/lib/utils/serverAuth'
 
 const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^﻿/, '')
 const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').replace(/^﻿/, '')
@@ -13,6 +14,10 @@ const SB = () => ({
   'Prefer': 'return=representation',
 })
 
+// Intentionally left reachable without a session: the login screen's own
+// "select your name" picker calls this before anyone has authenticated. What
+// makes that safe is that pin_hash is fetched here only to compute `has_pin`
+// and is never included in the response — see the .map() below.
 export async function GET() {
   const res = await fetch(
     `${SUPA_URL}/rest/v1/staff?select=id,name,ini,role,pin_hash,color,allowed_modules,active,staff_id,created_at&order=created_at.asc`,
@@ -20,10 +25,13 @@ export async function GET() {
   )
   const data = await res.json()
   if (!res.ok) return NextResponse.json({ error: data }, { status: res.status })
-  return NextResponse.json(data)
+  const safe = (data as Record<string, unknown>[]).map(({ pin_hash, ...rest }) => ({ ...rest, has_pin: !!pin_hash }))
+  return NextResponse.json(safe)
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireRole(req, ['admin', 'manager'])
+  if (isErrorResponse(auth)) return auth
   const body = await req.json()
   const row = {
     id: randomUUID(),
@@ -45,6 +53,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const auth = await requireRole(req, ['admin', 'manager'])
+  if (isErrorResponse(auth)) return auth
   const body = await req.json()
   const { id, ...patch } = body
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
@@ -74,6 +84,8 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await requireRole(req, ['admin', 'manager'])
+  if (isErrorResponse(auth)) return auth
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   const res = await fetch(`${SUPA_URL}/rest/v1/staff?id=eq.${encodeURIComponent(id)}`, {

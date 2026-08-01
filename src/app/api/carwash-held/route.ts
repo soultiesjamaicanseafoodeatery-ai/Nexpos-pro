@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStaff, isErrorResponse } from '@/lib/utils/serverAuth'
 
 const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^﻿/, '')
 const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').replace(/^﻿/, '')
@@ -12,7 +13,9 @@ const SB = () => ({
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireStaff(req)
+  if (isErrorResponse(auth)) return auth
   const res = await fetch(
     `${SUPA_URL}/rest/v1/carwash_held?order=created_at.desc`,
     { headers: SB() }
@@ -23,6 +26,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req)
+  if (isErrorResponse(auth)) return auth
   const body = await req.json()
 
   const row = {
@@ -48,6 +53,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await requireStaff(req)
+  if (isErrorResponse(auth)) return auth
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 

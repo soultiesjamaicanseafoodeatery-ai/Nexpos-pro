@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import { hashPin } from '@/lib/utils/hash'
 import type { User, Transaction } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { buildZReport, smartPrint } from '@/lib/utils/ticketPrinter'
@@ -239,6 +238,10 @@ export default function CloseShiftWizard() {
   const mgrs = users.filter(u => u.active && (u.role === 'admin' || u.role === 'manager'))
 
   // ── PIN auth ──────────────────────────────────────────────────
+  // Server-verifies the selected manager's PIN — the browser never sees
+  // pin_hash. The mgrs list above is only used to populate the picker; the
+  // server independently re-checks that the matched record is admin/manager
+  // (pool: 'privileged') rather than trusting that this list wasn't tampered with.
   const pressPin = useCallback(async (d: string) => {
     if (!pinUser || pin.length >= 4) return
     setPinErr('')
@@ -247,11 +250,22 @@ export default function CloseShiftWizard() {
     if (np.length === 4) {
       setTimeout(async () => {
         let ok = false
-        if (pinUser.pin_hash) { const h = await hashPin(np); ok = h === pinUser.pin_hash }
-        else ok = np === (pinUser.pin ?? '')
+        let authorized = pinUser
+        try {
+          const res = await fetch('/api/auth/verify-pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: pinUser.id, pin: np, pool: 'privileged' }),
+          })
+          if (res.ok) {
+            const u = await res.json()
+            authorized = { id: u.id, name: u.name, ini: u.ini, role: u.role, color: u.color, allowedModules: u.allowedModules ?? ['restaurant'], active: true }
+            ok = true
+          }
+        } catch { /* network failure — treated as incorrect below */ }
         if (ok) {
           setPinSt('success')
-          setTimeout(() => { setData(d => ({ ...d, authorizedUser: pinUser })); setStep('validate') }, 280)
+          setTimeout(() => { setData(d => ({ ...d, authorizedUser: authorized })); setStep('validate') }, 280)
         } else {
           setPinSt('error'); setPinErr('Incorrect PIN')
           setTimeout(() => { setPin(''); setPinSt('idle') }, 800)

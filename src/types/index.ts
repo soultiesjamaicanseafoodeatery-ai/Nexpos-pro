@@ -6,7 +6,8 @@ export interface User {
   name: string
   ini: string
   pin?: string        // plain text (seed fallback only)
-  pin_hash?: string   // SHA-256 hex (Supabase staff)
+  pin_hash?: string   // write-only client-side: set when an admin creates/resets a PIN; never populated from a GET response
+  has_pin?: boolean   // server-computed signal that a real pin_hash exists, without exposing it
   role: UserRole
   color: string
   allowedModules: ModuleKey[]

@@ -26,6 +26,8 @@ interface SideRow { id: string; name: string; price: number; active: boolean }
 interface AddonRow { id: string; name: string; description: string; price: number; icon?: string; active: boolean }
 interface SizeRow { id: string; name: string; sort_order: number; active: boolean }
 interface ItemAssignment { flavour_ids: string[]; side_ids: string[]; addon_ids: string[]; sizes: { size_id: string; price: number }[] }
+interface CwServiceRow { id: string; name: string; price: number; description?: string; vehicle_type?: string; is_available: boolean }
+interface CwAddonRow   { id: string; name: string; price: number; description?: string; is_available: boolean }
 
 const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = {
   restaurant: { bg: 'var(--ora-bg, #78350f22)', color: 'var(--ora, #f97316)', label: 'Food' },
@@ -33,13 +35,27 @@ const MOD_BADGE: Record<string, { bg: string; color: string; label: string }> = 
   carwash:    { bg: 'var(--blue-bg)',            color: 'var(--blue)',          label: 'Wash' },
 }
 
-// Daily-resetting order counter — resets each new Jamaica business day
-function nextDailyOrderNum(): string {
+// Daily-resetting order counter — resets each new Jamaica business day.
+// Authoritative source is the shared Supabase counter (increment_order_counter
+// RPC, atomic INSERT ... ON CONFLICT DO UPDATE) so two terminals can never be
+// handed the same number for the same business date — the previous
+// localStorage-only counter let that happen every time 2+ terminals were used
+// (confirmed production defect). Falls back to the old per-device counter
+// only if the RPC itself fails, so a Supabase outage degrades to today's
+// behavior instead of blocking checkout — same tradeoff already used
+// elsewhere in this app for other Supabase writes.
+async function nextDailyOrderNum(): Promise<string> {
   const today = jamaicaDateKey()
-  const stored = storage.get('daily_order_counter') as { date: string; count: number } | null
-  const count = (stored?.date === today ? stored.count : 0) + 1
-  storage.set('daily_order_counter', { date: today, count })
-  return String(count).padStart(4, '0')
+  try {
+    const { data, error } = await supabase.rpc('increment_order_counter', { p_date: today })
+    if (error) throw error
+    return String(data as number).padStart(4, '0')
+  } catch {
+    const stored = storage.get('daily_order_counter') as { date: string; count: number } | null
+    const count = (stored?.date === today ? stored.count : 0) + 1
+    storage.set('daily_order_counter', { date: today, count })
+    return String(count).padStart(4, '0')
+  }
 }
 
 export interface OrderContext {
@@ -50,6 +66,10 @@ export interface OrderContext {
   phone?: string
   address?: string
   heldOrder?: HeldOrder
+  // Set when table selection found an existing sent/unpaid ticket for this
+  // table — reopens it (same mechanism the Open Orders "Pay" flow already
+  // uses) instead of starting a second, duplicate order.
+  existingTicket?: OrderTicket
 }
 
 interface POSPageProps {
@@ -68,8 +88,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [showCwPanel,  setShowCwPanel]  = useState(false)
   const [cwPosPlate,   setCwPosPlate]   = useState('')
   const [cwFetched,    setCwFetched]    = useState(false)
-  const [cwServices,   setCwServices]   = useState<any[]>([])
-  const [cwAddons,     setCwAddons]     = useState<any[]>([])
+  const [cwServices,   setCwServices]   = useState<CwServiceRow[]>([])
+  const [cwAddons,     setCwAddons]     = useState<CwAddonRow[]>([])
   const [pendingCount, setPendingCount] = useState(0)
   const [showDetails,  setShowDetails]  = useState(false)
   const [discPct,      setDiscPct]      = useState(0)
@@ -107,7 +127,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [payingTicket,  setPayingTicket]  = useState<OrderTicket | null>(null)
 
   // Split bill target (when paying one split at a time)
-  const [splitTarget,   setSplitTarget]   = useState<{ calc: ReturnType<typeof calcCart>; label: string } | null>(null)
+  const [splitTarget,   setSplitTarget]   = useState<{ calc: ReturnType<typeof calcCart>; label: string; isLast: boolean } | null>(null)
 
   // Void system
   const [voidTarget,      setVoidTarget]      = useState<{ item: CartItem; ticketId?: string } | null>(null)
@@ -349,8 +369,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       fetch('/api/carwash-services').then(r => r.json()),
       fetch('/api/carwash-addons').then(r => r.json()),
     ]).then(([svcs, adds]) => {
-      setCwServices((svcs as any[]).filter(s => s.is_available))
-      setCwAddons((adds as any[]).filter(a => a.is_available))
+      setCwServices((svcs as CwServiceRow[]).filter(s => s.is_available))
+      setCwAddons((adds as CwAddonRow[]).filter(a => a.is_available))
       setCwFetched(true)
     }).catch(() => setCwFetched(true))
   }, [showCwPanel, cwFetched])
@@ -536,7 +556,23 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     audit('OPEN_ITEM', `Open Item: "${description}" — ${fmt(price, sym)}`, 'info')
   }
 
-  const completeCheckout = (payData: { method: string; tender?: number; changeDue?: number; payments?: PaymentEntry[] }, overrideCalc?: ReturnType<typeof calcCart>) => {
+  // Split-payment finalization — the ONLY place a split order gets marked
+  // paid and the cart cleared. Called from completeCheckout itself, once the
+  // payment that actually completes the last remaining split has landed —
+  // never from a click handler, and never before that payment is confirmed.
+  // Takes the ticket explicitly (not read from `payingTicket` state) so it
+  // works correctly whether the ticket already existed (Path A) or was just
+  // created for this split a moment earlier in this same call (Path B),
+  // without depending on a state update that may not have re-rendered yet.
+  const finalizeSplitOrder = (ticket: OrderTicket) => {
+    dispatch({ type: 'UPDATE_ORDER_TICKET', id: ticket.id, patch: { status: 'paid' as const } })
+    setPayingTicket(null)
+    setShowSplitBill(false)
+    setSplitTarget(null)
+    dispatch({ type: 'CLEAR_CART' })
+  }
+
+  const completeCheckout = async (payData: { method: string; tender?: number; changeDue?: number; payments?: PaymentEntry[] }, overrideCalc?: ReturnType<typeof calcCart>, isLastSplit?: boolean) => {
     if (!currentUser) return
 
     const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -583,14 +619,24 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
       const updatedTimeline = { ...payingTicket.timeline, paid: nowTime }
       dispatch({ type: 'ADD_TRANSACTION', tx })
-      dispatch({ type: 'UPDATE_ORDER_TICKET', id: payingTicket.id, patch: {
-        status: 'paid' as const, txId: tx.id, timeline: updatedTimeline,
-      }})
+      // Split payment, not yet the last one: this leg's own transaction was
+      // just created above (exactly as a normal payment would), but the
+      // order itself must stay open — no status change, no clearing
+      // payingTicket — so the next split leg still has the real ticket to
+      // pay against. Finalization (marking it paid) happens only via
+      // finalizeSplitOrder, only for the split that completes last.
+      if (!overrideCalc) {
+        dispatch({ type: 'UPDATE_ORDER_TICKET', id: payingTicket.id, patch: {
+          status: 'paid' as const, txId: tx.id, timeline: updatedTimeline,
+        }})
+      } else if (isLastSplit) {
+        finalizeSplitOrder(payingTicket)
+      }
       dispatch({ type: 'SET_POS_STATE', mod: 'restaurant', patch: { selTable: null } })
       dispatch({ type: 'SET_POS_STATE', mod: 'bar',        patch: { selTable: null } })
 
       const paidTicket = { ...payingTicket, status: 'paid' as const, txId: tx.id, timeline: updatedTimeline }
-      setPayingTicket(null)
+      if (!overrideCalc) setPayingTicket(null)
       setSurcharges([])
       setGratuityOverride(false)
       setShowPayment(false)
@@ -627,7 +673,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       const pw2 = (biz.printers?.width ?? 80) as 58 | 80
       if (biz.printers?.receipt) {
         const receiptHTML = buildCustomerReceipt(tx, biz, { width: pw2 })
-        smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw2, true)
+        smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw2, true, false)
       }
       if (biz.printers?.receiptPreview) {
         setTimeout(() => setShowTicket(true), 200)
@@ -654,7 +700,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       ? `${cart[0].name}${cart[0].qty > 1 ? ` ×${cart[0].qty}` : ''}`
       : `${cart.length} items (${modules.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(' + ')})`
 
-    const orderNum   = nextDailyOrderNum()
+    const orderNum   = await nextDailyOrderNum()
     const tx: Transaction = {
       id: Date.now() + Math.floor(Math.random() * 1000),
       ts: new Date().toISOString(),
@@ -689,6 +735,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const hasBar     = cart.some(ci => ci.module === 'bar')
     const hasCarwash = cart.some(ci => ci.module === 'carwash')
 
+    // A split payment's first leg (no existing ticket to pay against, so we
+    // land here rather than Path A) creates the order's one real ticket —
+    // but must not mark it 'paid' yet, since only this one fraction has been
+    // paid so far. It's promoted into payingTicket right after dispatch
+    // below, so every subsequent split leg correctly re-enters this function
+    // through Path A against the SAME ticket, instead of this block running
+    // again and creating a second, duplicate ticket.
     const newTicket: OrderTicket = {
       id: crypto.randomUUID(),
       orderNum,
@@ -698,7 +751,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       guestCount:    guestCount > 1 ? guestCount : undefined,
       customerName:  customerName || undefined,
       orderType:     cartOrderType,
-      status:        'paid',
+      status:        overrideCalc ? 'sent' : 'paid',
       hasKitchen,
       hasBar,
       hasCarwash,
@@ -711,7 +764,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       timeline: {
         created: nowTime,
         sentToKitchen: hasKitchen ? nowTime : undefined,
-        paid: nowTime,
+        paid: overrideCalc ? undefined : nowTime,
       },
       reprints: [],
     }
@@ -733,8 +786,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const pw = (biz.printers?.width ?? 80) as 58 | 80
     // silentOnly=true: auto-prints never open a browser dialog; they succeed via QZ Tray or skip
     if (hasKitchen) {
-      const html = buildKitchenTicket(ticketData, { width: pw })
-      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, pw, true, true)
+      // Kitchen tickets always print at 58mm regardless of the global receipt-width
+      // setting, matching TicketModal.tsx's convention — kitchen printers are narrow-format.
+      const html = buildKitchenTicket(ticketData, { width: 58 })
+      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, 58, true, true)
     }
     if (hasCarwash) {
       const html = buildCarwashWorkOrder(ticketData, { width: pw })
@@ -768,14 +823,28 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     // Auto-print receipt (always, unless receipt preview modal is enabled in Settings)
     if (biz.printers?.receipt && !biz.printers?.receiptPreview) {
       const receiptHTML = buildCustomerReceipt(tx, biz, { width: pw })
-      smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw, true)
+      smartPrint(receiptHTML, 'Receipt', biz.printers.receipt, pw, true, false)
     }
     // Open cash drawer whenever the completed payment has a cash component (pure cash or a split that includes cash)
     if (shouldOpenDrawer(payData.method, payData.payments) && biz.printers?.drawerEnabled && biz.printers?.receipt)
       qzOpenDrawer(biz.printers.receipt)
 
     dispatch({ type: 'ADD_TRANSACTION', tx })
+    // The cart's contents have been captured into newTicket above either
+    // way, so clearing it here is correct whether this is a normal sale or
+    // a split's first leg — matches the existing behavior of a normal
+    // Send-to-Kitchen. What must NOT happen on a split's first leg is
+    // marking the ticket 'paid' or ending the order — see below.
     dispatch({ type: 'CLEAR_CART' })
+    if (overrideCalc) {
+      // First leg of a split starting from a raw cart (no existing ticket
+      // to pay against). Promote the ticket just created into payingTicket
+      // so every subsequent split leg re-enters this function through
+      // Path A against this same ticket, instead of this block running
+      // again and creating a duplicate ticket/kitchen print per leg.
+      if (isLastSplit) finalizeSplitOrder(newTicket)
+      else setPayingTicket(newTicket)
+    }
     setLastTx(tx)
     setLastTicket(newTicket)
     setShowPayment(false)
@@ -796,14 +865,14 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   }
 
   // ── Send Order: print kitchen/bar tickets, keep order open ────
-  const sendOrder = () => {
+  const sendOrder = async () => {
     if (activeCart.length === 0) return
     if (!currentUser) return
 
     const selTable   = posState['restaurant'].selTable ?? posState['bar'].selTable
     const nowTime    = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     const today      = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
-    const orderNum   = nextDailyOrderNum()
+    const orderNum   = await nextDailyOrderNum()
     const hasKitchen = activeCart.some(ci => ci.module === 'restaurant')
     const hasBar     = activeCart.some(ci => ci.module === 'bar')
     const hasCarwash = activeCart.some(ci => ci.module === 'carwash')
@@ -848,8 +917,9 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const pw2 = (biz.printers?.width ?? 80) as 58 | 80
     // silentOnly=false on Send to Kitchen: opens browser dialog if QZ Tray is unavailable
     if (hasKitchen) {
-      const html = buildKitchenTicket(ticketData, { width: pw2 })
-      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, pw2, false, true)
+      // Kitchen tickets always print at 58mm — see note in the payment handler above.
+      const html = buildKitchenTicket(ticketData, { width: 58 })
+      smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, 58, false, true)
     }
     if (hasCarwash) {
       const html = buildCarwashWorkOrder(ticketData, { width: pw2 })
@@ -918,7 +988,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
 
   // ── Void entire open order (manager/admin only) ────────────
   const isManager = ['admin','manager'].includes(role)
-  const canUseOpenItem = isManager || !!(biz as any).staffOpenItemAllowed
+  const canUseOpenItem = isManager || !!biz.staffOpenItemAllowed
   const handleVoidEntireOrder = (ticket: OrderTicket, reason: VoidReason, reasonText: string) => {
     if (!currentUser) return
     const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -958,8 +1028,8 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       hasCarwash: ticket.hasCarwash || newHasCarwash,
     }})
     const addData = { orderNum: ticket.orderNum, table: ticket.table, server: currentUser.name, orderType: ticket.orderType, date: today, time: nowTime, items: [...activeCart], orderNote: `++ ADDITIONAL ITEMS ++` }
-    const pw3 = (biz.printers?.width ?? 80) as 58 | 80
-    if (newHasKitchen) { const h = buildKitchenTicket(addData, { width: pw3 }); smartPrint(h, 'Kitchen Ticket — Addition', biz.printers?.kitchen, pw3, true, true) }
+    // Kitchen tickets always print at 58mm — see note in the payment handler above.
+    if (newHasKitchen) { const h = buildKitchenTicket(addData, { width: 58 }); smartPrint(h, 'Kitchen Ticket — Addition', biz.printers?.kitchen, 58, true, true) }
     dispatch({ type: 'CLEAR_CART' })
     setAddToOrderMode(false); setShowOpen(false)
     audit('ADD_TO_ORDER', `Added ${activeCart.length} item(s) to Order #${ticket.orderNum}`, 'info')
@@ -1024,6 +1094,11 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   // Auto-resume when navigated here from a held order tap in TakeoutDashboard/DeliveryDashboard
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (orderContext?.heldOrder) resumeOrder(orderContext.heldOrder) }, [])
+  // Table selection found an existing sent/unpaid ticket for this table —
+  // reopen it via the same payingTicket mechanism the Open Orders "Pay" flow
+  // already uses, instead of leaving a blank cart for a second order.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (orderContext?.existingTicket) setPayingTicket(orderContext.existingTicket) }, [])
 
   // Auto-set gratuity: 15% for dine-in restaurant, 0 otherwise
   const hasRestaurantItems = cart.some(ci => ci.module === 'restaurant')
@@ -1340,7 +1415,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                         <>
                           <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Services</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
-                            {cwServices.map((svc: any) => (
+                            {cwServices.map((svc) => (
                               <div key={svc.id}
                                 onClick={() => dispatch({ type: 'ADD_TO_CART', item: { id: crypto.randomUUID(), itemId: svc.id, name: svc.name, price: Number(svc.price), qty: 1, addons: [], module: 'carwash', plate: cwPosPlate || undefined } as CartItem })}
                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', border: '2px solid var(--bdr)', borderRadius: 'var(--r3)', cursor: 'pointer', background: 'var(--surf)', transition: 'all .12s' }}>
@@ -1359,7 +1434,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                         <>
                           <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--txt3)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Add-Ons</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {cwAddons.map((adn: any) => (
+                            {cwAddons.map((adn) => (
                               <div key={adn.id}
                                 onClick={() => dispatch({ type: 'ADD_TO_CART', item: { id: crypto.randomUUID(), itemId: adn.id, name: adn.name, price: Number(adn.price), qty: 1, addons: [], module: 'carwash' } as CartItem })}
                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', border: '2px solid var(--bdr)', borderRadius: 'var(--r3)', cursor: 'pointer', background: 'var(--surf)', transition: 'all .12s' }}>
@@ -1929,7 +2004,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         customerName={payingTicket?.customerName ?? customerName}
         surcharges={surcharges}
         onSurchargesChange={setSurcharges}
-        onComplete={payData => completeCheckout(payData, splitTarget?.calc)}
+        onComplete={payData => completeCheckout(payData, splitTarget?.calc, splitTarget?.isLast)}
       />
 
       {/* ── Ticket Modal ── */}
@@ -1953,19 +2028,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         sym={sym}
         onPaySplit={split => {
           setShowSplitBill(false)
-          setSplitTarget({ calc: split.calc, label: split.label })
+          setSplitTarget({ calc: split.calc, label: split.label, isLast: split.isLast ?? false })
           setShowPayment(true)
         }}
         onPayAll={() => { setShowSplitBill(false); setShowPayment(true) }}
-        onAllPaid={() => {
-          if (payingTicket) {
-            dispatch({ type: 'UPDATE_ORDER_TICKET', id: payingTicket.id, patch: { status: 'paid' } })
-            setPayingTicket(null)
-          }
-          setShowSplitBill(false)
-          setSplitTarget(null)
-          dispatch({ type: 'CLEAR_CART' })
-        }}
       />
 
       {/* ── Void Item Modal ── */}

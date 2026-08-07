@@ -58,6 +58,7 @@ import {
   SEED_FLEET, SEED_PROMOS, SEED_VERSION,
 } from '@/lib/data/seed'
 import { supabase } from '@/lib/supabase'
+import { recordChannelStatus, recordSyncResult, recordTransactionWriteResult } from '@/lib/utils/healthTelemetry'
 
 // ── State shape ────────────────────────────────────────────────
 interface AppState {
@@ -90,7 +91,7 @@ interface AppState {
   // Menu — mutable, localStorage-backed, same data the POS reads
   menuData: Record<ModuleKey, { items: MenuItem[]; categories: string[]; addons: Addon[] }>
   // UI
-  toasts: { id: number; msg: string; type: string }[]
+  toasts: { id: number; msg: string; type: string; action?: { label: string; onClick: () => void } }[]
   syncQueue: unknown[]
   isOnline: boolean
   uiMode: 'pos' | 'admin'
@@ -106,7 +107,7 @@ type Action =
   | { type: 'SET_PAGE'; page: string }
   | { type: 'SET_POS_STATE'; mod: ModuleKey; patch: Partial<POSState> }
   | { type: 'ADD_TRANSACTION'; tx: Transaction }
-  | { type: 'ADD_TOAST'; msg: string; toastType: string; id: number }
+  | { type: 'ADD_TOAST'; msg: string; toastType: string; id: number; action?: { label: string; onClick: () => void } }
   | { type: 'REMOVE_TOAST'; id: number }
   | { type: 'SET_USERS'; users: User[] }
   | { type: 'SET_BIZ'; biz: BusinessConfig }
@@ -147,11 +148,17 @@ type Action =
   | { type: 'SYNC_HELD_ORDERS';    orders: HeldOrder[] }
   | { type: 'TRANSFER_ORDER'; ticketId: string; toUserName: string }
   | { type: 'UPSERT_HELD_ORDER';   order:  HeldOrder  }
+  | { type: 'SYNC_ORDER_TICKETS';  tickets: OrderTicket[] }
+  | { type: 'UPSERT_ORDER_TICKET'; ticket: OrderTicket }
+  | { type: 'SYNC_VOID_LOGS';   entries: VoidLog[] }
+  | { type: 'SYNC_REFUND_LOGS'; entries: RefundLog[] }
+  | { type: 'SYNC_AUDIT';       entries: AuditEntry[] }
   | { type: 'SET_CURRENT_SHIFT'; shift: Shift | null }
   | { type: 'ADD_FLEET_ACCOUNT';    account: FleetAccount }
   | { type: 'UPDATE_FLEET_ACCOUNT'; account: FleetAccount }
   | { type: 'DELETE_FLEET_ACCOUNT'; id: string }
   | { type: 'SET_TRANSACTIONS'; transactions: Transaction[] }
+  | { type: 'UPSERT_TRANSACTION'; tx: Transaction }
 
 const defaultPOS = (): POSState => ({
   selItem: null, selAddons: [], selTable: null, selTab: null,
@@ -197,7 +204,10 @@ function initState(): AppState {
       return fresh
     })(),
     heldOrders:   (() => { const v = storage.get('held_orders');   return Array.isArray(v) ? (v as HeldOrder[]).filter(h => h?.id && Array.isArray(h?.cart)) : [] })(),
-    orderTickets: (() => { const v = storage.get('order_tickets'); return Array.isArray(v) ? (v as OrderTicket[]).filter(t => t?.id && t?.timeline && Array.isArray(t?.items)) : [] })(),
+    // Supabase is the single source of truth (realtime-synced below, like Tables) —
+    // no localStorage dependency, so Kitchen Display sees the same tickets on every
+    // terminal. Starts empty; populated by the fetch-on-load effect moments after mount.
+    orderTickets: [],
     transactions: (() => {
       const cached = storage.get<Transaction[]>('tx') ?? []
       return cached.filter(t => t.id > 1003) // exclude seed demo data; show real localStorage data immediately while Supabase loads
@@ -269,6 +279,7 @@ function reducer(state: AppState, action: Action): AppState {
           const clockinAt = localStorage.getItem(`personal_clockin_${state.currentUser.id}`) ?? (state.currentShift?.start ?? now)
           localStorage.setItem(`clockout_${state.currentUser.id}`, JSON.stringify({ clockinAt, at: now }))
           localStorage.removeItem(`personal_clockin_${state.currentUser.id}`)
+          localStorage.removeItem(`personal_shiftrow_${state.currentUser.id}`)
 
           // Auto-create payroll time entry when a profile exists for this employee
           type PProfile = { staffId: string; payrollType: 'hourly' | 'salary'; active: boolean }
@@ -348,7 +359,7 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, transactions }
     }
     case 'ADD_TOAST': {
-      return { ...state, toasts: [...state.toasts, { id: action.id, msg: action.msg, type: action.toastType }] }
+      return { ...state, toasts: [...state.toasts, { id: action.id, msg: action.msg, type: action.toastType, action: action.action }] }
     }
     case 'REMOVE_TOAST':
       return { ...state, toasts: state.toasts.filter(t => t.id !== action.id) }
@@ -364,6 +375,10 @@ function reducer(state: AppState, action: Action): AppState {
       const audit = [action.entry, ...state.audit].slice(0, 600)
       storage.set('audit', audit)
       return { ...state, audit }
+    }
+    case 'SYNC_AUDIT': {
+      storage.set('audit', action.entries)
+      return { ...state, audit: action.entries }
     }
     case 'SET_ONLINE':
       return { ...state, isOnline: action.online }
@@ -435,30 +450,21 @@ function reducer(state: AppState, action: Action): AppState {
       storage.set('tx', transactions)
       return { ...state, transactions }
     }
-    case 'ADD_ORDER_TICKET': {
-      const orderTickets = [action.ticket, ...state.orderTickets].slice(0, 200)
-      storage.set('order_tickets', orderTickets)
-      return { ...state, orderTickets }
+    case 'SYNC_ORDER_TICKETS': {
+      return { ...state, orderTickets: action.tickets }
     }
-    case 'UPDATE_ORDER_TICKET': {
-      const orderTickets = state.orderTickets.map(t =>
-        t.id === action.id ? { ...t, ...action.patch } : t
-      )
-      storage.set('order_tickets', orderTickets)
-      return { ...state, orderTickets }
-    }
-
-    case 'TRANSFER_ORDER': {
-      const nowStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-      const orderTickets = state.orderTickets.map(t => {
-        if (t.id !== action.ticketId) return t
-        return {
-          ...t,
-          server: action.toUserName,
-          transferHistory: [...(t.transferHistory ?? []), { from: t.server, to: action.toUserName, at: nowStr }],
-        }
-      })
-      storage.set('order_tickets', orderTickets)
+    // UPSERT_ORDER_TICKET is the ONLY reducer case that ever applies an OrderTicket change to
+    // local state — for every ticket mutation (create/update/transfer/void-item) as well as
+    // realtime-inbound sync. See resolveOrderTicket() above and the dispatch wrapper below:
+    // ADD_ORDER_TICKET/UPDATE_ORDER_TICKET/TRANSFER_ORDER/VOID_TICKET_ITEM are resolved to a
+    // single canonical ticket there and dispatched as UPSERT_ORDER_TICKET, never handled here
+    // directly, so there is exactly one place this array is ever mutated.
+    case 'UPSERT_ORDER_TICKET': {
+      const idx = state.orderTickets.findIndex(t => t.id === action.ticket.id)
+      const orderTickets = idx >= 0
+        ? state.orderTickets.map((t, i) => i === idx ? action.ticket : t)
+        // New ticket: prepend, capped at 200 — same cap the old ADD_ORDER_TICKET case had.
+        : [action.ticket, ...state.orderTickets].slice(0, 200)
       return { ...state, orderTickets }
     }
     case 'VOID_CART_ITEM': {
@@ -469,23 +475,14 @@ function reducer(state: AppState, action: Action): AppState {
       )
       return { ...state, cart }
     }
-    case 'VOID_TICKET_ITEM': {
-      const orderTickets = state.orderTickets.map(t =>
-        t.id === action.ticketId
-          ? { ...t, items: t.items.map(ci =>
-              ci.id === action.itemId
-                ? { ...ci, voided: true, voidReason: action.reason, voidReasonText: action.reasonText, voidedBy: action.by, voidedAt: action.at }
-                : ci
-            )}
-          : t
-      )
-      storage.set('order_tickets', orderTickets)
-      return { ...state, orderTickets }
-    }
     case 'ADD_VOID_LOG': {
       const voidLogs = [action.entry, ...state.voidLogs].slice(0, 500)
       storage.set('void_logs', voidLogs)
       return { ...state, voidLogs }
+    }
+    case 'SYNC_VOID_LOGS': {
+      storage.set('void_logs', action.entries)
+      return { ...state, voidLogs: action.entries }
     }
     case 'REFUND_TRANSACTION': {
       const transactions = state.transactions.map(t =>
@@ -505,6 +502,10 @@ function reducer(state: AppState, action: Action): AppState {
       const refundLogs = [action.entry, ...state.refundLogs].slice(0, 500)
       storage.set('refund_logs', refundLogs)
       return { ...state, refundLogs }
+    }
+    case 'SYNC_REFUND_LOGS': {
+      storage.set('refund_logs', action.entries)
+      return { ...state, refundLogs: action.entries }
     }
     case 'SET_UI_MODE':
       return { ...state, uiMode: action.mode }
@@ -590,8 +591,65 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_TRANSACTIONS': {
       return { ...state, transactions: action.transactions }
     }
+    case 'UPSERT_TRANSACTION': {
+      const idx = state.transactions.findIndex(t => t.id === action.tx.id)
+      const transactions = idx >= 0
+        ? state.transactions.map((t, i) => i === idx ? action.tx : t)
+        : [action.tx, ...state.transactions].slice(0, 50000)
+      storage.set('tx', transactions)
+      return { ...state, transactions }
+    }
     default:
       return state
+  }
+}
+
+// ── Order ticket mutation — THE single canonical computation ───────────────────────────────
+// There is exactly one place an OrderTicket mutation is computed, ever. resolveOrderTicket()
+// takes the current ticket list plus one of these four action types and returns the one,
+// fully-resolved OrderTicket — the SAME object then used both to update local state (via
+// dispatching UPSERT_ORDER_TICKET) and to write to Supabase (see the dispatch wrapper below).
+// This exists because the previous design computed the patch twice — once inside the reducer's
+// own ADD_ORDER_TICKET/UPDATE_ORDER_TICKET/TRANSFER_ORDER/VOID_TICKET_ITEM cases (correct, for
+// local state), and once in the write-through side effect (which read a stale pre-render
+// snapshot and wrote it back UNMODIFIED, silently dropping the actual patch) — two independent
+// computations of "what should this ticket become" that were free to (and did) diverge.
+// Any future order-ticket action MUST be added here, not as a new reducer case and not as a
+// second ad-hoc merge anywhere else. Never construct a second version of an OrderTicket.
+type OrderTicketMutation = Extract<Action,
+  { type: 'ADD_ORDER_TICKET' | 'UPDATE_ORDER_TICKET' | 'TRANSFER_ORDER' | 'VOID_TICKET_ITEM' }>
+
+function resolveOrderTicket(tickets: OrderTicket[], action: OrderTicketMutation): OrderTicket | null {
+  switch (action.type) {
+    case 'ADD_ORDER_TICKET':
+      // Pure insert — the caller already built the full ticket, nothing to merge.
+      return action.ticket
+    case 'UPDATE_ORDER_TICKET': {
+      const t = tickets.find(t => t.id === action.id)
+      return t ? { ...t, ...action.patch } : null
+    }
+    case 'TRANSFER_ORDER': {
+      const t = tickets.find(t => t.id === action.ticketId)
+      if (!t) return null
+      const nowStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      return {
+        ...t,
+        server: action.toUserName,
+        transferHistory: [...(t.transferHistory ?? []), { from: t.server, to: action.toUserName, at: nowStr }],
+      }
+    }
+    case 'VOID_TICKET_ITEM': {
+      const t = tickets.find(t => t.id === action.ticketId)
+      if (!t) return null
+      return {
+        ...t,
+        items: t.items.map(ci =>
+          ci.id === action.itemId
+            ? { ...ci, voided: true, voidReason: action.reason, voidReasonText: action.reasonText, voidedBy: action.by, voidedAt: action.at }
+            : ci
+        ),
+      }
+    }
   }
 }
 
@@ -677,6 +735,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Supabase-aware dispatch — Supabase is the single source of truth for all transactions
   const dispatch = useCallback((action: Action): void => {
+    // Permission gate — verified here, at the single point every action from every
+    // component actually passes through, not just by hiding the triggering button.
+    // Placed before both local state update AND any Supabase write below, so a
+    // blocked action never partially applies (e.g. blocked locally but still
+    // written to the database by the async side-effect code further down).
+    const role = stateRef.current.currentUser?.role
+    if (action.type === 'SET_MODULE' && stateRef.current.currentUser &&
+        !stateRef.current.currentUser.allowedModules.includes(action.mod)) return
+    if ((action.type === 'VOID_TRANSACTION' || action.type === 'REFUND_TRANSACTION') &&
+        role !== 'admin' && role !== 'manager') return
+
     // LOGOUT clears the server-side session cookie too — this is a lock screen
     // (the business shift and personal clock-in stay alive), but the next person
     // to use this terminal must re-enter a PIN and get their own fresh session,
@@ -705,6 +774,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           console.warn(`[shift] Transaction ${tx.id} (user ${tx.userId}) saved with no active personal shiftId — My Shift will fall back to cashier+date matching for it`)
         }
       }
+      pendingWrites.current.add(String(tx.id))
       ;(async () => {
         try {
           const { error } = await supabase.from('transactions').upsert({
@@ -714,15 +784,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             data:    tx,
           })
           if (error) throw error
+          recordTransactionWriteResult(tx.id, true)
         } catch {
           // Supabase write failed — warn the operator; still record locally for offline resilience
           const warnId = Date.now()
           rawDispatch({ type: 'ADD_TOAST', msg: '⚠️ Transaction not synced to database — check your connection', toastType: 'warn', id: warnId })
           setTimeout(() => rawDispatch({ type: 'REMOVE_TOAST', id: warnId }), 6000)
+          recordTransactionWriteResult(tx.id, false)
         }
         // Update local state after Supabase attempt (success or fail)
         rawDispatch({ ...action, tx })
+        setTimeout(() => pendingWrites.current.delete(String(tx.id)), 3000)
       })()
+      return
+    }
+
+    // Order tickets: resolveOrderTicket() (above the reducer) computes the ONE canonical
+    // ticket for this action — the exact same object is then used both to update local state
+    // (via UPSERT_ORDER_TICKET, the only reducer case that ever touches orderTickets) and to
+    // write to Supabase below. There is no second computation, no second merge, no reading
+    // stateRef a second time — see the comment on resolveOrderTicket for why that matters.
+    if (action.type === 'ADD_ORDER_TICKET' || action.type === 'UPDATE_ORDER_TICKET' ||
+        action.type === 'TRANSFER_ORDER' || action.type === 'VOID_TICKET_ITEM') {
+      const resolved = resolveOrderTicket(stateRef.current.orderTickets, action)
+      if (resolved) {
+        rawDispatch({ type: 'UPSERT_ORDER_TICKET', ticket: resolved })
+        pendingWrites.current.add(resolved.id)
+        ;(async () => {
+          try {
+            const { error } = await supabase.from('order_tickets').upsert({ id: resolved.id, data: resolved })
+            if (error) throw error
+            recordSyncResult(true)
+          } catch { recordSyncResult(false) }
+          setTimeout(() => pendingWrites.current.delete(resolved.id), 3000)
+        })()
+      }
       return
     }
 
@@ -762,8 +858,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const tx = stateRef.current.transactions.find(t => t.id === action.id)
       if (tx) {
         const updated = { ...tx, voided: true, voidReason: action.reason }
+        pendingWrites.current.add(String(updated.id))
         ;(async () => {
-          try { await supabase.from('transactions').upsert({ id: updated.id, mod: updated.mod, cashier: updated.cashier, data: updated }) } catch {}
+          try {
+            const { error } = await supabase.from('transactions').upsert({ id: updated.id, mod: updated.mod, cashier: updated.cashier, data: updated })
+            if (error) throw error
+            recordSyncResult(true)
+          } catch { recordSyncResult(false) }
+          setTimeout(() => pendingWrites.current.delete(String(updated.id)), 3000)
         })()
       }
     }
@@ -773,10 +875,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const tx = stateRef.current.transactions.find(t => t.id === action.id)
       if (tx) {
         const updated = { ...tx, refunded: true, refundReason: action.reason, refundedBy: action.by, refundedAt: action.at, refundAmount: action.amount }
+        pendingWrites.current.add(String(updated.id))
         ;(async () => {
-          try { await supabase.from('transactions').upsert({ id: updated.id, mod: updated.mod, cashier: updated.cashier, data: updated }) } catch {}
+          try {
+            const { error } = await supabase.from('transactions').upsert({ id: updated.id, mod: updated.mod, cashier: updated.cashier, data: updated })
+            if (error) throw error
+            recordSyncResult(true)
+          } catch { recordSyncResult(false) }
+          setTimeout(() => pendingWrites.current.delete(String(updated.id)), 3000)
         })()
       }
+    }
+
+    // Audit trail (void/refund history, manager actions) — write-through so every
+    // terminal sees who did what and why, not just the device that acted.
+    if (action.type === 'ADD_VOID_LOG' || action.type === 'ADD_REFUND_LOG' || action.type === 'ADD_AUDIT') {
+      const entry = action.type === 'ADD_AUDIT' ? action.entry : action.entry
+      const table = action.type === 'ADD_VOID_LOG' ? 'void_logs' : action.type === 'ADD_REFUND_LOG' ? 'refund_logs' : 'audit_trail'
+      pendingWrites.current.add(entry.id)
+      ;(async () => {
+        try { await supabase.from(table).insert({ id: entry.id, data: entry }) } catch {}
+        setTimeout(() => pendingWrites.current.delete(entry.id), 3000)
+      })()
     }
 
     if (action.type === 'HOLD_ORDER') {
@@ -845,10 +965,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Realtime staff sync — re-fetch whenever any staff row changes on any device
   useEffect(() => {
+    // refreshStaff is already a stable, named callback (used directly as the
+    // live event handler below) — reconnect backfill just calls the same
+    // function again, no extraction needed.
+    let wasDown = false
     const ch = supabase
       .channel('staff-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'staff' }, refreshStaff)
-      .subscribe()
+      .subscribe(status => {
+        recordChannelStatus('staff', status)
+        if (status === 'SUBSCRIBED' && wasDown) { wasDown = false; refreshStaff() }
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') wasDown = true
+      })
     return () => { supabase.removeChannel(ch) }
   }, [refreshStaff])
 
@@ -862,20 +990,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (bizFetched.current) return
     bizFetched.current = true
-    ;(async () => {
+
+    // Named (not an anonymous IIFE) so the exact same fetch can be re-run on
+    // reconnect below — behavior and body are unchanged from before.
+    const fetchBizConfig = async () => {
       try {
         const { data } = await supabase.from('business_config').select('data').eq('id', 'main').maybeSingle()
         if (data?.data) rawDispatch({ type: 'SET_BIZ', biz: data.data as BusinessConfig })
       } catch {}
-    })()
+    }
+    fetchBizConfig()
 
+    // Reconnect backfill — same rationale as held_orders/order_tickets above.
+    let wasDown = false
     const ch = supabase
       .channel('biz-config-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'business_config' }, ({ new: row }) => {
         const biz = (row as { data?: BusinessConfig } | null)?.data
         if (biz) rawDispatch({ type: 'SET_BIZ', biz })
       })
-      .subscribe()
+      .subscribe(status => {
+        recordChannelStatus('biz-config', status)
+        if (status === 'SUBSCRIBED' && wasDown) { wasDown = false; fetchBizConfig() }
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') wasDown = true
+      })
     return () => { supabase.removeChannel(ch) }
   }, [])
 
@@ -894,7 +1032,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (heldFetched.current) return
     heldFetched.current = true
 
-    ;(async () => {
+    // Named (not an anonymous IIFE) so the exact same fetch can be re-run on
+    // reconnect below — behavior and body are unchanged from before.
+    const fetchHeldOrders = async () => {
       try {
         const { data } = await supabase.from('held_orders').select('*')
         if (!data) return
@@ -908,8 +1048,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
         rawDispatch({ type: 'SYNC_HELD_ORDERS', orders: [...supaOrders, ...localOnly] })
       } catch {}
-    })()
+    }
+    fetchHeldOrders()
 
+    // Reconnect backfill — a channel that drops and later resubscribes has, by
+    // definition, missed any postgres_changes events fired during the gap;
+    // nothing else here catches up on that (confirmed root cause of a real
+    // incident: a held order created on one terminal never appeared on
+    // another). Re-running the same fetch used at mount is the smallest way
+    // to close that gap. `wasDown` lives in this closure (the effect only
+    // ever runs once, per the ref guard above) so it persists across
+    // however many status callbacks fire without needing a separate ref.
+    let wasDown = false
     const ch = supabase
       .channel('held-orders')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'held_orders' }, ({ new: row }) => {
@@ -924,7 +1074,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (pendingDeletes.current.has((row as { id: string }).id)) return
         rawDispatch({ type: 'REMOVE_HELD_ORDER', id: (row as { id: string }).id })
       })
-      .subscribe()
+      .subscribe(status => {
+        recordChannelStatus('held-orders', status)
+        if (status === 'SUBSCRIBED' && wasDown) { wasDown = false; fetchHeldOrders() }
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') wasDown = true
+      })
 
     return () => { supabase.removeChannel(ch) }
   }, [])
@@ -939,13 +1093,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (shiftFetched.current) return
     shiftFetched.current = true
-    ;(async () => {
+
+    // Named (not an anonymous IIFE) so the exact same fetch can be re-run on
+    // reconnect below — behavior and body are unchanged from before. The live
+    // event handler's open/closed branching further down is untouched; this
+    // only re-runs the mount-time read of "what's the current open shift."
+    const fetchBusinessShift = async () => {
       try {
         const { data } = await supabase.from('business_shifts').select('*').eq('status', 'open').limit(1).maybeSingle()
         rawDispatch({ type: 'SET_CURRENT_SHIFT', shift: data ? rowToShift(data) : null })
       } catch {}
-    })()
+    }
+    fetchBusinessShift()
 
+    // Reconnect backfill — same rationale as held_orders/order_tickets above.
+    let wasDown = false
     const ch = supabase
       .channel('business-shift-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'business_shifts' }, ({ new: row }) => {
@@ -958,33 +1120,251 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           rawDispatch({ type: 'SET_CURRENT_SHIFT', shift: null })
         }
       })
-      .subscribe()
+      .subscribe(status => {
+        recordChannelStatus('business-shift', status)
+        if (status === 'SUBSCRIBED' && wasDown) { wasDown = false; fetchBusinessShift() }
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') wasDown = true
+      })
 
     return () => { supabase.removeChannel(ch) }
   }, [])
+
+  // Kitchen Display / order tickets — Supabase is the sole source of truth (no
+  // localStorage), initial load + realtime subscription so every terminal (order
+  // entry, Kitchen Display, etc.) sees the same tickets instantly.
+  const ticketsFetched = useRef(false)
+  useEffect(() => {
+    if (ticketsFetched.current) return
+    ticketsFetched.current = true
+
+    // Named (not an anonymous IIFE) so the exact same fetch can be re-run on
+    // reconnect below — behavior and body are unchanged from before.
+    const fetchOrderTickets = async () => {
+      try {
+        const { data, error } = await supabase.from('order_tickets').select('data').order('updated_at', { ascending: false }).limit(200)
+        if (error) throw error
+        const tickets = ((data ?? []) as { data: OrderTicket }[]).map(r => r.data)
+          .filter(t => t?.id && t?.timeline && Array.isArray(t?.items))
+        rawDispatch({ type: 'SYNC_ORDER_TICKETS', tickets })
+      } catch {}
+    }
+    fetchOrderTickets()
+
+    // Reconnect backfill — same rationale as held_orders above: a dropped
+    // channel misses whatever changed during the gap, and nothing else here
+    // catches up on it. Re-running the mount fetch is the smallest fix.
+    let wasDown = false
+    const ch = supabase
+      .channel('order-tickets-sync')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'order_tickets' }, ({ new: row }) => {
+        const id = (row as { id: string }).id
+        if (pendingWrites.current.has(id)) return
+        rawDispatch({ type: 'UPSERT_ORDER_TICKET', ticket: (row as { data: OrderTicket }).data })
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'order_tickets' }, ({ new: row }) => {
+        const id = (row as { id: string }).id
+        if (pendingWrites.current.has(id)) return
+        rawDispatch({ type: 'UPSERT_ORDER_TICKET', ticket: (row as { data: OrderTicket }).data })
+      })
+      .subscribe(status => {
+        recordChannelStatus('order-tickets', status)
+        if (status === 'SUBSCRIBED' && wasDown) { wasDown = false; fetchOrderTickets() }
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') wasDown = true
+      })
+
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  // Audit trail sync (void/refund history, manager actions) — initial load merges
+  // Supabase with any local-only entries (uploading those), then realtime INSERT
+  // keeps every terminal's history current, not just the device that acted.
+  const logsFetched = useRef(false)
+  useEffect(() => {
+    if (logsFetched.current) return
+    logsFetched.current = true
+
+    // Each named (not an anonymous IIFE) so all three can be re-run together
+    // on reconnect below — behavior and bodies are unchanged from before.
+    const fetchVoidLogs = async () => {
+      try {
+        const { data } = await supabase.from('void_logs').select('data').order('created_at', { ascending: false }).limit(500)
+        const supaEntries = ((data ?? []) as { data: VoidLog }[]).map(r => r.data)
+        const supaIds = new Set(supaEntries.map(e => e.id))
+        const local = storage.get<VoidLog[]>('void_logs') ?? []
+        const localOnly = local.filter(e => !supaIds.has(e.id))
+        if (localOnly.length > 0) {
+          try { await supabase.from('void_logs').insert(localOnly.map(e => ({ id: e.id, data: e }))) } catch {}
+        }
+        rawDispatch({ type: 'SYNC_VOID_LOGS', entries: [...supaEntries, ...localOnly].slice(0, 500) })
+      } catch {}
+    }
+    const fetchRefundLogs = async () => {
+      try {
+        const { data } = await supabase.from('refund_logs').select('data').order('created_at', { ascending: false }).limit(500)
+        const supaEntries = ((data ?? []) as { data: RefundLog }[]).map(r => r.data)
+        const supaIds = new Set(supaEntries.map(e => e.id))
+        const local = storage.get<RefundLog[]>('refund_logs') ?? []
+        const localOnly = local.filter(e => !supaIds.has(e.id))
+        if (localOnly.length > 0) {
+          try { await supabase.from('refund_logs').insert(localOnly.map(e => ({ id: e.id, data: e }))) } catch {}
+        }
+        rawDispatch({ type: 'SYNC_REFUND_LOGS', entries: [...supaEntries, ...localOnly].slice(0, 500) })
+      } catch {}
+    }
+    const fetchAuditTrail = async () => {
+      try {
+        const { data } = await supabase.from('audit_trail').select('data').order('created_at', { ascending: false }).limit(600)
+        const supaEntries = ((data ?? []) as { data: AuditEntry }[]).map(r => r.data)
+        const supaIds = new Set(supaEntries.map(e => e.id))
+        const local = storage.get<AuditEntry[]>('audit') ?? []
+        const localOnly = local.filter(e => !supaIds.has(e.id))
+        if (localOnly.length > 0) {
+          try { await supabase.from('audit_trail').insert(localOnly.map(e => ({ id: e.id, data: e }))) } catch {}
+        }
+        rawDispatch({ type: 'SYNC_AUDIT', entries: [...supaEntries, ...localOnly].slice(0, 600) })
+      } catch {}
+    }
+    fetchVoidLogs()
+    fetchRefundLogs()
+    fetchAuditTrail()
+
+    // Reconnect backfill — same rationale as held_orders/order_tickets above.
+    // One shared channel covers three tables, so a reconnect re-runs all three.
+    let wasDown = false
+    const ch = supabase
+      .channel('audit-trail-sync')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'void_logs' }, ({ new: row }) => {
+        const entry = (row as { data: VoidLog }).data
+        if (pendingWrites.current.has(entry.id)) return
+        rawDispatch({ type: 'SYNC_VOID_LOGS', entries: [entry, ...stateRef.current.voidLogs.filter(e => e.id !== entry.id)].slice(0, 500) })
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'refund_logs' }, ({ new: row }) => {
+        const entry = (row as { data: RefundLog }).data
+        if (pendingWrites.current.has(entry.id)) return
+        rawDispatch({ type: 'SYNC_REFUND_LOGS', entries: [entry, ...stateRef.current.refundLogs.filter(e => e.id !== entry.id)].slice(0, 500) })
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_trail' }, ({ new: row }) => {
+        const entry = (row as { data: AuditEntry }).data
+        if (pendingWrites.current.has(entry.id)) return
+        rawDispatch({ type: 'SYNC_AUDIT', entries: [entry, ...stateRef.current.audit.filter(e => e.id !== entry.id)].slice(0, 600) })
+      })
+      .subscribe(status => {
+        recordChannelStatus('audit-trail', status)
+        if (status === 'SUBSCRIBED' && wasDown) { wasDown = false; fetchVoidLogs(); fetchRefundLogs(); fetchAuditTrail() }
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') wasDown = true
+      })
+
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  // Named (not an anonymous IIFE) so the subscribe effect below can re-run the
+  // exact same fetch on reconnect — behavior and body are unchanged from
+  // before. Declared here, outside both effects, specifically so the
+  // existing fetch/subscribe effect split (kept as-is, not merged) can share
+  // one function reference.
+  const fetchTransactions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('data')
+        .order('id', { ascending: false })
+        .limit(50000)
+      if (error) throw error
+
+      // Supabase is the single source of truth — set state directly, no local merge
+      const allTxs = ((data ?? []) as { data: Transaction }[]).map(r => r.data).sort((a, b) => b.id - a.id)
+      rawDispatch({ type: 'SET_TRANSACTIONS', transactions: allTxs })
+    } catch (err) {
+      console.warn('[NexPOS] Could not sync transactions with Supabase:', err)
+      // Keep whatever initState loaded from localStorage (already shown to user)
+    }
+  }
 
   // Startup: load from Supabase + migrate any localStorage transactions not yet there
   const txFetched = useRef(false)
   useEffect(() => {
     if (txFetched.current) return
     txFetched.current = true
-    ;(async () => {
-      try {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('data')
-          .order('id', { ascending: false })
-          .limit(50000)
-        if (error) throw error
+    fetchTransactions()
+  }, [])
 
-        // Supabase is the single source of truth — set state directly, no local merge
-        const allTxs = ((data ?? []) as { data: Transaction }[]).map(r => r.data).sort((a, b) => b.id - a.id)
-        rawDispatch({ type: 'SET_TRANSACTIONS', transactions: allTxs })
-      } catch (err) {
-        console.warn('[NexPOS] Could not sync transactions with Supabase:', err)
-        // Keep whatever initState loaded from localStorage (already shown to user)
+  // Transactions — realtime subscription so every terminal's revenue figures
+  // (My Shift, Active Shift, Close Shift, EOD, Transactions, Reports, Targets —
+  // see lib/utils/revenue.ts) update the instant a sale/void/refund happens
+  // anywhere, not just on this device, without requiring a page refresh. Same
+  // INSERT/UPDATE + pendingWrites-echo-dedup pattern as order_tickets above.
+  useEffect(() => {
+    // Reconnect backfill — same rationale as held_orders/order_tickets above.
+    let wasDown = false
+    const ch = supabase
+      .channel('transactions-sync')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, ({ new: row }) => {
+        const id = String((row as { id: number }).id)
+        if (pendingWrites.current.has(id)) return
+        rawDispatch({ type: 'UPSERT_TRANSACTION', tx: (row as { data: Transaction }).data })
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'transactions' }, ({ new: row }) => {
+        const id = String((row as { id: number }).id)
+        if (pendingWrites.current.has(id)) return
+        rawDispatch({ type: 'UPSERT_TRANSACTION', tx: (row as { data: Transaction }).data })
+      })
+      .subscribe(status => {
+        recordChannelStatus('transactions', status)
+        if (status === 'SUBSCRIBED' && wasDown) { wasDown = false; fetchTransactions() }
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') wasDown = true
+      })
+
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  // Print-failure notifications — a print job that silently fails during the
+  // payment/checkout hot path (silentOnly=true in ticketPrinter.ts's smartPrint) never
+  // opens a browser dialog, so without this staff would have zero signal that a kitchen
+  // ticket, bar ticket, or receipt never printed. Listens for the 'print-job-failed'
+  // event smartPrint dispatches in exactly that case, surfaces a warning toast with a
+  // one-click Reprint action, and logs it to the Audit Log. Purely additive — never
+  // touches, delays, or blocks payment/checkout/kitchen submission itself.
+  useEffect(() => {
+    function handlePrintJobFailed(e: Event) {
+      const detail = (e as CustomEvent).detail as {
+        title: string; printerName?: string; width: 58 | 80; buzz?: boolean; html: string
       }
-    })()
+      const label =
+        /kitchen/i.test(detail.title)    ? 'Kitchen ticket'
+        : /bar/i.test(detail.title)      ? 'Bar ticket'
+        : /work order/i.test(detail.title) ? 'Work order'
+        : /void/i.test(detail.title)     ? 'Void ticket'
+        : /receipt/i.test(detail.title)  ? 'Receipt'
+        : detail.title
+      const toastId = Date.now()
+      rawDispatch({
+        type: 'ADD_TOAST', id: toastId, toastType: 'warn', msg: `${label} failed to print.`,
+        action: {
+          label: 'Reprint',
+          onClick: () => {
+            import('@/lib/utils/ticketPrinter').then(({ smartPrint }) =>
+              smartPrint(detail.html, detail.title, detail.printerName, detail.width, false, detail.buzz)
+            )
+          },
+        },
+      })
+      // Longer than the default 3s toast timeout — this is a warning staff need time to notice, not a quick confirmation.
+      setTimeout(() => rawDispatch({ type: 'REMOVE_TOAST', id: toastId }), 15000)
+      rawDispatch({
+        type: 'ADD_AUDIT',
+        entry: {
+          id: crypto.randomUUID(), ts: new Date().toLocaleString(),
+          user: stateRef.current.currentUser?.name ?? 'System',
+          userId: stateRef.current.currentUser?.id ?? null,
+          action: 'PRINT_FAILED',
+          detail: `${label} failed to print — printer "${detail.printerName ?? 'not configured'}"`,
+          type: 'warn',
+          mod: stateRef.current.activeModule,
+        },
+      })
+    }
+    window.addEventListener('print-job-failed', handlePrintJobFailed)
+    return () => window.removeEventListener('print-job-failed', handlePrintJobFailed)
   }, [])
 
   const toast = useCallback((msg: string, type = 'info') => {

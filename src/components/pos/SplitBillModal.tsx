@@ -8,6 +8,14 @@ interface SplitBill {
   label: string
   items: CartItem[]
   calc: OrderCalc
+  // True only for the payment that completes the last remaining split.
+  // completeCheckout() uses this — not click-time counting — to decide when
+  // to finalize (mark the order paid, clear the cart): finalization must
+  // happen only after that final payment actually completes, never before.
+  // Optional because the memoized `splitBills` list below is also used for
+  // rendering (where "is this the last one" isn't meaningful yet) — it's
+  // only ever set when actually handed to onPaySplit.
+  isLast?: boolean
 }
 
 interface Props {
@@ -19,19 +27,23 @@ interface Props {
   sym: string
   onPaySplit: (split: SplitBill) => void
   onPayAll: () => void
-  onAllPaid?: () => void
 }
 
 type Mode = 'equal' | 'items'
 
 export default function SplitBillModal({
-  isOpen, onClose, cart, orderType, gratuityPct, sym, onPaySplit, onPayAll, onAllPaid,
+  isOpen, onClose, cart, orderType, gratuityPct, sym, onPaySplit, onPayAll,
 }: Props) {
   const [mode, setMode]         = useState<Mode>('equal')
   const [numSplits, setNumSplits] = useState(2)
   const [assignments, setAssignments] = useState<Record<string, number>>({}) // itemId → billIndex
   const [activeBill, setActiveBill]   = useState(0)
+  // Tracks which tiles/bills have been committed to pay (used for the "Paid ✓"
+  // display and for computing `isLast` below) — actual finalization of the
+  // whole order happens in completeCheckout once the last payment truly
+  // completes, not here at click time.
   const [paidSplits, setPaidSplits]   = useState<Set<number>>(new Set())
+  const [paidBills,  setPaidBills]    = useState<Set<number>>(new Set())
 
   const fmtN = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const totalCalc = calcCart(cart, { orderType, gratuityPct })
@@ -141,11 +153,14 @@ export default function SplitBillModal({
                             addons: [],
                             module: cart[0]?.module ?? 'restaurant',
                           }
-                          onPaySplit({ id: `bill-${i}`, label: `Bill ${i + 1} of ${numSplits}`, items: [splitItem], calc: splitCalc })
+                          // isLast is computed from the count BEFORE this click is recorded —
+                          // true only when this is the one remaining unpaid tile. completeCheckout
+                          // uses this to finalize only once this specific payment actually completes.
+                          const isLast = paidSplits.size + 1 === numSplits
+                          onPaySplit({ id: `bill-${i}`, label: `Bill ${i + 1} of ${numSplits}`, items: [splitItem], calc: splitCalc, isLast })
                           setPaidSplits(prev => {
                             const next = new Set(Array.from(prev))
                             next.add(i)
-                            if (next.size === numSplits && onAllPaid) onAllPaid()
                             return next
                           })
                         }} style={{ width: '100%', padding: '8px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
@@ -224,6 +239,8 @@ export default function SplitBillModal({
                     <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)', marginBottom: 8 }}>Bill {activeBill + 1}</div>
                     {splitBills[activeBill].items.length === 0 ? (
                       <div style={{ fontSize: 11, color: 'var(--txt3)' }}>No items assigned</div>
+                    ) : paidBills.has(activeBill) ? (
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--grn)' }}>Paid ✓</div>
                     ) : (
                       <>
                         {splitBills[activeBill].items.map(ci => (
@@ -238,7 +255,18 @@ export default function SplitBillModal({
                             <span style={{ fontFamily: 'var(--mono)' }}>{fmtN(splitBills[activeBill].calc.total)}</span>
                           </div>
                         </div>
-                        <button onClick={() => onPaySplit(splitBills[activeBill])} style={{
+                        <button onClick={() => {
+                          // Same isLast convention as Equal Split — see the comment there.
+                          // Total number of "in-play" bills is the same numSplits used to
+                          // build splitBills above; not redesigning that math, just reusing it.
+                          const isLast = paidBills.size + 1 === numSplits
+                          onPaySplit({ ...splitBills[activeBill], isLast })
+                          setPaidBills(prev => {
+                            const next = new Set(Array.from(prev))
+                            next.add(activeBill)
+                            return next
+                          })
+                        }} style={{
                           width: '100%', marginTop: 10, padding: '9px 0', borderRadius: 'var(--r)',
                           background: splitBills[activeBill].calc.total === 0 ? 'var(--surf3)' : 'var(--blue)',
                           color: splitBills[activeBill].calc.total === 0 ? 'var(--txt3)' : '#fff',

@@ -30,7 +30,7 @@ const STATUS_LABEL: Record<TableStatus, string> = {
 
 export default function DineInDashboard({ onTableSelect, onNewTable, onBack }: Props) {
   const { state, dispatch } = useApp()
-  const { orderTickets, biz, activeModule } = state
+  const { orderTickets, heldOrders, biz, activeModule } = state
   const sym = biz.currencySymbol ?? 'J$'
 
   const [search, setSearch] = useState('')
@@ -61,6 +61,13 @@ export default function DineInDashboard({ onTableSelect, onNewTable, onBack }: P
   const tableOrderMap: Record<string, typeof openOrders[0]> = {}
   openOrders.forEach(t => { if (t.table) tableOrderMap[t.table] = t })
 
+  // Held (parked, not yet sent) orders occupy a table too — without this, a
+  // table with only a held order showed as available here, letting a second
+  // order be started on it instead of reopening the held one.
+  const heldTableSet = new Set(
+    heldOrders.filter(h => h.module === activeModule).map(h => h.selTable).filter(Boolean) as string[]
+  )
+
   const tableData = tables
     .filter(t => !search || t.toLowerCase().includes(search.toLowerCase()))
     .map(name => {
@@ -69,6 +76,8 @@ export default function DineInDashboard({ onTableSelect, onNewTable, onBack }: P
       if (ticket) {
         const ks = ticket.kitchenStatus
         status = (ks === 'ready' || ks === 'served') ? 'waiting' : 'occupied'
+      } else if (heldTableSet.has(name)) {
+        status = 'occupied'
       }
       const total = ticket
         ? ticket.items.filter(i => !i.voided).reduce((s, i) => s + i.price * i.qty, 0)

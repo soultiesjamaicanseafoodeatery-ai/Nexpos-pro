@@ -120,12 +120,25 @@ function TransferModal({ tableIds, tableCfgMap, currentOwners, users, onConfirm,
 // ── Main Component ────────────────────────────────────────────────
 export default function TablesPage() {
   const { state, toast, audit } = useApp()
-  const { currentUser, users, heldOrders } = state
+  const { currentUser, users, heldOrders, orderTickets } = state
   const canManage = currentUser?.role === 'admin' || currentUser?.role === 'manager'
 
-  const posOccupied = new Set(heldOrders.map(o => o.selTable ?? '').filter(Boolean))
+  // Occupancy is a union of two independent signals — a held (parked, not yet
+  // sent) order, and an open order ticket (sent to kitchen/bar, not yet paid
+  // or voided). Previously this only checked heldOrders, so a table that went
+  // straight from cart -> Send to Kitchen (never explicitly held) showed as
+  // free here while DineInDashboard.tsx correctly showed it occupied — same
+  // table, same moment, two different answers. The open-ticket filter below
+  // is DineInDashboard.tsx's own definition, reused verbatim so the two
+  // screens can no longer disagree.
+  const posOccupied    = new Set(heldOrders.map(o => o.selTable ?? '').filter(Boolean))
+  const ticketOccupied = new Set(
+    orderTickets
+      .filter(t => t.status !== 'paid' && t.status !== 'voided' && t.table)
+      .map(t => t.table as string)
+  )
   const getStatus = (tableId: string): 'free' | 'occupied' | 'reserved' => {
-    if (posOccupied.has(tableId)) return 'occupied'
+    if (posOccupied.has(tableId) || ticketOccupied.has(tableId)) return 'occupied'
     return cfg.status[tableId] === 'reserved' ? 'reserved' : 'free'
   }
 

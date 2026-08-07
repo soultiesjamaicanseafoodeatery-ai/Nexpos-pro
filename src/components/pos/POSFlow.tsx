@@ -1,6 +1,8 @@
 'use client'
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
+import { supabase } from '@/lib/supabase'
+import type { OrderTicket } from '@/types'
 import ServiceSelect from './workflow/ServiceSelect'
 import DineInDashboard from './workflow/DineInDashboard'
 import TakeoutDashboard from './workflow/TakeoutDashboard'
@@ -10,7 +12,8 @@ import POSPage, { type OrderContext } from './POSPage'
 type FlowStep = 'service' | 'dine-in' | 'takeout' | 'delivery' | 'takeout-form' | 'delivery-form' | 'order'
 
 export default function POSFlow() {
-  const { dispatch } = useApp()
+  const { state, dispatch, toast } = useApp()
+  const { heldOrders, orderTickets, activeModule } = state
   const [step, setStep]             = useState<FlowStep>('service')
   const [prevStep, setPrevStep]     = useState<FlowStep>('service')
   const [orderContext, setOrderContext] = useState<OrderContext | null>(null)
@@ -39,6 +42,45 @@ export default function POSFlow() {
     setOrderContext(null)
   }
 
+  // Dine-in table selection — prevents a second, duplicate order from being
+  // started on a table that already has a held order or an open (sent,
+  // unpaid) ticket. Checks this terminal's own already-synced state first,
+  // then confirms against a live, targeted Supabase read for just this one
+  // table — narrowing (not fully eliminating, that needs a DB-level
+  // constraint, out of scope here) the window where two terminals select
+  // the same table within the same realtime-propagation moment. If the live
+  // check itself fails (offline, etc.), falls back to local state rather
+  // than blocking table selection — same fail-open convention used
+  // elsewhere in this app (e.g. order numbering's RPC-with-fallback).
+  const selectDineInTable = async (table: string) => {
+    const localHeld   = heldOrders.find(h => h.selTable === table && h.module === activeModule)
+    const localTicket = orderTickets.find(t => t.table === table && t.status !== 'paid' && t.status !== 'voided')
+
+    let liveHeldExists   = !!localHeld
+    let liveTicketExists = !!localTicket
+    try {
+      const [{ data: heldRows }, { data: ticketRows }] = await Promise.all([
+        supabase.from('held_orders').select('id').eq('sel_table', table).eq('module', activeModule).limit(1),
+        supabase.from('order_tickets').select('data').eq('data->>table', table).limit(20),
+      ])
+      liveHeldExists = !!(heldRows && heldRows.length > 0)
+      liveTicketExists = ((ticketRows ?? []) as { data: OrderTicket }[])
+        .some(r => r.data.status !== 'paid' && r.data.status !== 'voided')
+    } catch { /* live check unavailable — fall back to local-state result computed above */ }
+
+    if (liveHeldExists) {
+      if (localHeld) { goToOrder({ orderType: 'dine-in', table, heldOrder: localHeld }); return }
+      toast('Table just updated by another terminal — please try again', 'warn')
+      return
+    }
+    if (liveTicketExists) {
+      if (localTicket) { goToOrder({ orderType: 'dine-in', table, existingTicket: localTicket }); return }
+      toast('Table just updated by another terminal — please try again', 'warn')
+      return
+    }
+    goToOrder({ orderType: 'dine-in', table })
+  }
+
   if (step === 'service') return (
     <ServiceSelect onSelect={type => {
       if (type === 'dine-in')  setStep('dine-in')
@@ -50,7 +92,7 @@ export default function POSFlow() {
   if (step === 'dine-in') return (
     <DineInDashboard
       onBack={() => setStep('service')}
-      onTableSelect={table => goToOrder({ orderType: 'dine-in', table })}
+      onTableSelect={selectDineInTable}
       onNewTable={() => goToOrder({ orderType: 'dine-in' })}
     />
   )

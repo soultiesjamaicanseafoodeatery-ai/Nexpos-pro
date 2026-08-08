@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
+import { supabase } from '@/lib/supabase'
 import type { User, Shift } from '@/types'
 import { ROLES } from '@/lib/data/seed'
 
@@ -122,11 +123,74 @@ export default function AuthScreen() {
       // Fresh clock-in — only set if no existing session (coming from LOGOUT, not CLOCK_OUT)
       try {
         if (!localStorage.getItem(`personal_clockin_${user.id}`)) {
+          // Set optimistically now, exactly as before this change — a sale rung up in the
+          // brief window before the Supabase check below resolves must still see "clocked
+          // in" (matches the prior synchronous timing). If this employee turns out to
+          // already have an open shift on another terminal, clockinAt is corrected to the
+          // real value below.
           localStorage.setItem(`personal_clockin_${user.id}`, now)
-          // New personal shift session — a fresh UUID identifies every transaction rung up
-          // during this clock-in→clock-out session, distinct from the shared terminal/business
-          // shift (`state.currentShift`, below) and never reused once this session ends.
-          localStorage.setItem(`personal_shiftid_${user.id}`, crypto.randomUUID())
+          // staff_shifts is the durable source of truth for payroll. personal_shiftid_ is
+          // the value stamped onto every transaction created during this session (see
+          // useAppStore.tsx) and is what My Shift filters by — it is deliberately set to
+          // the SAME value as personal_shiftrow_ (the staff_shifts row id) rather than an
+          // independently-generated UUID, so that adopting an existing shift on a second
+          // terminal (below) makes both terminals tag transactions identically instead of
+          // silently re-splitting them under two different ids. Distinct from the shared
+          // terminal/business shift (`state.currentShift`, below).
+          // Fire-and-forget: clock-in must never block on the network.
+          ;(async () => {
+            try {
+              // Cross-terminal check — a different terminal's localStorage has no way to
+              // know this employee is already clocked in elsewhere, so ask Supabase before
+              // minting a new shift. Found → adopt it instead of creating a second one.
+              const { data: existing } = await supabase
+                .from('staff_shifts')
+                .select('id, clock_in_at')
+                .eq('staff_id', user.id)
+                .is('clock_out_at', null)
+                .maybeSingle()
+
+              if (existing) {
+                localStorage.setItem(`personal_clockin_${user.id}`, existing.clock_in_at)
+                localStorage.setItem(`personal_shiftrow_${user.id}`, existing.id)
+                localStorage.setItem(`personal_shiftid_${user.id}`, existing.id)
+                return
+              }
+
+              const { data, error } = await supabase.from('staff_shifts').insert({
+                staff_id: user.id, staff_name: user.name, clock_in_at: now, clock_out_at: null,
+                break_minutes: 0, payroll_type: 'hourly', net_worked_minutes: 0,
+                transaction_count: 0, total_revenue: 0, notes: 'clock-in — pending clock-out',
+              }).select('id').single()
+
+              if (error) {
+                // Lost a simultaneous clock-in race against the staff_shifts_one_open_per_staff
+                // unique index — another terminal's insert won a moment ago. Re-query and adopt
+                // it exactly like the "existing found" branch above, rather than surfacing a
+                // raw database error or leaving this terminal clocked in with no shift at all.
+                if (error.code === '23505') {
+                  const { data: winner } = await supabase
+                    .from('staff_shifts')
+                    .select('id, clock_in_at')
+                    .eq('staff_id', user.id)
+                    .is('clock_out_at', null)
+                    .maybeSingle()
+                  if (winner) {
+                    localStorage.setItem(`personal_clockin_${user.id}`, winner.clock_in_at)
+                    localStorage.setItem(`personal_shiftrow_${user.id}`, winner.id)
+                    localStorage.setItem(`personal_shiftid_${user.id}`, winner.id)
+                  }
+                  return
+                }
+                throw error
+              }
+
+              if (data?.id) {
+                localStorage.setItem(`personal_shiftrow_${user.id}`, data.id)
+                localStorage.setItem(`personal_shiftid_${user.id}`, data.id)
+              }
+            } catch { /* best-effort — Clock Out falls back to inserting a fresh row */ }
+          })()
         }
       } catch {}
     }

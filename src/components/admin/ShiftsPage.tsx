@@ -92,7 +92,7 @@ function InfoRow({ label, value, valueColor = 'var(--txt)', mono = false, last =
 }
 
 export default function ShiftsPage() {
-  const { state, dispatch } = useApp()
+  const { state, dispatch, toast } = useApp()
   const user = state.currentUser
   const isStaff = user?.role === 'staff'
   const sym = state.biz.currencySymbol ?? 'J$'
@@ -341,9 +341,18 @@ export default function ShiftsPage() {
       dispatch({ type: 'HOLD_ORDER', order: held })
       dispatch({ type: 'CLEAR_CART' })
     }
-    // Persist shift record to Supabase (non-blocking — clock-out proceeds even if Supabase is unavailable)
+    // Persist shift record to Supabase (non-blocking — local logout proceeds regardless of
+    // outcome). staff_shifts is the source of truth: the clock-in insert/adoption
+    // (AuthScreen.tsx) already created or identified this row — the ONLY thing that ever
+    // closes a personal shift is a conditional UPDATE against that same row. There is no
+    // insert-a-fresh-row fallback anymore: a missing/stale local pointer used to fall back to
+    // inserting a brand-new row, which silently left the real open row open forever (found
+    // live in production against a real employee's shift — see project_personal_shift_integrity
+    // memory). A missing/stale pointer now recovers by asking Supabase for the real open row
+    // instead of ever fabricating one.
+    let closeOutcome: 'ok' | 'already_closed' | 'no_open_row' | 'integrity_conflict' = 'ok'
     try {
-      await supabase.from('staff_shifts').insert({
+      const payload = {
         staff_id: user.id,
         staff_name: user.name,
         clock_in_at: shiftClockIn,
@@ -356,8 +365,67 @@ export default function ShiftsPage() {
         payment_breakdown: payTotals,
         order_breakdown: orderTotals,
         notes: `auto · ${payrollProfile?.payrollType ?? 'hourly'} · ${breakMins}m break`,
-      })
-    } catch { /* intentionally silent — shift record is best-effort */ }
+      }
+
+      // The only path that ever writes a close — conditional on the target row still being
+      // open, evaluated atomically by Postgres in the same statement as the write. Returns
+      // whether THIS call's write actually landed; throws on a genuine Supabase/network error
+      // (handled by the outer catch, same best-effort behavior as before).
+      const tryClose = async (id: string) => {
+        const { data, error } = await supabase
+          .from('staff_shifts')
+          .update(payload)
+          .eq('id', id)
+          .is('clock_out_at', null)
+          .select('id')
+        if (error) throw error
+        return !!data && data.length > 0
+      }
+
+      const rowId = localStorage.getItem(`personal_shiftrow_${user.id}`)
+      let closed = rowId ? await tryClose(rowId) : false
+
+      if (!closed) {
+        // Either there was no local pointer at all, or the pointer didn't accept the close.
+        // Distinguish "that exact row is genuinely already closed" (another terminal won a
+        // real race) from "the pointer doesn't correspond to a real row" (stale/missing) by
+        // checking what that row actually looks like now, rather than guessing from the
+        // absence of a match alone.
+        let pointerRowClosed = false
+        if (rowId) {
+          const { data: pointerRow } = await supabase
+            .from('staff_shifts').select('clock_out_at').eq('id', rowId).maybeSingle()
+          pointerRowClosed = !!pointerRow?.clock_out_at
+        }
+
+        if (pointerRowClosed) {
+          closeOutcome = 'already_closed'
+        } else {
+          // No usable pointer — recover by asking Supabase directly which row (if any) is
+          // this employee's real open shift, instead of ever inserting a fresh one.
+          const { data: openRows } = await supabase
+            .from('staff_shifts').select('id').eq('staff_id', user.id).is('clock_out_at', null)
+          if (!openRows || openRows.length === 0) {
+            closeOutcome = 'no_open_row'
+          } else if (openRows.length > 1) {
+            // Should be impossible under staff_shifts_one_open_per_staff — if it somehow
+            // occurs anyway, don't guess which row is the real one to close.
+            closeOutcome = 'integrity_conflict'
+          } else {
+            closed = await tryClose(openRows[0].id)
+            if (!closed) closeOutcome = 'already_closed' // lost a race against the recovered row too
+          }
+        }
+      }
+    } catch { /* genuine Supabase/network error — intentionally silent, shift record is best-effort */ }
+
+    if (closeOutcome === 'already_closed') {
+      toast('This shift was already closed on another terminal.', 'warn')
+    } else if (closeOutcome === 'no_open_row') {
+      toast('No open shift was found to close — please tell a manager.', 'warn')
+    } else if (closeOutcome === 'integrity_conflict') {
+      toast('Multiple open shifts were found for this employee — please tell a manager before trusting these totals.', 'warn')
+    }
     // Audit trail
     dispatch({
       type: 'ADD_AUDIT',
@@ -367,12 +435,18 @@ export default function ShiftsPage() {
         user: user.name,
         userId: user.id,
         action: 'CLOCK_OUT',
-        detail: `${user.name} clocked out. ${fmtMins(netMins)} worked. ${myTodayTxs.length} orders · ${fmt(myTodayRevenue)}`,
-        type: 'info',
+        detail:
+          closeOutcome === 'already_closed' ? `${user.name} clocked out locally — shift was already closed on another terminal` :
+          closeOutcome === 'no_open_row' ? `${user.name} clocked out locally — no open shift record was found (integrity issue)` :
+          closeOutcome === 'integrity_conflict' ? `${user.name} clocked out locally — multiple open shift records found (integrity issue)` :
+          `${user.name} clocked out. ${fmtMins(netMins)} worked. ${myTodayTxs.length} orders · ${fmt(myTodayRevenue)}`,
+        type: closeOutcome === 'ok' ? 'info' : 'warn',
         mod: state.activeModule,
       },
     })
-    // Dispatch CLOCK_OUT: saves payroll time entry to localStorage, clears currentUser, returns to login
+    // Dispatch CLOCK_OUT: saves payroll time entry to localStorage, clears currentUser, returns
+    // to login. Still happens in every outcome above — the terminal's own local session must
+    // end regardless of what the database close attempt found.
     dispatch({ type: 'CLOCK_OUT' })
   }
 

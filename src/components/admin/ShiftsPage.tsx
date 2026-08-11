@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import EODWizard from './EODWizard'
 import type { Transaction, HeldOrder, POSState } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { jamaicaDateKey, isSameBusinessDay, parseTs } from '@/lib/utils/businessDate'
@@ -106,7 +105,6 @@ export default function ShiftsPage() {
   }, [])
 
   const todayStr = jamaicaDateKey(new Date().toISOString())
-  const [showEOD, setShowEOD] = useState(false)
   const [myOrdersFilter, setMyOrdersFilter] = useState<'today' | 'all'>('today')
   const [eodDate,      setEodDate]      = useState(todayStr)
   const [openingFloat, setOpeningFloat] = useState('')
@@ -874,7 +872,7 @@ export default function ShiftsPage() {
       })()}
 
       <button
-        onClick={() => setShowEOD(true)}
+        onClick={() => dispatch({ type: 'SHOW_EOD' })}
         style={{
           background: 'var(--grn)', color: '#fff', border: 'none',
           borderRadius: 'var(--r2)', padding: '12px 22px',
@@ -885,8 +883,6 @@ export default function ShiftsPage() {
       >
         📋 Start End of Day
       </button>
-
-      {showEOD && <EODWizard onClose={() => setShowEOD(false)} />}
 
       {/* ── EOD Cash Reconciliation ───────────────────────────── */}
       <div style={{ background: 'var(--surf)', border: '1px solid var(--bdr)', borderRadius: 'var(--r3)', overflow: 'hidden', marginBottom: 18 }}>

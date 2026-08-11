@@ -163,7 +163,7 @@ export function buildCustomerReceipt(
   L.push(div('=', w))
 
   // Order info
-  const orderNum = String(tx.id).slice(-4).padStart(4, '0')
+  const orderNum = tx.orderNum ?? String(tx.id).slice(-4).padStart(4, '0')
   L.push(row('Receipt #:', orderNum, w))
   L.push(row('Date/Time:', sanitize(jamaicaDateTimeString(tx.id > 1e12 ? tx.id : tx.ts)), w))
   L.push(row('Cashier:', sanitize(tx.cashier), w))
@@ -176,8 +176,11 @@ export function buildCustomerReceipt(
   // Items
   L.push('ITEMS')
   L.push(div('-', w))
-  if (tx.items && tx.items.length > 0) {
-    for (const ci of tx.items) {
+  // Voided items stay in tx.items for audit/history but must never be shown
+  // to the customer as a charged line — tx.total already excludes them.
+  const activeItems = tx.items ? tx.items.filter(ci => !ci.voided) : []
+  if (activeItems.length > 0) {
+    for (const ci of activeItems) {
       const lineTotal = (ci.price + ci.addons.reduce((s, a) => s + a.price, 0)) * ci.qty
       const prefix = ci.qty > 1 ? ` ${ci.qty}x ` : '    '
       itemWrap(prefix, sanitize(ci.name), w - fmtN(lineTotal).length - 1).forEach((l, i) => {

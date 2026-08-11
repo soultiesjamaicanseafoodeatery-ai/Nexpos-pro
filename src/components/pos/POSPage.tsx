@@ -771,6 +771,9 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     dispatch({ type: 'ADD_ORDER_TICKET', ticket: newTicket })
 
     // Print production tickets so kitchen receives the order
+    // items: activeCart (not cart) — voided items must never reach the
+    // printed kitchen/car-wash tickets or the Car Wash order below, matching
+    // sendOrder()'s existing convention just below in this file.
     const ticketData = {
       orderNum,
       table:        selTable ?? undefined,
@@ -779,7 +782,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       orderType:    cartOrderType,
       date:         today,
       time:         nowTime,
-      items:        [...cart],
+      items:        [...activeCart],
       orderNote:    orderNote || undefined,
       customerName: customerName || undefined,
     }
@@ -792,33 +795,40 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       smartPrint(html, 'Kitchen Ticket', biz.printers?.kitchen, 58, true, true)
     }
     if (hasCarwash) {
-      const html = buildCarwashWorkOrder(ticketData, { width: pw })
-      smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw, true)
+      // hasCarwash only proves the raw cart had a carwash-module item — it says
+      // nothing about whether that item is still active. Compute the real,
+      // voided-excluded set up front and gate everything below on it, so a
+      // cart whose only carwash item(s) were voided neither prints a work
+      // order nor posts an empty $0 carwash_orders record.
+      const cwItems = activeCart.filter(ci => ci.module === 'carwash')
+      if (cwItems.length > 0) {
+        const html = buildCarwashWorkOrder(ticketData, { width: pw })
+        smartPrint(html, 'Car Wash Work Order', biz.printers?.receipt, pw, true)
 
-      // Also log a Wash Queue ticket so this shows up in the Car Wash module,
-      // not just as a paper work order — same table a wash entered through
-      // the dedicated Car Wash screen writes to.
-      const cwItems = cart.filter(ci => ci.module === 'carwash')
-      const cwPlate = cwItems.find(ci => ci.plate)?.plate ?? ''
-      const cwAddonsTotal = cwItems.reduce((s, ci) => s + ci.addons.reduce((a, ad) => a + ad.price, 0) * ci.qty, 0)
-      const cwTotal = cwItems.reduce((s, ci) => s + (ci.price + ci.addons.reduce((a, ad) => a + ad.price, 0)) * ci.qty, 0)
-      fetch('/api/carwash-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerName:  customerName || '',
-          phone:         customerPhone || '',
-          vehicleType:   'Car',
-          plate:         cwPlate,
-          services:      cwItems.map(ci => ({ id: ci.itemId, name: ci.name, price: ci.price, qty: ci.qty })),
-          addons:        cwItems.flatMap(ci => ci.addons.map(a => ({ id: a.id, name: a.name, price: a.price }))),
-          addonsTotal:   cwAddonsTotal,
-          paymentMethod: payData.method,
-          total:         cwTotal,
-          employeeName:  currentUser.name,
-          status:        'waiting',
-        }),
-      }).catch(() => {})
+        // Also log a Wash Queue ticket so this shows up in the Car Wash module,
+        // not just as a paper work order — same table a wash entered through
+        // the dedicated Car Wash screen writes to.
+        const cwPlate = cwItems.find(ci => ci.plate)?.plate ?? ''
+        const cwAddonsTotal = cwItems.reduce((s, ci) => s + ci.addons.reduce((a, ad) => a + ad.price, 0) * ci.qty, 0)
+        const cwTotal = cwItems.reduce((s, ci) => s + (ci.price + ci.addons.reduce((a, ad) => a + ad.price, 0)) * ci.qty, 0)
+        fetch('/api/carwash-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName:  customerName || '',
+            phone:         customerPhone || '',
+            vehicleType:   'Car',
+            plate:         cwPlate,
+            services:      cwItems.map(ci => ({ id: ci.itemId, name: ci.name, price: ci.price, qty: ci.qty })),
+            addons:        cwItems.flatMap(ci => ci.addons.map(a => ({ id: a.id, name: a.name, price: a.price }))),
+            addonsTotal:   cwAddonsTotal,
+            paymentMethod: payData.method,
+            total:         cwTotal,
+            employeeName:  currentUser.name,
+            status:        'waiting',
+          }),
+        }).catch(() => {})
+      }
     }
     // Auto-print receipt (always, unless receipt preview modal is enabled in Settings)
     if (biz.printers?.receipt && !biz.printers?.receiptPreview) {

@@ -2,7 +2,9 @@
 import { useState } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
 import { storage } from '@/lib/utils/storage'
-import { parseTs, jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
+import { jamaicaDateKey, jamaicaDayStart } from '@/lib/utils/businessDate'
+import { calculateRevenue, filterTransactionsByScope, groupRevenueByModuleSplit, type RevenueScope } from '@/lib/utils/revenue'
+import type { Transaction } from '@/types'
 
 interface Target {
   module: 'restaurant' | 'bar' | 'carwash' | 'overall'
@@ -19,26 +21,26 @@ const DEFAULT_TARGETS: Target[] = [
   { module: 'carwash',    period: 'daily',   value: 10000 },
 ]
 
-// Jamaica business-day boundaries — not the viewing device's local timezone —
-// same bug class already fixed in ReportsPage.tsx/PayrollPage.tsx.
-function periodRevenue(txs: { ts: string; total: number; mod: string; voided?: boolean }[], mod: string, period: 'daily' | 'weekly' | 'monthly') {
+// Jamaica business-day boundaries via the shared scope filter, net-of-refunds
+// revenue via the shared aggregator (lib/utils/revenue.ts) — the same
+// definition every other revenue screen in the app uses.
+function periodRevenue(txs: Transaction[], mod: string, period: 'daily' | 'weekly' | 'monthly'): number {
   const today = jamaicaDayStart()
   const dayMs = 24 * 60 * 60 * 1000
-  const todayKey = jamaicaDateKey()
-  const weekStart = new Date(today.getTime() - (today.getUTCDay()) * dayMs)
-  const [ty, tm] = todayKey.split('-').map(Number)
-  return txs
-    .filter(t => {
-      if (t.voided) return false
-      if (mod !== 'overall' && t.mod !== mod) return false
-      const ms = parseTs(t.ts)
-      if (isNaN(ms)) return false
-      if (period === 'daily')  return jamaicaDateKey(ms) === todayKey
-      if (period === 'weekly') return ms >= weekStart.getTime()
-      const [y, m] = jamaicaDateKey(ms).split('-').map(Number)
-      return y === ty && m === tm
-    })
-    .reduce((s, t) => s + t.total, 0)
+  const scope: RevenueScope = period === 'daily'
+    ? { type: 'calendarDay' }
+    : period === 'weekly'
+      ? { type: 'range', start: new Date(today.getTime() - today.getUTCDay() * dayMs), end: null }
+      : (() => {
+          const [y, m] = jamaicaDateKey().split('-').map(Number)
+          return { type: 'range', start: jamaicaDayStart(new Date(Date.UTC(y, m - 1, 1, 12))), end: null }
+        })()
+  const scoped = filterTransactionsByScope(txs, scope)
+  if (mod === 'overall') return calculateRevenue(scoped).netSales
+  // Authoritative module split (src/lib/utils/revenue.ts) — a mixed
+  // transaction's active items count toward the module they actually belong
+  // to, instead of being excluded from every module's target entirely.
+  return groupRevenueByModuleSplit(scoped)[mod]?.netSales ?? 0
 }
 
 export default function TargetsPage() {
@@ -92,7 +94,7 @@ export default function TargetsPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
         {MODULES.map(m => {
           const target  = getTarget(m.key, period)
-          const actual  = periodRevenue(state.transactions as Parameters<typeof periodRevenue>[0], m.key, period)
+          const actual  = periodRevenue(state.transactions, m.key, period)
           const pct     = target > 0 ? Math.min(100, (actual / target) * 100) : 0
           const isEdit  = editing?.module === m.key && editing?.period === period
           const overAchieved = actual >= target && target > 0

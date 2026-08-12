@@ -6,7 +6,7 @@ import type { User, Transaction } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { buildZReport, smartPrint } from '@/lib/utils/ticketPrinter'
 import type { ZReportData } from '@/lib/utils/ticketPrinter'
-import { getPaymentBreakdown, mergeBreakdowns } from '@/lib/utils/payments'
+import { calculateRevenue, filterTransactionsByScope, groupRevenueByModuleSplit } from '@/lib/utils/revenue'
 
 type WStep = 'auth' | 'validate' | 'cash' | 'payments' | 'gratuity' | 'sales' | 'exceptions' | 'employees' | 'print' | 'confirm' | 'done'
 const STEPS: WStep[] = ['auth','validate','cash','payments','gratuity','sales','exceptions','employees','print','confirm','done']
@@ -23,6 +23,7 @@ const STALE_SHIFT_HOURS = 20
 
 interface CWData {
   authorizedUser: User | null
+  pinAuthToken: string | null
   openingFloat: string
   countedCash: string
   varianceNote: string
@@ -86,7 +87,7 @@ export default function CloseShiftWizard() {
   const sym = biz.currencySymbol ?? 'J$'
 
   const [step,    setStep]    = useState<WStep>('auth')
-  const [data,    setData]    = useState<CWData>({ authorizedUser:null, openingFloat:'', countedCash:'', varianceNote:'', override:false })
+  const [data,    setData]    = useState<CWData>({ authorizedUser:null, pinAuthToken:null, openingFloat:'', countedCash:'', varianceNote:'', override:false })
   const [val,     setVal]     = useState<Validation|null>(null)
   // Break overrides: keyed by payroll_time_entry id → approved break minutes
   const [breakOverrides, setBreakOverrides] = useState<Record<string, 0|15|30|45|60>>({})
@@ -171,55 +172,49 @@ export default function CloseShiftWizard() {
   // instead of silently computing a total from an arbitrary date.
   // All totals below derive from freshTxs (the fresh Supabase fetch above),
   // never from the ambient state.transactions array.
+  //
+  // Scope is the shared revenue engine's 'shift' scope (lib/utils/revenue.ts),
+  // capped to today's Jamaica business day by default — a shift left open
+  // overnight no longer lets this total silently include a previous business
+  // day's sales (see STALE_SHIFT_HOURS/shiftIsStale below, which still warns
+  // the user, but the number itself is now bounded regardless).
   const shiftStart = currentShift?.start ?? null
   const shiftAgeHours = currentShift ? (Date.now() - new Date(currentShift.start).getTime()) / 3600000 : 0
   const shiftIsStale = shiftAgeHours > STALE_SHIFT_HOURS
   const freshSourceTxs = freshTxs ?? []
-  const shiftTxs = !shiftStart ? [] : freshSourceTxs.filter(tx => {
-    if (tx.voided) return false
-    if (typeof tx.ts !== 'string') return false
-    if (!tx.ts.includes('T')) {
-      const m = tx.ts.match(/^(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
-      if (!m) return false
-      const mon = parseInt(m[1]) - 1, day = parseInt(m[2])
-      let hr = parseInt(m[3]); const min = parseInt(m[4])
-      if (m[5].toUpperCase() === 'PM' && hr !== 12) hr += 12
-      if (m[5].toUpperCase() === 'AM' && hr === 12) hr = 0
-      return Date.UTC(new Date().getFullYear(), mon, day, hr + 5, min) >= new Date(shiftStart).getTime()
-    }
-    try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false }
-  })
+  const scopedTxs = !shiftStart ? [] : filterTransactionsByScope(freshSourceTxs, { type: 'shift', shiftStart })
+  // Active (non-voided) list — same contract every list/grouping below already expected.
+  const shiftTxs = scopedTxs.filter(tx => !tx.voided)
+
+  const shiftTotals = calculateRevenue(scopedTxs)
 
   // ── Payment breakdown ─────────────────────────────────────────
-  const payBreakdown = mergeBreakdowns(
-    shiftTxs.filter(tx => !tx.refunded).map(tx => getPaymentBreakdown(tx.pay, tx.total, tx.payments, tx.changeDue))
-  )
   // payMap keeps the 3-bucket shape the on-screen summary tile already uses (Cash/Card/Other);
   // the printed Z-report below uses the full 5-way breakdown instead of this simplified view.
   const payMap: Record<string,number> = {
-    Cash:  payBreakdown.cash,
-    Card:  payBreakdown.debit + payBreakdown.credit,
-    Other: payBreakdown.gift + payBreakdown.house + payBreakdown.unknown,
+    Cash:  shiftTotals.cash,
+    Card:  shiftTotals.card,
+    Other: shiftTotals.gift + shiftTotals.house + shiftTotals.unknown,
   }
 
-  const totalSales   = shiftTxs.reduce((s,tx)=>s+tx.total, 0)
-  const totalRefunds = !shiftStart ? 0 : freshSourceTxs
-    .filter(tx => tx.refunded && new Date(tx.ts) >= new Date(shiftStart))
-    .reduce((s,tx)=>s+(tx.refundAmount??0), 0)
-  const totalDisc  = shiftTxs.reduce((s,tx)=>s+(tx.disc??0), 0)
-  const totalTax   = shiftTxs.reduce((s,tx) => s + (tx.gct ?? 0), 0)
-  const totalGrat  = shiftTxs.reduce((s,tx) => s + (tx.gratuity ?? 0), 0)
-  const netSales   = totalSales - totalRefunds
+  const totalSales   = shiftTotals.grossSales
+  const totalRefunds = shiftTotals.refundTotal
+  const totalDisc  = shiftTotals.discounts
+  const totalTax   = shiftTotals.gct
+  const totalGrat  = shiftTotals.gratuity
+  const netSales   = shiftTotals.netSales
   const avgTicket  = shiftTxs.length ? totalSales / shiftTxs.length : 0
   const openItemTotal = shiftTxs.reduce((s, tx) => s + (tx.items?.filter(ci => ci.openItem && !ci.voided).reduce((n, ci) => n + ci.price * ci.qty, 0) ?? 0), 0)
   const openItemCount = shiftTxs.reduce((s, tx) => s + (tx.items?.filter(ci => ci.openItem && !ci.voided).reduce((n, ci) => n + ci.qty, 0) ?? 0), 0)
 
+  // Authoritative module split (src/lib/utils/revenue.ts) — a mixed transaction's
+  // active items are attributed to their own module instead of the whole
+  // transaction being folded into Restaurant. See that file for the exact rule.
+  const moduleSplit = groupRevenueByModuleSplit(scopedTxs)
   const modMap: Record<string,{count:number;total:number}> = {}
-  shiftTxs.forEach(tx => {
-    const m = (tx.mod === 'mixed' ? 'restaurant' : tx.mod) ?? 'restaurant'
-    if (!modMap[m]) modMap[m] = { count:0, total:0 }
-    modMap[m].count++; modMap[m].total += tx.total
-  })
+  for (const [mod, totals] of Object.entries(moduleSplit)) {
+    modMap[mod] = { count: totals.transactionCount, total: totals.grossSales }
+  }
 
   const empMap: Record<string,{count:number;total:number;tips:number}> = {}
   shiftTxs.forEach(tx => {
@@ -251,6 +246,7 @@ export default function CloseShiftWizard() {
       setTimeout(async () => {
         let ok = false
         let authorized = pinUser
+        let token: string | null = null
         try {
           const res = await fetch('/api/auth/verify-pin', {
             method: 'POST',
@@ -260,12 +256,13 @@ export default function CloseShiftWizard() {
           if (res.ok) {
             const u = await res.json()
             authorized = { id: u.id, name: u.name, ini: u.ini, role: u.role, color: u.color, allowedModules: u.allowedModules ?? ['restaurant'], active: true }
+            token = u.pinAuthToken
             ok = true
           }
         } catch { /* network failure — treated as incorrect below */ }
         if (ok) {
           setPinSt('success')
-          setTimeout(() => { setData(d => ({ ...d, authorizedUser: authorized })); setStep('validate') }, 280)
+          setTimeout(() => { setData(d => ({ ...d, authorizedUser: authorized, pinAuthToken: token })); setStep('validate') }, 280)
         } else {
           setPinSt('error'); setPinErr('Incorrect PIN')
           setTimeout(() => { setPin(''); setPinSt('idle') }, 800)
@@ -328,22 +325,23 @@ export default function CloseShiftWizard() {
   }, [step, heldOrders.length, orderTickets])
 
   // ── Execute close ─────────────────────────────────────────────
-  // Idempotent/safe against a second device: the conditional UPDATE below only
-  // succeeds if this shift is still 'open' in Supabase at the moment of the
-  // write. If another device closed it first (or it's otherwise no longer
-  // open), the update matches zero rows and this device stops with a clear
-  // error instead of recording a duplicate/conflicting closure.
+  // Server-authorized: the actual business_shifts write and eod_snapshots
+  // write both happen inside /api/close-shift, never here directly. The
+  // client is never trusted to identify the authorizing manager — only the
+  // pinAuthToken travels in the request, and the route re-derives/re-checks
+  // that identity live against Supabase before writing anything. Idempotent
+  // against a second device the same way the old direct write was: the
+  // route's conditional UPDATE only succeeds while the shift is still open,
+  // and a 409 here means another device already closed it first.
   const doClose = async () => {
     if (!currentShift) { setCloseError('No active shift to close — it may have already been closed from another device.'); return }
     if (freshTxs === null) { setCloseError('Current transaction data has not finished loading — cannot close on stale data.'); return }
+    if (!data.pinAuthToken) { setCloseError('PIN authorization is missing — please re-enter your PIN.'); return }
     setClosing(true)
     setCloseError('')
-    const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
-    const closedAt = new Date().toISOString()
 
     const cwTotal = modMap['carwash']?.total ?? 0
-    const snapshot: ClosedSnapshot = {
-      shiftId: currentShift.id, closedAt, closedBy: by,
+    const snapshotTotals = {
       restaurantTotal: modMap['restaurant']?.total ?? 0,
       barTotal: modMap['bar']?.total ?? 0,
       carwashTotal: cwTotal,
@@ -354,38 +352,56 @@ export default function CloseShiftWizard() {
     }
 
     try {
-      const { data: rows, error } = await supabase
-        .from('business_shifts')
-        .update({
-          status: 'closed', closed_at: closedAt, closed_by: by,
-          opening_float: floatNum, counted_cash: countedNum, cash_variance: variance ?? 0,
-          variance_note: data.varianceNote, was_overridden: data.override,
-          revenue: netSales, tx_count: shiftTxs.length, is_formal_close: true,
-        })
-        .eq('id', currentShift.id)
-        .eq('status', 'open')
-        .select()
+      const res = await fetch('/api/close-shift', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shiftId: currentShift.id,
+          pinAuthToken: data.pinAuthToken,
+          openingFloat: floatNum, countedCash: countedNum, cashVariance: variance,
+          varianceNote: data.varianceNote, wasOverridden: data.override,
+          revenue: netSales, txCount: shiftTxs.length,
+          snapshot: snapshotTotals,
+        }),
+      })
 
-      if (error) throw error
-      if (!rows || rows.length === 0) {
+      if (res.status === 409) {
         setCloseError('This shift was already closed — likely from another device. Refresh to see the current state.')
         setClosing(false)
         return
       }
+      if (res.status === 401) {
+        // PIN authorization expired (5-minute window) during the wizard's cash
+        // count/reconciliation steps — a real possibility on a busy count, not
+        // an error. Send back to re-enter the PIN rather than losing all the
+        // entered data; every other field in `data` is untouched.
+        setData(d => ({ ...d, authorizedUser: null, pinAuthToken: null }))
+        setStep('auth')
+        setCloseError('')
+        setClosing(false)
+        return
+      }
+      if (!res.ok) {
+        setCloseError('Could not reach the database to close this shift. Check your connection and try again.')
+        setClosing(false)
+        return
+      }
+
+      const result = await res.json() as { ok: boolean; closedAt: string; closedBy: string; snapshotSaved: boolean }
+      const snapshot: ClosedSnapshot = { shiftId: currentShift.id, closedAt: result.closedAt, closedBy: result.closedBy, ...snapshotTotals }
+
+      dispatch({ type: 'CLOSE_SHIFT_FORMAL', closedBy: result.closedBy, closedAt: result.closedAt,
+        openingFloat: floatNum, countedCash: countedNum, variance: variance ?? 0,
+        varianceNote: data.varianceNote, wasOverridden: data.override,
+        revenue: netSales, txCount: shiftTxs.length })
+      audit('SHIFT_CLOSED', `Closed by ${result.closedBy} — Net Sales ${fmtJ(netSales)}, Cash variance: ${variance != null ? fmtJ(variance) : 'N/A'}`, 'success')
+      setClosedSnapshot(snapshot)
+      setClosing(false)
+      setStep('done')
     } catch {
       setCloseError('Could not reach the database to close this shift. Check your connection and try again.')
       setClosing(false)
-      return
     }
-
-    dispatch({ type: 'CLOSE_SHIFT_FORMAL', closedBy: by, closedAt,
-      openingFloat: floatNum, countedCash: countedNum, variance: variance ?? 0,
-      varianceNote: data.varianceNote, wasOverridden: data.override,
-      revenue: netSales, txCount: shiftTxs.length })
-    audit('SHIFT_CLOSED', `Closed by ${by} — Net Sales ${fmtJ(netSales)}, Cash variance: ${variance != null ? fmtJ(variance) : 'N/A'}`, 'success')
-    setClosedSnapshot(snapshot)
-    setClosing(false)
-    setStep('done')
   }
 
   // ── Close from anywhere ───────────────────────────────────────
@@ -902,15 +918,14 @@ export default function CloseShiftWizard() {
   }
 
   const renderExceptions = () => {
-    const allInWindow = !shiftStart ? [] : freshSourceTxs.filter(tx => {
-      try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false }
-    })
-    const voidedTxs   = allInWindow.filter(tx => tx.voided)
+    // Same shift scope as everything else in this wizard (scopedTxs/shiftTotals
+    // above) — no separate, independently-derived date window.
+    const voidedTxs   = scopedTxs.filter(tx => tx.voided)
     const refundedTxs = shiftTxs.filter(tx => tx.refunded)
     const discTxs     = shiftTxs.filter(tx => (tx.disc ?? 0) > 0)
-    const voidTotal   = voidedTxs.reduce((s, tx) => s + tx.total, 0)
-    const refundTotal = refundedTxs.reduce((s, tx) => s + (tx.refundAmount ?? tx.total), 0)
-    const discTotal   = discTxs.reduce((s, tx) => s + (tx.disc ?? 0), 0)
+    const voidTotal   = shiftTotals.voidTotal
+    const refundTotal = shiftTotals.refundTotal
+    const discTotal   = shiftTotals.discounts
     const hasExceptions = voidedTxs.length > 0 || refundedTxs.length > 0 || discTxs.length > 0 || data.override
 
     const tile = (label: string, count: number, amt: number | null, color: string) => (
@@ -1169,12 +1184,9 @@ export default function CloseShiftWizard() {
   const handlePrintZReport = async () => {
     setPrintingZ(true)
     try {
-      const voidedInWindow = (!shiftStart ? [] : freshSourceTxs
-        .filter(tx => { try { return new Date(tx.ts) >= new Date(shiftStart) } catch { return false } }))
-        .filter(tx => tx.voided)
-      const voidTotal = voidedInWindow.reduce((s, tx) => s + tx.total, 0)
-      const refundCount = shiftTxs.filter(tx => tx.refunded).length
-      const totalServiceCharge = shiftTxs.reduce((s, tx) => s + (tx.serviceCharge ?? 0), 0)
+      const voidTotal = shiftTotals.voidTotal
+      const refundCount = shiftTotals.refundCount
+      const totalServiceCharge = shiftTotals.serviceCharge
       const by = data.authorizedUser?.name ?? currentUser?.name ?? 'Manager'
 
       const zData: ZReportData = {
@@ -1185,15 +1197,15 @@ export default function CloseShiftWizard() {
         barSales: modMap.bar?.total ?? 0,
         carwashSales: modMap.carwash?.total ?? 0,
         totalSales,
-        cashSales: payBreakdown.cash,
-        cardSales: payBreakdown.debit + payBreakdown.credit,
-        giftCardSales: payBreakdown.gift,
-        tabSales: payBreakdown.house,
-        otherSales: payBreakdown.unknown,
+        cashSales: shiftTotals.cash,
+        cardSales: shiftTotals.card,
+        giftCardSales: shiftTotals.gift,
+        tabSales: shiftTotals.house,
+        otherSales: shiftTotals.unknown,
         totalDiscounts: totalDisc,
         totalVoids: voidTotal,
         totalRefunds,
-        voidCount: voidedInWindow.length,
+        voidCount: shiftTotals.voidCount,
         refundCount,
         totalGCT: totalTax,
         totalServiceCharge,

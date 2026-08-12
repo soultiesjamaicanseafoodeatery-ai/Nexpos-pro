@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useApp } from '@/lib/hooks/useAppStore'
-import { getPaymentBreakdown, mergeBreakdowns } from '@/lib/utils/payments'
 import { parseTs, jamaicaDayStart, jamaicaDateKey } from '@/lib/utils/businessDate'
+import { calculateRevenue, groupRevenueByModuleSplit, groupRevenueByCashier } from '@/lib/utils/revenue'
 
 type Tab = 'overview' | 'server' | 'menu' | 'financial'
 type DateRange = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'
@@ -52,42 +52,51 @@ export default function ReportsPage() {
 
   const fmtN = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  const txs = useMemo(() => {
-    const base = transactions.filter(t => !t.voided)
-    if (!rangeStart && !rangeEnd) return base
-    return base.filter(t => {
+  // scopedTxs includes voided/refunded transactions — the shared revenue engine
+  // (lib/utils/revenue.ts) does its own void/refund split, the same way every
+  // other revenue screen in the app does. `txs` (below) stays voided-excluded
+  // for the item/menu/financial-tab LIST displays that were already built on
+  // that assumption; it is never used for a dollar total itself anymore.
+  const scopedTxs = useMemo(() => {
+    if (!rangeStart && !rangeEnd) return transactions
+    return transactions.filter(t => {
       const ts = new Date(parseTs(t.ts))
       if (rangeStart && ts < rangeStart) return false
       if (rangeEnd && ts > rangeEnd) return false
       return true
     })
   }, [transactions, rangeStart, rangeEnd])
+  const txs = useMemo(() => scopedTxs.filter(t => !t.voided), [scopedTxs])
 
-  // Overview stats
-  const totalRev  = txs.reduce((s, t) => s + t.total, 0)
-  const totalDisc = txs.reduce((s, t) => s + (t.disc ?? 0), 0)
-  const totalGCT  = txs.reduce((s, t) => s + (t.gct ?? t.tax ?? 0), 0)
-  const totalSC   = txs.reduce((s, t) => s + (t.serviceCharge ?? 0), 0)
-  const totalGrat = txs.reduce((s, t) => s + (t.gratuity ?? 0), 0)
-  const avgTicket = txs.length ? totalRev / txs.length : 0
+  // Overview stats — single shared aggregator, net-of-refunds revenue.
+  const reportTotals = useMemo(() => calculateRevenue(scopedTxs), [scopedTxs])
+  const totalRev  = reportTotals.netSales
+  const totalDisc = reportTotals.discounts
+  const totalGCT  = reportTotals.gct
+  const totalSC   = reportTotals.serviceCharge
+  const totalGrat = reportTotals.gratuity
+  const avgTicket = reportTotals.transactionCount ? totalRev / reportTotals.transactionCount : 0
 
-  const byMod: Record<string, { count: number; rev: number }> = { restaurant: {count:0,rev:0}, bar: {count:0,rev:0}, carwash: {count:0,rev:0} }
-  txs.forEach(t => { byMod[t.mod] && (byMod[t.mod].count++, byMod[t.mod].rev += t.total) })
+  // Authoritative module split (src/lib/utils/revenue.ts) — a mixed transaction's
+  // active items are attributed to their own module instead of disappearing
+  // from every module tile.
+  const byModTotals = useMemo(() => groupRevenueByModuleSplit(scopedTxs), [scopedTxs])
+  const byMod: Record<string, { count: number; rev: number }> = {
+    restaurant: { count: byModTotals.restaurant?.transactionCount ?? 0, rev: byModTotals.restaurant?.netSales ?? 0 },
+    bar:        { count: byModTotals.bar?.transactionCount ?? 0,        rev: byModTotals.bar?.netSales ?? 0 },
+    carwash:    { count: byModTotals.carwash?.transactionCount ?? 0,    rev: byModTotals.carwash?.netSales ?? 0 },
+  }
 
-  const byPay = mergeBreakdowns(txs.map(t => getPaymentBreakdown(t.pay, t.total, t.payments, t.changeDue)))
+  const byPay = reportTotals
 
   // Server/Cashier breakdown
   const byServer = useMemo(() => {
-    const map: Record<string, { count: number; rev: number; disc: number; grat: number }> = {}
-    txs.forEach(t => {
-      if (!map[t.cashier]) map[t.cashier] = { count: 0, rev: 0, disc: 0, grat: 0 }
-      map[t.cashier].count++
-      map[t.cashier].rev   += t.total
-      map[t.cashier].disc  += t.disc ?? 0
-      map[t.cashier].grat  += t.gratuity ?? 0
-    })
-    return Object.entries(map).sort((a, b) => b[1].rev - a[1].rev)
-  }, [txs])
+    const grouped = groupRevenueByCashier(scopedTxs)
+    const map = Object.entries(grouped).map(([cashier, t]) =>
+      [cashier, { count: t.transactionCount, rev: t.netSales, disc: t.discounts, grat: t.gratuity }] as const
+    )
+    return map.sort((a, b) => b[1].rev - a[1].rev)
+  }, [scopedTxs])
 
   // Menu breakdown
   const itemCount: Record<string, { count: number; mod: string }> = {}

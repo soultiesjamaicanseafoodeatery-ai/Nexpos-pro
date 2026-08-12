@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
-import { jamaicaDayStart } from '@/lib/utils/businessDate'
+import { jamaicaDayStart, jamaicaDateKey } from '@/lib/utils/businessDate'
 import { requireStaff, isErrorResponse } from '@/lib/utils/serverAuth'
 
 const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^﻿/, '')
@@ -31,16 +31,36 @@ export async function POST(req: NextRequest) {
   if (isErrorResponse(auth)) return auth
   const body = await req.json()
 
-  const lastRes = await fetch(
-    `${SUPA_URL}/rest/v1/carwash_orders?select=ticket_no&created_at=gte.${encodeURIComponent(jamaicaDayStart().toISOString())}&order=created_at.desc&limit=1`,
-    { headers: SB() }
-  )
-  const lastData = await lastRes.json()
-  let nextNum = 1
-  if (Array.isArray(lastData) && lastData.length > 0) {
-    const match = String(lastData[0].ticket_no).match(/\d+$/)
-    if (match) nextNum = parseInt(match[0], 10) + 1
+  // Atomic, concurrency-safe ticket number via the dedicated Car Wash
+  // counter RPC (increment_carwash_counter, see
+  // supabase/migrations/20260812_add_carwash_ticket_counter.sql) — replaces
+  // the previous non-atomic "SELECT latest ticket, parse, +1" pattern,
+  // which had a real race window between two concurrent requests. This
+  // counter is entirely separate from the main order-number counter
+  // (increment_order_counter): Car Wash numbering can never consume, or be
+  // consumed by, Restaurant/Bar order numbers. Fails closed — if the RPC
+  // can't be reached, no ticket is guessed locally and no order is created,
+  // so a duplicate ticket number can never be produced by this path.
+  const business_date = jamaicaDateKey()
+  let counterRes: Response
+  try {
+    counterRes = await fetch(`${SUPA_URL}/rest/v1/rpc/increment_carwash_counter`, {
+      method: 'POST',
+      headers: SB(),
+      body: JSON.stringify({ p_date: business_date }),
+    })
+  } catch {
+    // Network/transport failure reaching the counter RPC (as opposed to the
+    // RPC responding with a non-OK status, handled below) — same fail-closed
+    // outcome, normalized to the same 502 contract instead of letting the
+    // exception propagate into a bare framework 500.
+    return NextResponse.json({ error: { message: 'Car Wash ticket counter unreachable' } }, { status: 502 })
   }
+  if (!counterRes.ok) {
+    const err = await counterRes.json().catch(() => ({}))
+    return NextResponse.json({ error: err }, { status: 502 })
+  }
+  const nextNum = await counterRes.json()
   const ticket_no = `CW-${String(nextNum).padStart(4, '0')}`
 
   const svcs: Array<{ id?: string; name: string; price: number; qty?: number }> =
@@ -58,6 +78,7 @@ export async function POST(req: NextRequest) {
   const row = {
     id:            `CWO-${Date.now()}`,
     ticket_no,
+    business_date,
     customer_name: body.customerName ?? '',
     phone:         body.phone ?? '',
     vehicle_type:  body.vehicleType ?? 'Car',
@@ -94,7 +115,6 @@ export async function PUT(req: NextRequest) {
 
   const patch: Record<string, unknown> = { ...rest }
   if (rest.status === 'completed') patch.completed_at = new Date().toISOString()
-  if (rest.status === 'voided')    patch.voided_at    = new Date().toISOString()
 
   const res = await fetch(
     `${SUPA_URL}/rest/v1/carwash_orders?id=eq.${encodeURIComponent(id)}`,

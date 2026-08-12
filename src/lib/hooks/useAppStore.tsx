@@ -124,6 +124,7 @@ type Action =
   | { type: 'SET_PROMOS'; promos: PromoCode[] }
   | { type: 'HOLD_ORDER'; order: HeldOrder }
   | { type: 'REMOVE_HELD_ORDER'; id: string }
+  | { type: 'RESUME_HELD_ORDER'; id: string }
   | { type: 'UPDATE_TRANSACTION'; tx: Transaction }
   | { type: 'ADD_ORDER_TICKET'; ticket: OrderTicket }
   | { type: 'UPDATE_ORDER_TICKET'; id: string; patch: Partial<OrderTicket> }
@@ -432,6 +433,43 @@ function reducer(state: AppState, action: Action): AppState {
       const heldOrders = state.heldOrders.filter(h => h.id !== action.id)
       storage.set('held_orders', heldOrders)
       return { ...state, heldOrders }
+    }
+    // Atomically consumes a held order: looks it up and removes it from
+    // heldOrders in the SAME state transition that loads its cart into the
+    // active cart. This is what makes "a held order can be resumed at most
+    // once" a real guarantee rather than a hope — a reducer processes
+    // actions one at a time against its own accumulating state, so if this
+    // action is ever dispatched twice for the same id (double-click, a
+    // stale orderContext.heldOrder re-firing, etc.), the second dispatch
+    // runs against the state the first dispatch already produced: `target`
+    // is undefined and the state is returned unchanged. The caller (see
+    // resumeOrder in POSPage.tsx) no longer does its own separate
+    // CLEAR_CART → ADD_TO_CART(...) → REMOVE_HELD_ORDER sequence, which had
+    // a window between those three dispatches for a second resume attempt
+    // to interleave — this collapses it to one.
+    //
+    // Cart-line items are also given a FRESH id here rather than reusing the
+    // id they had while held (defense-in-depth: even if a held order's cart
+    // array were ever reused/read twice by a caller, two independently
+    // checked-out carts could never end up sharing a cart-item id). Every
+    // other field — itemId, price, qty, addons, module, modifiers, notes —
+    // is preserved unchanged. resumedFromHeldOrderId is purely a diagnostic/
+    // audit marker; it is never read by pricing, tax, or checkout logic.
+    case 'RESUME_HELD_ORDER': {
+      const target = state.heldOrders.find(h => h.id === action.id)
+      if (!target) return state // already resumed (or never existed) — safe no-op
+      const heldOrders = state.heldOrders.filter(h => h.id !== action.id)
+      const cart = target.cart.map(ci => ({ ...ci, id: crypto.randomUUID(), resumedFromHeldOrderId: target.id }))
+      storage.set('held_orders', heldOrders)
+      return {
+        ...state,
+        heldOrders,
+        cart,
+        cartOrderType: target.orderType,
+        posState: target.selTable
+          ? { ...state.posState, [target.module]: { ...state.posState[target.module], selTable: target.selTable } }
+          : state.posState,
+      }
     }
     case 'SYNC_HELD_ORDERS': {
       storage.set('held_orders', action.orders)
@@ -907,7 +945,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => pendingWrites.current.delete(oid), 3000)
       })()
     }
-    if (action.type === 'REMOVE_HELD_ORDER') {
+    if (action.type === 'REMOVE_HELD_ORDER' || action.type === 'RESUME_HELD_ORDER') {
       const oid = action.id
       pendingDeletes.current.add(oid)
       ;(async () => {

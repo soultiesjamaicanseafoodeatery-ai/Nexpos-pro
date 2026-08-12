@@ -186,6 +186,10 @@ export interface CartItem {
   voidedBy?: string
   voidedAt?: string
   openItem?: boolean
+  // Diagnostic/audit only — set when this cart line was loaded from a
+  // resumed HeldOrder (see RESUME_HELD_ORDER in useAppStore.tsx). Never
+  // read by pricing, tax, checkout, or ticket-numbering logic.
+  resumedFromHeldOrderId?: string
 }
 
 // ── Transactions ──────────────────────────────────────────────

@@ -120,6 +120,12 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [showOpenItem,  setShowOpenItem]  = useState(false)
   const [confirmClear,      setConfirmClear]      = useState(false)
   const [confirmDeleteHeld, setConfirmDeleteHeld] = useState<string | null>(null)
+  // UI-level defense-in-depth against a rapid double-tap on "Resume" — the
+  // actual guarantee that a held order can be resumed at most once lives in
+  // the RESUME_HELD_ORDER reducer case (useAppStore.tsx), not here; this
+  // just disables the button immediately so a second tap doesn't even reach
+  // resumeOrder() in the first place.
+  const [resumingHeldId,   setResumingHeldId]    = useState<string | null>(null)
 
   const [lastTx,        setLastTx]        = useState<Transaction | null>(null)
   const [lastTicket,    setLastTicket]    = useState<OrderTicket | null>(null)
@@ -1084,21 +1090,28 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   }
 
   const resumeOrder = (held: HeldOrder) => {
-    dispatch({ type: 'CLEAR_CART' })
-    held.cart.forEach(ci => dispatch({ type: 'ADD_TO_CART', item: ci }))
-    dispatch({ type: 'SET_CART_ORDER_TYPE', orderType: held.orderType })
+    // RESUME_HELD_ORDER atomically removes the held order and loads its cart
+    // (with freshly-generated cart-item ids) in one state transition — see
+    // useAppStore.tsx. That's the real guarantee that a held order can be
+    // resumed at most once, immune to this function being invoked twice in
+    // a row (double-tap, a stale orderContext.heldOrder re-firing on
+    // remount, etc.): a second dispatch for the same id is a safe no-op
+    // because the reducer processes it against the state the first dispatch
+    // already produced. This early-return here is only to skip pointless
+    // local-state churn / UI action on an obviously-already-resumed order —
+    // it is not the correctness boundary, the reducer is.
+    if (!state.heldOrders.some(h => h.id === held.id)) return
+    setResumingHeldId(held.id)
+    dispatch({ type: 'RESUME_HELD_ORDER', id: held.id })
     setCustomerName(held.customerName)
     setGuestCount(held.guestCount)
     setDiscPct(held.discPct)
     setDiscFlat(held.discFlat)
     setGratuityPct(held.gratuityPct)
     setGratuityOverride(held.gratuityOverride)
-    if (held.selTable) {
-      dispatch({ type: 'SET_POS_STATE', mod: held.module as 'restaurant' | 'bar', patch: { selTable: held.selTable } })
-    }
-    dispatch({ type: 'REMOVE_HELD_ORDER', id: held.id })
     setShowHeld(false)
     audit('RESUME_ORDER', `Resumed: ${held.label}`, 'info')
+    setResumingHeldId(null)
   }
 
   // Auto-resume when navigated here from a held order tap in TakeoutDashboard/DeliveryDashboard
@@ -1878,7 +1891,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => resumeOrder(h)} style={{ flex: 2, padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                    <button onClick={() => resumeOrder(h)} disabled={resumingHeldId === h.id} style={{ flex: 2, padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: resumingHeldId === h.id ? 'default' : 'pointer', opacity: resumingHeldId === h.id ? 0.6 : 1 }}>
                       Resume
                     </button>
                     <button onClick={() => {

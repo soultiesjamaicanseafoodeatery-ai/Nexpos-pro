@@ -799,35 +799,43 @@ export default function CloseShiftWizard() {
   }
 
   const renderSales = () => {
-    // ── Per-module aggregates from POS transactions ────────────
+    // ── Per-module aggregates ───────────────────────────────────
+    // Sourced from the same authoritative moduleSplit (groupRevenueByModuleSplit,
+    // computed once above) that the Close Shift payload and Z-Report already
+    // use — a mixed transaction's active items are attributed to their own
+    // module instead of the whole transaction being folded into Restaurant.
+    // This used to be a second, independent calculation here that still
+    // grouped by the whole transaction's tx.mod (mixed → Restaurant) — a real
+    // Production incident (2026-08-13) showed a Bar+Car Wash sale appearing
+    // entirely as Restaurant on this screen while the Close Shift payload and
+    // Z-Report (already on moduleSplit) were correct the whole time. Discounts/
+    // GCT/gratuity below still reflect only each module's pure (non-mixed)
+    // transactions — see groupRevenueByModuleSplit's own comments for why
+    // those specific figures are deliberately not split per module.
     type ModStats = { count:number; sub:number; disc:number; tax:number; grat:number; total:number }
-    const modStats: Record<string, ModStats> = {
-      restaurant: { count:0, sub:0, disc:0, tax:0, grat:0, total:0 },
-      bar:        { count:0, sub:0, disc:0, tax:0, grat:0, total:0 },
+    const toModStats = (mod: string): ModStats => {
+      const m = moduleSplit[mod]
+      return m
+        ? { count: m.transactionCount, sub: m.subtotal, disc: m.discounts, tax: m.gct, grat: m.gratuity, total: m.grossSales }
+        : { count: 0, sub: 0, disc: 0, tax: 0, grat: 0, total: 0 }
     }
-    // car wash transactions tracked separately — do not fold into restaurant
-    const cwShiftTxs = shiftTxs.filter(tx => tx.mod === 'carwash')
-    shiftTxs.filter(tx => tx.mod !== 'carwash').forEach(tx => {
-      const m = (tx.mod === 'bar') ? 'bar' : 'restaurant'
-      modStats[m].count++
-      modStats[m].sub   += tx.sub ?? tx.total
-      modStats[m].disc  += tx.disc  ?? 0
-      modStats[m].tax   += tx.gct ?? 0
-      modStats[m].grat  += tx.gratuity ?? 0
-      modStats[m].total += tx.total
-    })
-
-    // ── Car wash from shift transactions (actual paid amounts) ─
-    const cwTotal = cwShiftTxs.reduce((s,tx) => s + tx.total, 0)
-    const cwCount = cwShiftTxs.length
+    const modStats: Record<string, ModStats> = {
+      restaurant: toModStats('restaurant'),
+      bar:        toModStats('bar'),
+      carwash:    toModStats('carwash'),
+    }
 
     // ── Combined grand total ───────────────────────────────────
-    const posTotal       = modStats.restaurant.total + modStats.bar.total
-    const grandTotal     = posTotal + cwTotal
-    const grandOrders    = shiftTxs.filter(tx => tx.mod !== 'carwash').length + cwCount
+    // grandOrders is the real distinct-transaction count for this shift (the
+    // same shiftTxs.length used everywhere else, e.g. the Confirm step) — NOT
+    // a sum of the module counts above, since a mixed-cart sale legitimately
+    // belongs to more than one module and would otherwise be double-counted.
+    const grandTotal     = modStats.restaurant.total + modStats.bar.total + modStats.carwash.total
+    const grandOrders    = shiftTxs.length
     const grandDisc      = modStats.restaurant.disc + modStats.bar.disc
     const grandTax       = modStats.restaurant.tax  + modStats.bar.tax
     const grandGrat      = modStats.restaurant.grat + modStats.bar.grat
+    const modOrderSum    = modStats.restaurant.count + modStats.bar.count + modStats.carwash.count
 
     const ModPanel = ({ id, label, icon, color, stats, note }: {
       id: string; label: string; icon: string; color: string
@@ -877,9 +885,7 @@ export default function CloseShiftWizard() {
             <ModPanel id="bar" label="Bar" icon="🍹" color="var(--pur)" stats={modStats.bar} />
 
             {/* Car Wash */}
-            <ModPanel id="carwash" label="Car Wash" icon="🚗" color="var(--blue)"
-              stats={cwCount > 0 ? { count:cwCount, sub:cwTotal, disc:0, tax:0, grat:0, total:cwTotal } : null}
-            />
+            <ModPanel id="carwash" label="Car Wash" icon="🚗" color="var(--blue)" stats={modStats.carwash} />
 
             {/* Grand Total banner */}
             <div style={{ background:'var(--blue)', borderRadius:'var(--r3)', padding:'16px 20px', marginTop:4 }}>
@@ -887,6 +893,11 @@ export default function CloseShiftWizard() {
                 <div>
                   <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.7)', textTransform:'uppercase', letterSpacing:'.6px' }}>Combined Grand Total</div>
                   <div style={{ fontSize:11, color:'rgba(255,255,255,.6)', marginTop:2 }}>{grandOrders} orders · {fmtJ(grandOrders ? grandTotal/grandOrders : 0)} avg ticket</div>
+                  {modOrderSum !== grandOrders && (
+                    <div style={{ fontSize:10, color:'rgba(255,255,255,.5)', marginTop:2 }}>
+                      Module order counts below total {modOrderSum} — a sale spanning more than one module counts once in each.
+                    </div>
+                  )}
                 </div>
                 <div style={{ fontSize:26, fontWeight:900, color:'#fff', fontFamily:'var(--mono)' }}>{fmtJ(grandTotal)}</div>
               </div>
@@ -894,7 +905,7 @@ export default function CloseShiftWizard() {
                 {[
                   { l:'Restaurant', v:modStats.restaurant.total },
                   { l:'Bar',        v:modStats.bar.total },
-                  { l:'Car Wash',   v:cwTotal },
+                  { l:'Car Wash',   v:modStats.carwash.total },
                 ].map(x => (
                   <div key={x.l} style={{ textAlign:'center' }}>
                     <div style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,.6)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:3 }}>{x.l}</div>

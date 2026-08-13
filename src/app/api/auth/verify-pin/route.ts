@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { hashPin } from '@/lib/utils/hash'
 import { getSessionStaffId } from '@/lib/utils/serverAuth'
+import { createPinAuthToken, PIN_AUTH_TTL_SECONDS, PIN_AUTH_RECOVERY_TTL_SECONDS, CLOSE_SHIFT_PIN_AUTH_TTL_SECONDS } from '@/lib/utils/session'
 
 const SUPA_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^﻿/, '')
 const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').replace(/^﻿/, '')
@@ -27,6 +28,15 @@ export async function POST(req: NextRequest) {
   // server-side (re-verified against the live role, never trusted from the
   // caller) — used by No-Sale and Close Shift manager authorization.
   const pool = body?.pool === 'privileged' ? 'privileged' : 'any'
+  // The caller can only pick from this fixed, server-defined menu — never an
+  // arbitrary duration. No-Sale and Payroll (the unlabeled default) keep the
+  // short 5-minute window unchanged; only a caller that explicitly asks for
+  // the 'close_shift' or 'historical_recovery' context gets the longer
+  // multi-step-wizard window, and only CloseShiftWizard.tsx sends the former.
+  const tokenTtl =
+    body?.context === 'historical_recovery' ? PIN_AUTH_RECOVERY_TTL_SECONDS :
+    body?.context === 'close_shift' ? CLOSE_SHIFT_PIN_AUTH_TTL_SECONDS :
+    PIN_AUTH_TTL_SECONDS
   if (typeof pin !== 'string' || pin.length !== 4) {
     return NextResponse.json({ error: 'A 4-digit pin is required' }, { status: 400 })
   }
@@ -49,8 +59,12 @@ export async function POST(req: NextRequest) {
   const match = rows.find(r => r.pin_hash && hash.toLowerCase() === String(r.pin_hash).toLowerCase())
   if (!match) return NextResponse.json({ error: 'Incorrect PIN' }, { status: 401 })
 
+  // pinAuthToken is the actual proof of this successful verification — any
+  // route authorizing a sensitive action (Close Shift, Historical Recovery)
+  // must require it and must never trust a caller-supplied id/role instead.
   return NextResponse.json({
     id: match.id, name: match.name, ini: match.ini, role: match.role,
     color: match.color, allowedModules: match.allowed_modules ?? ['restaurant'],
+    pinAuthToken: createPinAuthToken(match.id, tokenTtl),
   })
 }

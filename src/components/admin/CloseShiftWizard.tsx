@@ -251,7 +251,10 @@ export default function CloseShiftWizard() {
           const res = await fetch('/api/auth/verify-pin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: pinUser.id, pin: np, pool: 'privileged' }),
+            // 'close_shift' gets the longer, multi-step-wizard authorization
+            // window (see CLOSE_SHIFT_PIN_AUTH_TTL_SECONDS in session.ts) —
+            // still a fixed, server-controlled duration, never client-chosen.
+            body: JSON.stringify({ id: pinUser.id, pin: np, pool: 'privileged', context: 'close_shift' }),
           })
           if (res.ok) {
             const u = await res.json()
@@ -371,11 +374,23 @@ export default function CloseShiftWizard() {
         return
       }
       if (res.status === 401) {
-        // PIN authorization expired (5-minute window) during the wizard's cash
-        // count/reconciliation steps — a real possibility on a busy count, not
-        // an error. Send back to re-enter the PIN rather than losing all the
-        // entered data; every other field in `data` is untouched.
+        // PIN authorization expired (the wizard's own multi-step window —
+        // see CLOSE_SHIFT_PIN_AUTH_TTL_SECONDS in session.ts) during the
+        // cash count/reconciliation steps — a real possibility on a careful
+        // count, not an error. Send back to re-enter the PIN rather than
+        // losing all the entered data; every other field in `data` is
+        // untouched, and the cash/payments/etc. steps show it pre-filled
+        // when the user walks back through them after re-authorizing.
+        //
+        // Also reset pin/pinSt here: a successful PIN entry never clears
+        // `pin` itself (only the error path does), so without this the PIN
+        // pad would still be showing the 4 already-entered digits and its
+        // own length guard would silently ignore every further keypress —
+        // "please re-enter your PIN" would be impossible to actually do.
         setData(d => ({ ...d, authorizedUser: null, pinAuthToken: null }))
+        setPin('')
+        setPinSt('idle')
+        setPinErr('Your manager authorization expired. Please re-enter your PIN to continue closing the shift.')
         setStep('auth')
         setCloseError('')
         setClosing(false)

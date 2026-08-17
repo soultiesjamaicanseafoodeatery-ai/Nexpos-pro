@@ -75,6 +75,15 @@ export async function POST(req: NextRequest) {
   // (e.g. a car wash item bundled into a restaurant order, paid up front).
   const status = body.status === 'waiting' ? 'waiting' : 'completed'
 
+  // transaction_id is nullable and optional — only the two mixed-checkout
+  // paths in POSPage.tsx send it (they already know tx.id at this point);
+  // the dedicated Car Wash screen has no parent transaction to link to and
+  // continues to omit it exactly as before. Purely a traceability field —
+  // never read by ticket numbering, Sales Summary, or EOD's status check.
+  const transaction_id = typeof body.transactionId === 'number' || typeof body.transactionId === 'string'
+    ? body.transactionId
+    : null
+
   const row = {
     id:            `CWO-${Date.now()}`,
     ticket_no,
@@ -94,6 +103,7 @@ export async function POST(req: NextRequest) {
     payment_method: body.paymentMethod ?? 'cash',
     total:         Number(body.total ?? 0),
     employee_name: body.employeeName ?? '',
+    transaction_id,
   }
 
   const res = await fetch(`${SUPA_URL}/rest/v1/carwash_orders`, {

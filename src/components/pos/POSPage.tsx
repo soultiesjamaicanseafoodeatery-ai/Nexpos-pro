@@ -110,6 +110,15 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [customerName,  setCustomerName]  = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
 
+  // Direct-cart (Path B) Car Wash completion — unlike an open ticket (which
+  // already tracks this via TicketModal.tsx's carwashStatus), a quick counter
+  // sale has no prior lifecycle to read from, so the cashier states it here.
+  // Defaults to "already done" (status='completed') to match the observed
+  // real-world workflow; checking the box is the explicit, deliberate way to
+  // say the wash still needs to happen (status='waiting', still caught by
+  // CloseShiftWizard.tsx's EOD incomplete-wash check).
+  const [cwNeedsWash, setCwNeedsWash] = useState(false)
+
   // Payment / receipt modals
   const [showPayment,   setShowPayment]   = useState(false)
   const [showTicket,    setShowTicket]    = useState(false)
@@ -658,6 +667,13 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         const cwPlate = cwItems.find(ci => ci.plate)?.plate ?? ''
         const cwAddonsTotal = cwItems.reduce((s, ci) => s + ci.addons.reduce((a, ad) => a + ad.price, 0) * ci.qty, 0)
         const cwTotal = cwItems.reduce((s, ci) => s + (ci.price + ci.addons.reduce((a, ad) => a + ad.price, 0)) * ci.qty, 0)
+        // This ticket's wash progress was already tracked via TicketModal.tsx's
+        // Queued / In Progress / Completed control (carwashStatus) — reuse it
+        // instead of always assuming the wash still needs to happen. Anything
+        // other than an explicit 'completed' safely falls back to 'waiting' so
+        // CloseShiftWizard.tsx's EOD incomplete-wash check still catches a
+        // genuinely unfinished wash rather than silently assuming it's done.
+        const cwStatus = payingTicket.carwashStatus === 'completed' ? 'completed' : 'waiting'
         fetch('/api/carwash-orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -672,9 +688,18 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             paymentMethod: payData.method,
             total:         cwTotal,
             employeeName:  currentUser.name,
-            status:        'waiting',
+            status:        cwStatus,
+            transactionId: tx.id,
           }),
-        }).catch(() => {})
+        }).then(res => {
+          if (!res.ok) throw new Error(`carwash-orders POST ${res.status}`)
+        }).catch(err => {
+          // Never let this fail silently again — the payment already succeeded
+          // and must not be undone, but staff need to know the Car Wash queue
+          // entry didn't get created so they can add it manually.
+          toast('⚠️ Car Wash ticket could not be created — check the Car Wash queue', 'warn')
+          audit('CARWASH_TICKET_FAILED', `Order #${payingTicket.orderNum} (tx ${tx.id}) — ${err instanceof Error ? err.message : 'unknown error'}`, 'error')
+        })
       }
       const pw2 = (biz.printers?.width ?? 80) as 58 | 80
       if (biz.printers?.receipt) {
@@ -817,6 +842,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
         const cwPlate = cwItems.find(ci => ci.plate)?.plate ?? ''
         const cwAddonsTotal = cwItems.reduce((s, ci) => s + ci.addons.reduce((a, ad) => a + ad.price, 0) * ci.qty, 0)
         const cwTotal = cwItems.reduce((s, ci) => s + (ci.price + ci.addons.reduce((a, ad) => a + ad.price, 0)) * ci.qty, 0)
+        // No open-ticket lifecycle exists for a direct-cart sale to read a
+        // carwashStatus from (unlike Path A above), so the cashier's explicit
+        // cwNeedsWash toggle is the source of truth here instead.
+        const cwStatus = cwNeedsWash ? 'waiting' : 'completed'
         fetch('/api/carwash-orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -831,9 +860,18 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
             paymentMethod: payData.method,
             total:         cwTotal,
             employeeName:  currentUser.name,
-            status:        'waiting',
+            status:        cwStatus,
+            transactionId: tx.id,
           }),
-        }).catch(() => {})
+        }).then(res => {
+          if (!res.ok) throw new Error(`carwash-orders POST ${res.status}`)
+        }).catch(err => {
+          // Never let this fail silently again — the payment already succeeded
+          // and must not be undone, but staff need to know the Car Wash queue
+          // entry didn't get created so they can add it manually.
+          toast('⚠️ Car Wash ticket could not be created — check the Car Wash queue', 'warn')
+          audit('CARWASH_TICKET_FAILED', `Order #${orderNum} (tx ${tx.id}) — ${err instanceof Error ? err.message : 'unknown error'}`, 'error')
+        })
       }
     }
     // Auto-print receipt (always, unless receipt preview modal is enabled in Settings)
@@ -865,7 +903,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setLastTicket(newTicket)
     setShowPayment(false)
     setDiscPct(0); setDiscFlat(0)
-    setGuestCount(1); setCustomerName(''); setCustomerPhone(''); setOrderNote('')
+    setGuestCount(1); setCustomerName(''); setCustomerPhone(''); setOrderNote(''); setCwNeedsWash(false)
     setGratuityOverride(false)
     setSurcharges([])
     setSplitTarget(null)
@@ -1805,6 +1843,17 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                   <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--txt)', letterSpacing: '-.3px' }}>TOTAL</span>
                   <span style={{ fontSize: 18, fontWeight: 900, fontFamily: 'var(--mono)', color: cart.length > 0 ? 'var(--blue)' : 'var(--txt3)', letterSpacing: '-.5px' }}>{fmt(calc.total, sym)}</span>
                 </div>
+
+                {/* Car Wash still-pending toggle — only relevant when the cart
+                    actually contains an active car wash item; defaults unchecked
+                    (wash already done). See cwNeedsWash declaration for why. */}
+                {activeCart.some(ci => ci.module === 'carwash') && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 8, fontSize: 11, color: 'var(--txt3)', cursor: 'pointer', userSelect: 'none' }}>
+                    <input type="checkbox" checked={cwNeedsWash} onChange={e => setCwNeedsWash(e.target.checked)}
+                      style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--ora)' }} />
+                    Car Wash still needs to be done
+                  </label>
+                )}
               </div>
 
               {/* Action buttons */}

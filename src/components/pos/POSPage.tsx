@@ -110,6 +110,16 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   const [customerName,  setCustomerName]  = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
 
+  // Carries a resumed held order's original fallback label (only set when
+  // that order had neither a customerName nor a table — see holdOrder()'s
+  // label priority) forward through resume → re-hold, so re-holding the same
+  // order doesn't regenerate a new, different-looking fallback label. Named
+  // orders/tables already survive resume via customerName/selTable state
+  // above; this only fills the gap for the nameless/tableless case. Cleared
+  // whenever the cart session actually completes (hold/send/pay) so it can
+  // never leak into an unrelated later order.
+  const [resumedHeldFallbackLabel, setResumedHeldFallbackLabel] = useState<string | null>(null)
+
   // Direct-cart (Path B) Car Wash completion — unlike an open ticket (which
   // already tracks this via TicketModal.tsx's carwashStatus), a quick counter
   // sale has no prior lifecycle to read from, so the cashier states it here.
@@ -905,6 +915,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setDiscPct(0); setDiscFlat(0)
     setGuestCount(1); setCustomerName(''); setCustomerPhone(''); setOrderNote(''); setCwNeedsWash(false)
     setGratuityOverride(false)
+    setResumedHeldFallbackLabel(null)
     setSurcharges([])
     setSplitTarget(null)
     audit('PAYMENT', `${itemSummary} — ${fmt(tx.total, sym)} · ${payMethodLabel}`, 'success')
@@ -986,6 +997,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     dispatch({ type: 'SET_POS_STATE', mod: 'bar',        patch: { selTable: null } })
     dispatch({ type: 'SET_POS_STATE', mod: 'carwash',    patch: { plate: '' } })
     setDiscPct(0); setDiscFlat(0); setGuestCount(1); setCustomerName(''); setOrderNote(''); setGratuityOverride(false)
+    setResumedHeldFallbackLabel(null)
 
     const sentTo = [hasKitchen && 'Kitchen', hasBar && 'Bar', hasCarwash && 'Car Wash'].filter(Boolean).join(' + ')
     audit('SEND_ORDER', `Order #${orderNum} sent to ${sentTo}`, 'info')
@@ -1100,7 +1112,14 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     if (cart.length === 0) return
     if (!currentUser) return
     const selTable = posState['restaurant'].selTable ?? posState['bar'].selTable
-    const label = customerName || (selTable ? `Table ${selTable}` : `Order ${Date.now().toString().slice(-4)}`)
+    const savedAt = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    // Fallback label when there's no name and no table: reuse the original
+    // held order's label if we're re-holding one just resumed (stable
+    // identity across resume), otherwise a clearly-not-an-order-number
+    // "Held • <time>" — never a bare 4-digit fragment that could be mistaken
+    // for a real customer-facing order number (those come only from
+    // nextDailyOrderNum(), never from here).
+    const label = customerName || (selTable ? `Table ${selTable}` : (resumedHeldFallbackLabel ?? `Held • ${savedAt}`))
     const held: HeldOrder = {
       id: crypto.randomUUID(),
       label,
@@ -1114,7 +1133,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       discFlat,
       gratuityPct,
       gratuityOverride,
-      savedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      savedAt,
       savedBy: currentUser.name,
     }
     dispatch({ type: 'HOLD_ORDER', order: held })
@@ -1124,6 +1143,7 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setCustomerName('')
     setGuestCount(1)
     setGratuityOverride(false)
+    setResumedHeldFallbackLabel(null)
     audit('HOLD_ORDER', `Held: ${label}`, 'info')
   }
 
@@ -1147,6 +1167,11 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     setDiscFlat(held.discFlat)
     setGratuityPct(held.gratuityPct)
     setGratuityOverride(held.gratuityOverride)
+    // Named orders/tables already survive resume via customerName/selTable
+    // above (restored into state, feeding holdOrder()'s same label priority
+    // if re-held) — this only preserves identity for the nameless/tableless
+    // case, where holdOrder() has no other state to fall back on.
+    setResumedHeldFallbackLabel(!held.customerName && !held.selTable ? held.label : null)
     setShowHeld(false)
     audit('RESUME_ORDER', `Resumed: ${held.label}`, 'info')
     setResumingHeldId(null)

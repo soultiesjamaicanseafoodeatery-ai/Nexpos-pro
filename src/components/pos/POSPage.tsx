@@ -1267,9 +1267,16 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     return m >= 60 ? '#ef4444' : m >= 30 ? 'var(--ora)' : 'var(--txt3)'
   }
 
-  const searchFiltered = filteredItems.filter((i: MenuItem) =>
-    !searchQuery || i.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // While actively searching, search across every category in this module —
+  // not just whichever tab happens to be selected. The category tab never
+  // resets to "All" on its own, so without this a search silently narrowed
+  // to one category with no indication why (real report: "Cran Wata"/"Cran
+  // Juice" — both correctly active, both tagged Bar/Drinks — didn't show up
+  // because a different category tab was selected at the time). With no
+  // search text, behavior is unchanged: the existing tab-scoped list.
+  const searchFiltered = searchQuery
+    ? mod.items.filter((i: MenuItem) => i.active && i.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : filteredItems
 
   // Selected table for current module
   const selTable = posState['restaurant'].selTable ?? posState['bar'].selTable

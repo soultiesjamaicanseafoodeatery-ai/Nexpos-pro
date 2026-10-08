@@ -1,4 +1,4 @@
-import type { Transaction, CartItem, BusinessConfig } from '@/types'
+import type { Transaction, CartItem, BusinessConfig, OrderCalc } from '@/types'
 import { jamaicaDateTimeString } from './businessDate'
 
 export type PrintWidth = 58 | 80
@@ -663,4 +663,130 @@ export function buildZReport(data: ZReportData, opts: { width?: PrintWidth } = {
   L.push(div('=', w))
 
   return '<pre>' + L.join('\n') + '</pre>'
+}
+
+// ── Order Bill (pre-payment, unpaid) ─────────────────────────────────────────
+// Print Unpaid Order Bill Before Payment — a deliberately SEPARATE document
+// from buildCustomerReceipt. It must never be mistaken for a paid receipt:
+// no "Receipt #", no "Payment:"/Tendered/Change, no refund block, no
+// thank-you footer — and it carries its own unmissable UNPAID banner.
+//
+// Takes the SAME OrderCalc the Pay button already computed (calcCart(...)
+// via resolveTaxConfig(biz) at the call site) — this function does no tax/fee
+// arithmetic of its own, so the amount printed here can never drift from
+// what checkout will actually charge.
+export interface OrderBillData {
+  // Real, already-allocated order number (ticket.orderNum) — omitted entirely
+  // for a cart that has not been Sent yet (no number exists, and none is
+  // allocated here to produce one).
+  orderNum?: string
+  // True when orderNum === 'PENDING' (Send Order happened while offline —
+  // see DEFERRED_ORDER_NUM in POSPage.tsx). Printed honestly, never guessed.
+  orderNumPending?: boolean
+  orderType: string
+  table?: string
+  server: string
+  customerName?: string
+  phone?: string
+  address?: string
+  items: CartItem[] // active (non-voided) items only — filter at the call site
+  orderNote?: string
+  date: string
+  time: string
+}
+
+export function buildOrderBill(
+  data: OrderBillData,
+  calc: OrderCalc,
+  biz: BusinessConfig,
+  opts: { width?: PrintWidth } = {}
+): string {
+  const w   = COLS[opts.width ?? 80]
+  const sym = biz.currencySymbol ?? 'J$'
+  const fmtN = (n: number) =>
+    sym + (n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const L: string[] = []
+
+  // Header
+  L.push(div('=', w))
+  L.push(center(sanitize(biz.name).toUpperCase(), w))
+  if (biz.tagline) L.push(center(sanitize(biz.tagline), w))
+  if (biz.address) L.push(center(sanitize(biz.address), w))
+  if (biz.phone)   L.push(center('Tel: ' + sanitize(biz.phone), w))
+  if (biz.website) L.push(center(sanitize(biz.website), w))
+  L.push(div('=', w))
+
+  // Unmistakable unpaid banner — the entire reason this is a separate
+  // builder rather than a mode flag on buildCustomerReceipt.
+  L.push(center('*** ORDER BILL — NOT A RECEIPT ***', w))
+  L.push(center('*** UNPAID — PAYMENT DUE ***', w))
+  L.push(div('=', w))
+
+  // Order info — never allocates a number, only ever reports one it was given.
+  const orderLabel = data.orderNumPending || data.orderNum === 'PENDING'
+    ? 'PENDING (offline)'
+    : data.orderNum
+      ? data.orderNum
+      : 'UNSENT ORDER'
+  L.push(row('Order #:', orderLabel, w))
+  L.push(row('Date/Time:', sanitize(data.date) + ' ' + sanitize(data.time), w))
+  L.push(row('Server:', sanitize(data.server), w))
+  if (data.table)        L.push(row('Table:', sanitize(data.table), w))
+  if (data.customerName) L.push(row('Customer:', sanitize(data.customerName), w))
+  if (data.phone)        L.push(row('Phone:', sanitize(data.phone), w))
+  if (data.address)      wrap('Deliver To: ' + sanitize(data.address), 0, w).forEach(l => L.push(l))
+  L.push(row('Order:', data.orderType.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase()), w))
+  L.push(div('-', w))
+
+  // Items — NOT filtered by module (unlike KOT/BOT): a mixed Restaurant +
+  // Bar + Car Wash order must show every applicable active item on one bill.
+  L.push('ITEMS')
+  L.push(div('-', w))
+  const activeItems = data.items.filter(ci => !ci.voided)
+  if (activeItems.length > 0) {
+    for (const ci of activeItems) {
+      const lineTotal = (ci.price + ci.addons.reduce((s, a) => s + a.price, 0)) * ci.qty
+      const prefix = ci.qty > 1 ? ` ${ci.qty}x ` : '    '
+      itemWrap(prefix, sanitize(ci.name), w - fmtN(lineTotal).length - 1).forEach((l, i) => {
+        L.push(i === 0 ? row(l, fmtN(lineTotal), w) : l)
+      })
+      if (ci.size)              L.push('     SIZE: ' + sanitize(ci.size))
+      if (ci.flavour)           L.push('     FLAVOUR: ' + sanitize(ci.flavour))
+      if (ci.sides?.length)     L.push('     SIDES: ' + ci.sides.map(sanitize).join(', '))
+      for (const a of ci.addons)
+        L.push(row('     + ' + sanitize(a.name), '+' + fmtN(a.price), w))
+      if (ci.note)              L.push('     NOTE: ' + sanitize(ci.note))
+    }
+  } else {
+    L.push(center('(no active items)', w))
+  }
+  if (data.orderNote?.trim()) {
+    L.push('')
+    wrap('ORDER NOTE: ' + sanitize(data.orderNote), 0, w).forEach(l => L.push(l))
+  }
+  L.push(div('=', w))
+
+  // Totals — read straight off the SAME calc the Pay button will charge.
+  // No tax/fee arithmetic here; only formatting of values already computed
+  // by calcCart()/resolveTaxConfig() at the call site.
+  const pct = (r: number) => {
+    const n = Math.round(r * 10000) / 100
+    return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '')
+  }
+  L.push(row('Subtotal:', fmtN(calc.sub), w))
+  if (calc.disc > 0)                   L.push(row('Discount:', '-' + fmtN(calc.disc), w))
+  if ((calc.gct ?? 0) > 0)             L.push(row(`GCT (${pct(calc.gctRate ?? 0)}%):`, fmtN(calc.gct), w))
+  if ((calc.serviceCharge ?? 0) > 0)   L.push(row(`Service (${pct(calc.scRate ?? 0)}%):`, fmtN(calc.serviceCharge), w))
+  if ((calc.gratuity ?? 0) > 0)        L.push(row('Gratuity:', fmtN(calc.gratuity), w))
+  if ((calc.surchargeTotal ?? 0) > 0)  L.push(row('Surcharges:', fmtN(calc.surchargeTotal), w))
+  L.push(div('=', w))
+  L.push(row('AMOUNT DUE:', fmtN(calc.total), w))
+  L.push(div('=', w))
+
+  // Footer — the opposite of a thank-you message: an explicit payment-due notice.
+  L.push(center('*** PAYMENT NOT RECEIVED ***', w))
+  L.push(center('PAYMENT DUE AT COMPLETION', w))
+  L.push(div('=', w))
+
+  return `<pre>${L.join('\n')}</pre>`
 }

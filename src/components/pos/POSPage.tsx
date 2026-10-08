@@ -5,7 +5,7 @@ import { useApp } from '@/lib/hooks/useAppStore'
 import type { MenuItem, Addon, Transaction, CartItem, OrderType, ModuleData, HeldOrder, PaymentEntry, OrderTicket, VoidReason, VoidLog, Surcharge } from '@/types'
 import { VOID_REASON_LABELS } from '@/types'
 import { calcCart, fmt } from '@/lib/utils/tax'
-import { buildCustomerReceipt, buildKitchenTicket, buildCarwashWorkOrder, buildVoidTicket, printTicket, smartPrint } from '@/lib/utils/ticketPrinter'
+import { buildCustomerReceipt, buildKitchenTicket, buildCarwashWorkOrder, buildVoidTicket, buildOrderBill, printTicket, smartPrint } from '@/lib/utils/ticketPrinter'
 import { qzOpenDrawer } from '@/lib/utils/qzTray'
 import { shouldOpenDrawer } from '@/lib/utils/payments'
 import OutsideOrders from './OutsideOrders'
@@ -128,6 +128,10 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
   // say the wash still needs to happen (status='waiting', still caught by
   // CloseShiftWizard.tsx's EOD incomplete-wash check).
   const [cwNeedsWash, setCwNeedsWash] = useState(false)
+
+  // Print Bill (unpaid pre-payment document) — double-tap/rapid-reprint
+  // guard only; carries no financial state. 'cart' or a ticket id, or null.
+  const [printingBill, setPrintingBill] = useState<string | null>(null)
 
   // Payment / receipt modals
   const [showPayment,   setShowPayment]   = useState(false)
@@ -949,6 +953,11 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
       server: currentUser.name,
       guestCount:    guestCount > 1 ? guestCount : undefined,
       customerName:  customerName || undefined,
+      // Delivery/Takeout intake data (POSFlow.tsx's OrderForm) — previously
+      // only read into orderContext and never persisted past this screen.
+      // Additive fields; harmless undefined on dine-in/no-intake orders.
+      phone:         customerPhone || undefined,
+      address:       orderContext?.address || undefined,
       orderType:     cartOrderType,
       status:        'sent',
       hasKitchen,
@@ -1002,6 +1011,33 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
     const sentTo = [hasKitchen && 'Kitchen', hasBar && 'Bar', hasCarwash && 'Car Wash'].filter(Boolean).join(' + ')
     audit('SEND_ORDER', `Order #${orderNum} sent to ${sentTo}`, 'info')
     setShowOpen(true)
+  }
+
+  // ── Print Bill: unpaid pre-payment order bill ──────────────
+  // Deliberately separate from the paid-receipt path (TicketModal /
+  // buildCustomerReceipt / completeCheckout). Prints ONLY — it must never
+  // create a transaction, allocate an order number, change ticket status,
+  // open the drawer, or create a Car Wash order. `calcForBill` is always
+  // the SAME OrderCalc the Pay button would charge for this order/cart —
+  // never recomputed here. `label` is just the double-tap guard key (the
+  // ticket id, or 'cart' for the current-cart bill).
+  const printOrderBill = async (
+    billData: Parameters<typeof buildOrderBill>[0],
+    calcForBill: ReturnType<typeof calcCart>,
+    label: string,
+  ) => {
+    if (printingBill) return
+    setPrintingBill(label)
+    try {
+      const pw = (biz.printers?.width ?? 80) as 58 | 80
+      const html = buildOrderBill(billData, calcForBill, biz, { width: pw })
+      // silentOnly=false: staff-initiated print, same convention as sendOrder() —
+      // falls back to the browser popup if QZ Tray is unavailable.
+      await smartPrint(html, 'Order Bill', biz.printers?.receipt, pw, false)
+      audit('PRINT_BILL', `Order Bill printed — ${billData.orderNum ?? 'unsent order'} · ${fmt(calcForBill.total, sym)}`, 'info')
+    } finally {
+      setTimeout(() => setPrintingBill(null), 1500)
+    }
   }
 
   // ── Permission helpers ─────────────────────────────────────
@@ -1903,6 +1939,32 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                   )}
                 </div>
 
+                {/* Print Bill — unpaid pre-payment document for the current cart.
+                    Print-only: no order number is allocated (an un-sent cart has
+                    none yet), no transaction, no status change. See printOrderBill(). */}
+                <button
+                  onClick={() => {
+                    if (activeCart.length === 0 || !currentUser) return
+                    const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                    const today   = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+                    void printOrderBill({
+                      orderType: cartOrderType,
+                      table: selTable ?? undefined,
+                      server: currentUser.name,
+                      customerName: customerName || undefined,
+                      phone: customerPhone || undefined,
+                      address: orderContext?.address || undefined,
+                      items: activeCart,
+                      orderNote: orderNote || undefined,
+                      date: today,
+                      time: nowTime,
+                    }, calc, 'cart')
+                  }}
+                  disabled={activeCart.length === 0 || printingBill === 'cart'}
+                  style={{ width: '100%', minHeight: 32, borderRadius: 'var(--r)', fontSize: 11, fontWeight: 800, background: 'transparent', color: activeCart.length > 0 && printingBill !== 'cart' ? 'var(--txt2)' : 'var(--txt3)', border: '1.5px dashed var(--bdr)', cursor: activeCart.length > 0 && printingBill !== 'cart' ? 'pointer' : 'not-allowed', letterSpacing: '.2px' }}>
+                  {printingBill === 'cart' ? 'Printing…' : '🧾 Print Bill (Unpaid)'}
+                </button>
+
                 {/* Pay */}
                 <button onClick={() => { if (cart.length===0) return; setShowDetails(true); setShowPayment(true) }} disabled={cart.length === 0} style={{ width: '100%', minHeight: 36, borderRadius: 'var(--r)', fontSize: 12, fontWeight: 900, border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', color: cart.length > 0 ? '#fff' : 'var(--txt3)', background: cart.length > 0 ? 'var(--blue)' : 'var(--surf3)', letterSpacing: '.3px', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   ✓ Pay {cart.length > 0 ? fmt(calc.total, sym) : '—'}
@@ -2073,18 +2135,47 @@ export default function POSPage({ onBack, onPaymentComplete, orderContext }: POS
                         Add {activeCart.length} Item(s) to #{t.orderNum}
                       </button>
                     ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: isManager ? '1fr auto' : '1fr', gap: 6 }}>
-                        <button onClick={() => { setPayingTicket(t); setGratuityPct(t.gratuityPct ?? 15); setGratuityOverride(true); setShowOpen(false); setShowPayment(true) }}
-                          style={{ padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                          Pay {fmt(tCalc.total, sym)}
+                      <>
+                        {/* Print Bill — unpaid pre-payment document for THIS open order.
+                            Primary use case: Send Order already allocated the real order
+                            number; this only reads the ticket + tCalc, never changes them,
+                            never pays, never touches the drawer/Car Wash. */}
+                        <button
+                          onClick={() => {
+                            const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                            const today   = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+                            void printOrderBill({
+                              orderNum: t.orderNum,
+                              orderNumPending: t.orderNum === 'PENDING',
+                              orderType: t.orderType,
+                              table: t.table,
+                              server: t.server,
+                              customerName: t.customerName,
+                              phone: t.phone,
+                              address: t.address,
+                              items: activeItems,
+                              orderNote: t.orderNote,
+                              date: today,
+                              time: nowTime,
+                            }, tCalc, t.id)
+                          }}
+                          disabled={printingBill === t.id}
+                          style={{ width: '100%', marginBottom: 6, padding: '7px 0', borderRadius: 'var(--r)', fontSize: 12, fontWeight: 700, background: 'transparent', color: printingBill === t.id ? 'var(--txt3)' : 'var(--txt2)', border: '1.5px dashed var(--bdr)', cursor: printingBill === t.id ? 'not-allowed' : 'pointer' }}>
+                          {printingBill === t.id ? 'Printing…' : '🧾 Print Bill (Unpaid)'}
                         </button>
-                        {isManager && (
-                          <button onClick={() => setVoidOrderTarget(t)}
-                            style={{ padding: '9px 12px', borderRadius: 'var(--r)', background: '#7f1d1d22', color: '#ef4444', border: '1px solid #ef444433', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                            Void Order
+                        <div style={{ display: 'grid', gridTemplateColumns: isManager ? '1fr auto' : '1fr', gap: 6 }}>
+                          <button onClick={() => { setPayingTicket(t); setGratuityPct(t.gratuityPct ?? 15); setGratuityOverride(true); setShowOpen(false); setShowPayment(true) }}
+                            style={{ padding: '9px 0', borderRadius: 'var(--r)', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                            Pay {fmt(tCalc.total, sym)}
                           </button>
-                        )}
-                      </div>
+                          {isManager && (
+                            <button onClick={() => setVoidOrderTarget(t)}
+                              style={{ padding: '9px 12px', borderRadius: 'var(--r)', background: '#7f1d1d22', color: '#ef4444', border: '1px solid #ef444433', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                              Void Order
+                            </button>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 )

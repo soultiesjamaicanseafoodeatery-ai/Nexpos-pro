@@ -490,6 +490,12 @@ export interface OrderTicket {
   server:        string
   guestCount?:   number
   customerName?: string
+  // Delivery/Takeout intake fields (POSFlow.tsx's OrderForm) — previously
+  // captured in orderContext but discarded when sendOrder() built the
+  // ticket. Additive only: absent on every ticket created before this field
+  // existed, which remain valid with no phone/address line on a bill/reprint.
+  phone?:        string
+  address?:      string
   orderType:     string
   status?:       OrderStatus  // absent on legacy tickets (treat as 'paid')
   hasKitchen:    boolean
